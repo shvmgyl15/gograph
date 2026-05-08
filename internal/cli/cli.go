@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"gograph/internal/graph"
-	"gograph/internal/parser"
-	"gograph/internal/report"
-	"gograph/internal/scanner"
-	"gograph/internal/search"
+	"github.com/ozgurcd/gograph/internal/graph"
+	"github.com/ozgurcd/gograph/internal/parser"
+	"github.com/ozgurcd/gograph/internal/report"
+	"github.com/ozgurcd/gograph/internal/scanner"
+	"github.com/ozgurcd/gograph/internal/search"
 )
 
 const outputDir = ".gograph"

@@ -10,7 +10,7 @@ import (
 	"go/token"
 	"strings"
 
-	"gograph/internal/graph"
+	"github.com/ozgurcd/gograph/internal/graph"
 )
 
 // FileResult holds everything extracted from one source file.

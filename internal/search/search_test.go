@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"gograph/internal/graph"
-	"gograph/internal/search"
+	"github.com/ozgurcd/gograph/internal/graph"
+	"github.com/ozgurcd/gograph/internal/search"
 )
 
 func makeGraph() *graph.Graph {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"gograph/internal/graph"
+	"github.com/ozgurcd/gograph/internal/graph"
 )
 
 // Result is a single match returned by Query.

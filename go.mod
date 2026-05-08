@@ -1,3 +1,3 @@
-module gograph
+module github.com/ozgurcd/gograph
 
-go 1.22
+go 1.22.3

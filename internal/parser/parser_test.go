@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"testing"
 
-	"gograph/internal/graph"
-	"gograph/internal/parser"
+	"github.com/ozgurcd/gograph/internal/graph"
+	"github.com/ozgurcd/gograph/internal/parser"
 )
 
 func fixtureDir() string {

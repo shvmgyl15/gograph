@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gograph/internal/scanner"
+	"github.com/ozgurcd/gograph/internal/scanner"
 )
 
 func TestShouldIgnoreDir(t *testing.T) {

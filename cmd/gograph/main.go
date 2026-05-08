@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	"gograph/internal/cli"
+	"github.com/ozgurcd/gograph/internal/cli"
 )
 
 func main() {

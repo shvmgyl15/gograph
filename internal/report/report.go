@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"gograph/internal/graph"
+	"github.com/ozgurcd/gograph/internal/graph"
 )
 
 // Generate produces the markdown report content from the given graph.
