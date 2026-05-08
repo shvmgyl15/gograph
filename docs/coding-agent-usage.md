@@ -19,8 +19,8 @@ A single command (`gograph build .`) emits two artifacts under `.gograph/`:
 
 | Artifact | Use |
 |---|---|
-| `GRAPH_REPORT.md` | Human + agent readable summary: package list, entry points, top files by symbol/call density, top symbols by outgoing calls, env vars read, full import graph. |
-| `graph.json` | Machine-readable full graph — packages, files, structs, interfaces, funcs, methods, imports, call edges, env reads. |
+| `GRAPH_REPORT.md` | Human + agent readable summary: external dependencies (Tech Stack), package list, entry points, top files by symbol/call density, top symbols by outgoing calls, env vars read, full import graph. |
+| `graph.json` | Machine-readable full graph — dependencies, packages, files, structs, interfaces, funcs, methods, imports, call edges, env reads. |
 
 And four query commands the agent can invoke without re-parsing:
 
@@ -105,7 +105,7 @@ Numbers vary by repo, but the order-of-magnitude win is consistent: structural q
 
 - **Go only.** No multi-language parsing.
 - **Call edges are best-effort text form** from the AST — no type resolution, so overloaded names and method receivers may collide. Treat `callers`/`callees` results as a starting point, not ground truth.
-- **No cross-repo / module-external edges.** Imports are listed, but call edges into third-party packages are not resolved.
+- **No cross-repo / module-external edges.** External dependencies are extracted from `go.mod` to summarize the tech stack, but call edges into third-party packages are not resolved.
 - **Snapshot, not live.** The graph reflects the state at the last `gograph build` run. Re-run after structural edits.
 
 ## TL;DR

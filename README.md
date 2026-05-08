@@ -12,6 +12,7 @@ It is the **ideal companion tool to pair with AI coding agents** like Claude Cod
 ## Features
 - **Local Only:** No network calls or external API dependencies. All analysis is done securely on your machine.
 - **Go Focused:** Deeply understands Go project structures, packages, and dependencies.
+- **Tech Stack Extraction:** Automatically parses `go.mod` to summarize your external dependencies (like `gin` or `pgx`) so agents instantly understand your stack.
 - **Fast:** Written in Go for high performance.
 
 ## Installation
