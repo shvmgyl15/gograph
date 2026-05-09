@@ -5,18 +5,18 @@
 
 `gograph` is a local-only CLI tool designed to generate repository structures and improve codebase context awareness. 
 
-It is the **ideal companion tool to pair with AI coding agents** like Claude Code, OpenCode, and Google Antigravity. By feeding `gograph`'s output to these agents, you drastically improve their understanding of your project architecture and dependency graph.
+It is a **companion tool to pair with AI coding agents** like Claude Code, OpenCode, and Google Antigravity. By feeding `gograph`'s output to these agents, you improve their contextual understanding of your project architecture and dependency graph.
 
 > **Note on Language Support:** I originally built `gograph` specifically for **Golang** because that is what I needed for my own workflows. It currently only parses and maps Go codebases. However, the architecture is extensible! If you want to add support for other languages (Python, TypeScript, Rust, etc.), **contributions are more than welcome.** Please see the [Contributing Guide](CONTRIBUTING.md) to get started.
 
 ## Features
 - **Local Only:** No network calls or external API dependencies. All analysis is done securely on your machine.
-- **Go Focused:** Deeply understands Go project structures, packages, and dependencies.
+- **Go Focused:** Maps Go project structures, packages, and dependencies using the standard AST.
 - **Targeted Focus:** Extract incredibly targeted context for a single package using `focus` to save LLM tokens.
 - **Tech Stack Extraction:** Automatically parses `go.mod` to summarize your external dependencies (like `gin` or `pgx`) so agents instantly understand your stack.
 - **Concurrency Mapping:** Detects goroutine spawns, channel sends, mutex locks, WaitGroup usage, and `sync.Once.Do` calls across the entire codebase.
-- **Interface Satisfaction:** Duck-typing analysis that tells you which interfaces any struct satisfies — without running the compiler.
-- **Test Coverage Map:** Links every `Test*` function to the production symbols it exercises — instantly see what's tested.
+- **Interface Satisfaction:** Best-effort duck-typing analysis that tells you which interfaces any struct satisfies — without running the compiler.
+- **Test Coverage Map:** Best-effort mapping that links `Test*` functions to the production symbols they likely exercise.
 - **Environment Config:** Surfaces every `os.Getenv` / `viper.Get*` read with file, line, and enclosing function.
 - **Clean Graph (No Generated Files):** Uses strict line-based detection (checking the first 10 lines of every `.go` file for "Code generated") to automatically exclude generated files like mocks or protobufs, ensuring your AI map remains unpolluted.
 - **Fast:** Written in Go for high performance.
@@ -39,12 +39,12 @@ gograph build .
 ```bash
 gograph query "Auth"              # Search for symbols, files, or packages
 gograph focus "internal/auth"     # Generate a highly targeted context for one package
-gograph callers "ValidateToken"   # See exactly what functions call ValidateToken
-gograph callees "InitServer"      # See exactly what InitServer calls
-gograph implementers "AuthService" # See exactly which structs implement an interface
+gograph callers "ValidateToken"   # See what functions call ValidateToken
+gograph callees "InitServer"      # See what InitServer calls
+gograph implementers "AuthService" # See which structs implement an interface
 gograph interfaces "UserService"  # See which interfaces a struct satisfies (duck-typing)
 gograph fields "User"             # Extract all fields and types of a struct
-gograph source "ValidateToken"    # Extract the exact source code for a specific symbol
+gograph source "ValidateToken"    # Extract the source code for a specific symbol
 gograph impact "ValidateToken"    # View the full blast radius (all downstream callers)
 gograph orphans                   # List functions and methods with 0 explicit incoming calls
 gograph node "UserStruct"         # Get detailed AST info about a specific node
@@ -52,7 +52,7 @@ gograph routes                    # Extract all HTTP REST API routes (e.g. GET /
 gograph imports "redis"           # Find all files that import a specific external package
 gograph sql                       # Extract database SQL queries from the AST
 gograph errors                    # Map every custom error and panic to its function
-gograph embeds "Mutex"            # See exactly which structs embed a target struct
+gograph embeds "Mutex"            # See which structs embed a target struct
 gograph public "internal/auth"    # Filter graph to only show exported public symbols
 gograph envs                      # List every environment variable read in the codebase
 gograph concurrency               # Map all goroutines, channels, mutexes, and sync primitives
