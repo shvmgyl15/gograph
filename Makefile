@@ -2,12 +2,17 @@ BINARY=gograph
 BUILD_DIR=bin
 CMD=./cmd/gograph
 
-.PHONY: build test run-build clean bump-patch bump-minor bump-major
+.PHONY: build test run-build clean bump-patch bump-minor bump-major install
 
 build: bump-patch
 	@mkdir -p $(BUILD_DIR)
 	go build -o $(BUILD_DIR)/$(BINARY) $(CMD)
 	@echo "Built $(BUILD_DIR)/$(BINARY)"
+
+install: build
+	sudo rm -f /usr/local/bin/$(BINARY)
+	sudo cp $(BUILD_DIR)/$(BINARY) /usr/local/bin/
+	@echo "Installed $(BINARY) to /usr/local/bin/"
 
 test:
 	go test ./...
