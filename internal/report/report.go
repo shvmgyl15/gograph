@@ -1,4 +1,4 @@
-// Package report generates the human-readable GRAPH_REPORT.md file.
+// Package report generates the human-readable markdown reports for gograph.
 package report
 
 import (
@@ -10,24 +10,157 @@ import (
 	"github.com/ozgurcd/gograph/internal/graph"
 )
 
-// Generate produces the markdown report content from the given graph.
-func Generate(g *graph.Graph) string {
+// GenerateIndex produces the main GRAPH_REPORT.md file containing the summary and routing table.
+func GenerateIndex(g *graph.Graph) string {
 	var sb strings.Builder
-	writeHeader(&sb, g)
+	writeHeader(&sb, g, "GoGraph Report Index")
 	writeSummary(&sb, g)
+	writeRoutingTable(&sb)
 	writeEntryPoints(&sb, g)
-	writePackages(&sb, g)
-	writeImportantFiles(&sb, g)
-	writeImportantSymbols(&sb, g)
-	writeDependencies(&sb, g)
-	writeEnvVars(&sb, g)
-	writeImports(&sb, g)
 	writeUsageInstructions(&sb)
 	return sb.String()
 }
 
-func writeHeader(sb *strings.Builder, g *graph.Graph) {
-	sb.WriteString("# GoGraph Report\n\n")
+// GenerateSymbols produces graph-symbols.md (important files, important symbols, all packages).
+func GenerateSymbols(g *graph.Graph) string {
+	var sb strings.Builder
+	writeHeader(&sb, g, "Symbols & Packages")
+	writeImportantFiles(&sb, g)
+	writeImportantSymbols(&sb, g)
+	writePackages(&sb, g)
+	return sb.String()
+}
+
+// GenerateDeps produces graph-deps.md (external dependencies, package imports).
+func GenerateDeps(g *graph.Graph) string {
+	var sb strings.Builder
+	writeHeader(&sb, g, "Dependencies & Imports")
+	writeDependencies(&sb, g)
+	writeImports(&sb, g)
+	return sb.String()
+}
+
+// GenerateRoutes produces graph-routes.md (HTTP routes).
+func GenerateRoutes(g *graph.Graph) string {
+	var sb strings.Builder
+	writeHeader(&sb, g, "HTTP Routes")
+	if len(g.Routes) == 0 {
+		sb.WriteString("_No HTTP routes detected._\n\n")
+		return sb.String()
+	}
+	sb.WriteString("| Method | Path | Handler | File | Line |\n|--------|------|---------|------|------|\n")
+	for _, r := range g.Routes {
+		fmt.Fprintf(&sb, "| `%s` | `%s` | `%s` | `%s` | %d |\n", r.Method, r.Path, r.Handler, r.File, r.Line)
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+// GenerateSQL produces graph-sql.md (SQL queries).
+func GenerateSQL(g *graph.Graph) string {
+	var sb strings.Builder
+	writeHeader(&sb, g, "SQL Queries")
+	if len(g.SQLs) == 0 {
+		sb.WriteString("_No SQL queries detected._\n\n")
+		return sb.String()
+	}
+	sb.WriteString("| Query | Function | File | Line |\n|-------|----------|------|------|\n")
+	for _, sql := range g.SQLs {
+		fmt.Fprintf(&sb, "| `%s` | `%s` | `%s` | %d |\n", sql.Query, sql.Function, sql.File, sql.Line)
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+// GenerateErrors produces graph-errors.md (Errors and panics).
+func GenerateErrors(g *graph.Graph) string {
+	var sb strings.Builder
+	writeHeader(&sb, g, "Errors & Panics")
+	if len(g.Errors) == 0 {
+		sb.WriteString("_No explicit errors/panics detected._\n\n")
+		return sb.String()
+	}
+	sb.WriteString("| Message | Function | File | Line |\n|---------|----------|------|------|\n")
+	for _, e := range g.Errors {
+		fmt.Fprintf(&sb, "| `%s` | `%s` | `%s` | %d |\n", e.Message, e.Function, e.File, e.Line)
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+// GenerateConfig produces graph-config.md (Environment Variables).
+func GenerateConfig(g *graph.Graph) string {
+	var sb strings.Builder
+	writeHeader(&sb, g, "Environment Configuration")
+	if len(g.EnvReads) == 0 {
+		sb.WriteString("_No environment variables detected._\n\n")
+		return sb.String()
+	}
+	sb.WriteString("| Key | Accessor | File | Line | Function |\n|-----|----------|------|------|----------|\n")
+	for _, ev := range g.EnvReads {
+		fmt.Fprintf(&sb, "| `%s` | `%s` | `%s` | %d | `%s` |\n", ev.Key, ev.Accessor, ev.File, ev.Line, ev.Function)
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+// GenerateConcurrency produces graph-concurrency.md (goroutines, channels, sync).
+func GenerateConcurrency(g *graph.Graph) string {
+	var sb strings.Builder
+	writeHeader(&sb, g, "Concurrency Primitives")
+	if len(g.Concurrency) == 0 {
+		sb.WriteString("_No concurrency primitives detected._\n\n")
+		return sb.String()
+	}
+	sb.WriteString("| Kind | Function | File | Line | Detail |\n|------|----------|------|------|--------|\n")
+	for _, c := range g.Concurrency {
+		fmt.Fprintf(&sb, "| `%s` | `%s` | `%s` | %d | `%s` |\n", c.Kind, c.Function, c.File, c.Line, c.Detail)
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+// GenerateTests produces graph-tests.md (Test edges).
+func GenerateTests(g *graph.Graph) string {
+	var sb strings.Builder
+	writeHeader(&sb, g, "Test Coverage Edges")
+	if len(g.TestEdges) == 0 {
+		sb.WriteString("_No test edges detected._\n\n")
+		return sb.String()
+	}
+	// Deduplicate
+	type testKey struct{ test, target string }
+	seen := make(map[testKey]graph.TestEdge)
+	var keys []testKey
+	for _, te := range g.TestEdges {
+		k := testKey{te.TestFunc, te.Target}
+		if _, ok := seen[k]; !ok {
+			seen[k] = te
+			keys = append(keys, k)
+		}
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].target != keys[j].target {
+			return keys[i].target < keys[j].target
+		}
+		return keys[i].test < keys[j].test
+	})
+
+	sb.WriteString("| Target Symbol | Tested By | File | Line |\n|---------------|-----------|------|------|\n")
+	for _, k := range keys {
+		te := seen[k]
+		fmt.Fprintf(&sb, "| `%s` | `%s` | `%s` | %d |\n", te.Target, te.TestFunc, te.File, te.Line)
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+//
+// Private helpers below
+//
+
+func writeHeader(sb *strings.Builder, g *graph.Graph, title string) {
+	fmt.Fprintf(sb, "# %s\n\n", title)
 	fmt.Fprintf(sb, "**Root:** `%s`  \n", g.Root)
 	fmt.Fprintf(sb, "**Generated:** %s  \n", g.GeneratedAt.Format("2006-01-02 15:04:05 MST"))
 	sb.WriteString("\n---\n\n")
@@ -36,7 +169,7 @@ func writeHeader(sb *strings.Builder, g *graph.Graph) {
 func writeSummary(sb *strings.Builder, g *graph.Graph) {
 	sb.WriteString("## 1. Summary\n\n")
 	funcs, methods, structs, ifaces := symbolCounts(g)
-	fmt.Fprintf(sb, "| Metric | Count |\n|--------|-------|\n")
+	sb.WriteString("| Metric | Count |\n|--------|-------|\n")
 	fmt.Fprintf(sb, "| Packages | %d |\n", len(g.Packages))
 	fmt.Fprintf(sb, "| Files | %d |\n", len(g.Files))
 	fmt.Fprintf(sb, "| Symbols | %d |\n", len(g.Symbols))
@@ -49,8 +182,22 @@ func writeSummary(sb *strings.Builder, g *graph.Graph) {
 	sb.WriteString("\n")
 }
 
+func writeRoutingTable(sb *strings.Builder) {
+	sb.WriteString("## 2. Structural Index\n\n")
+	sb.WriteString("To save token context, the full graph report has been split into targeted files. Read only what you need:\n\n")
+	sb.WriteString("| Category | File | Description |\n|----------|------|-------------|\n")
+	sb.WriteString("| **Symbols** | [`graph-symbols.md`](graph-symbols.md) | Top files, heavily called symbols, and package layouts |\n")
+	sb.WriteString("| **Deps** | [`graph-deps.md`](graph-deps.md) | `go.mod` tech stack and package import relationships |\n")
+	sb.WriteString("| **Config** | [`graph-config.md`](graph-config.md) | Every `os.Getenv` and configuration read across the repo |\n")
+	sb.WriteString("| **Concurrency** | [`graph-concurrency.md`](graph-concurrency.md) | Goroutines, channels, mutexes, and WaitGroups |\n")
+	sb.WriteString("| **Routes** | [`graph-routes.md`](graph-routes.md) | HTTP REST API routes and handlers |\n")
+	sb.WriteString("| **SQL** | [`graph-sql.md`](graph-sql.md) | Raw database queries mapped to functions |\n")
+	sb.WriteString("| **Errors** | [`graph-errors.md`](graph-errors.md) | Custom errors and panics mapped to origin lines |\n")
+	sb.WriteString("| **Tests** | [`graph-tests.md`](graph-tests.md) | Which test functions exercise which production symbols |\n\n")
+}
+
 func writeEntryPoints(sb *strings.Builder, g *graph.Graph) {
-	sb.WriteString("## 2. Likely Entry Points\n\n")
+	sb.WriteString("## 3. Likely Entry Points\n\n")
 	found := false
 	for _, f := range g.Files {
 		base := filepath.Base(f.Path)
@@ -71,21 +218,20 @@ func writeEntryPoints(sb *strings.Builder, g *graph.Graph) {
 }
 
 func writePackages(sb *strings.Builder, g *graph.Graph) {
-	sb.WriteString("## 3. Packages\n\n")
+	sb.WriteString("## Packages\n\n")
 	sb.WriteString("| Package | Dir | Files | Symbols |\n|---------|-----|-------|---------|\n")
 	symCount := make(map[string]int)
 	for _, s := range g.Symbols {
 		symCount[s.PackageName]++
 	}
 	for _, pkg := range g.Packages {
-		fmt.Fprintf(sb, "| `%s` | `%s` | %d | %d |\n",
-			pkg.Name, pkg.Dir, len(pkg.Files), symCount[pkg.Name])
+		fmt.Fprintf(sb, "| `%s` | `%s` | %d | %d |\n", pkg.Name, pkg.Dir, len(pkg.Files), symCount[pkg.Name])
 	}
 	sb.WriteString("\n")
 }
 
 func writeImportantFiles(sb *strings.Builder, g *graph.Graph) {
-	sb.WriteString("## 4. Important Files (top 20 by symbol+call density)\n\n")
+	sb.WriteString("## Important Files (top 20 by symbol+call density)\n\n")
 	type scored struct {
 		path  string
 		score int
@@ -119,7 +265,7 @@ func writeImportantFiles(sb *strings.Builder, g *graph.Graph) {
 }
 
 func writeImportantSymbols(sb *strings.Builder, g *graph.Graph) {
-	sb.WriteString("## 5. Important Symbols (top 30 by outgoing calls)\n\n")
+	sb.WriteString("## Important Symbols (top 30 by outgoing calls)\n\n")
 	type scored struct {
 		sym   graph.SymbolNode
 		calls int
@@ -149,8 +295,7 @@ func writeImportantSymbols(sb *strings.Builder, g *graph.Graph) {
 		if sf.sym.Receiver != "" {
 			name = fmt.Sprintf("(%s).%s", sf.sym.Receiver, sf.sym.Name)
 		}
-		fmt.Fprintf(sb, "| `%s` | %s | `%s` | %d | %d |\n",
-			name, sf.sym.Kind, sf.sym.File, sf.sym.Line, sf.calls)
+		fmt.Fprintf(sb, "| `%s` | %s | `%s` | %d | %d |\n", name, sf.sym.Kind, sf.sym.File, sf.sym.Line, sf.calls)
 	}
 	sb.WriteString("\n")
 }
@@ -167,22 +312,8 @@ func writeDependencies(sb *strings.Builder, g *graph.Graph) {
 	sb.WriteString("\n")
 }
 
-func writeEnvVars(sb *strings.Builder, g *graph.Graph) {
-	sb.WriteString("## 6. Environment Variables\n\n")
-	if len(g.EnvReads) == 0 {
-		sb.WriteString("_None detected._\n\n")
-		return
-	}
-	sb.WriteString("| Key | Accessor | File | Line | Function |\n|-----|----------|------|------|----------|\n")
-	for _, ev := range g.EnvReads {
-		fmt.Fprintf(sb, "| `%s` | `%s` | `%s` | %d | `%s` |\n",
-			ev.Key, ev.Accessor, ev.File, ev.Line, ev.Function)
-	}
-	sb.WriteString("\n")
-}
-
 func writeImports(sb *strings.Builder, g *graph.Graph) {
-	sb.WriteString("## 7. Package Imports\n\n")
+	sb.WriteString("## Package Imports\n\n")
 	type pkgImport struct{ pkg, path string }
 	seen := make(map[pkgImport]bool)
 	var pairs []pkgImport
@@ -217,14 +348,11 @@ func writeImports(sb *strings.Builder, g *graph.Graph) {
 }
 
 func writeUsageInstructions(sb *strings.Builder) {
-	sb.WriteString("## 8. AI Assistant / Coding Agent Usage\n\n")
-	sb.WriteString("Add the following to your AI assistant's system prompt, project instructions, or context file\n")
-	sb.WriteString("(works with any tool: Cursor, GitHub Copilot, Claude, Gemini, Codeium, etc.):\n\n")
+	sb.WriteString("## AI Assistant / Coding Agent Usage\n\n")
+	sb.WriteString("Add the following to your AI assistant's system prompt, project instructions, or context file:\n\n")
 	sb.WriteString("> Before answering architecture, dependency, or 'where is X?' questions about this\n")
 	sb.WriteString("> repository, read `.gograph/GRAPH_REPORT.md` first. Use it as the repo map before\n")
-	sb.WriteString("> searching raw files. For symbol lookup, use `gograph query \"<term>\"`,\n")
-	sb.WriteString("> `gograph callers \"<function>\"`, and `gograph callees \"<function>\"`. After\n")
-	sb.WriteString("> structural code changes, run `gograph build .`.\n\n")
+	sb.WriteString("> searching raw files. Use `gograph query` and `gograph callers` for symbol lookup.\n")
 }
 
 func symbolCounts(g *graph.Graph) (funcs, methods, structs, ifaces int) {

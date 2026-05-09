@@ -20,9 +20,9 @@ A single command (`gograph build .`) emits two artifacts under `.gograph/`:
 | Artifact | Use |
 |---|---|
 | `GRAPH_REPORT.md` | Human + agent readable summary: external dependencies (Tech Stack), package list, entry points, top files by symbol/call density, top symbols by outgoing calls, env vars read, full import graph. |
-| `graph.json` | Machine-readable full graph — dependencies, packages, files, structs, interfaces, funcs, methods, imports, call edges, env reads. |
+| `graph.json` | Machine-readable full graph — dependencies, packages, files, structs, interfaces, funcs, methods, imports, call edges, env reads, SQL queries, errors, concurrency primitives, test edges. |
 
-And four query commands the agent can invoke without re-parsing:
+And query commands the agent can invoke without re-parsing:
 
 ```sh
 gograph query <term>            # symbol/package/file/import/call substring search
@@ -30,6 +30,7 @@ gograph focus <package>         # isolate context for a specific package
 gograph callers <function>      # who calls it (best-effort, AST text-form)
 gograph callees <function>      # what it calls
 gograph implementers <interface> # which structs implement an interface
+gograph interfaces <struct>     # which interfaces a struct satisfies (duck-typing)
 gograph fields <struct>         # extract fields and types of a struct
 gograph source <symbol>         # extract exact source code of a symbol
 gograph impact <symbol>         # find downstream callers (blast radius)
@@ -40,6 +41,10 @@ gograph sql                     # map raw SQL queries to their execution functio
 gograph errors                  # trace a runtime panic or error log to its source line
 gograph embeds <struct>         # find which structs embed a target struct
 gograph public <pkg>            # list only the exported API surface of a package
+gograph envs [term]             # list every environment variable read in the codebase
+gograph concurrency [term]      # map goroutines, channels, mutexes, waitgroups, sync.Once
+gograph tests [symbol]          # find which test functions exercise a named symbol
+gograph capabilities            # print token-optimized AI agent cheat sheet
 gograph mcp <path>              # runs an MCP server over stdio
 ```
 
@@ -55,12 +60,21 @@ Instead of `ls -R` + reading 10 random files, the agent reads `.gograph/GRAPH_RE
 `gograph callers SomeFunc` lists every call site without the agent having to grep all `.go` files. Combined with `callees`, the agent can reason about blast radius before editing.
 
 ### 4. Configuration / secrets surface
-The "Environment Variables" section lists every `os.Getenv` / `os.LookupEnv` / `viper.GetString` site with file, line, and enclosing function — useful when the agent is asked about config without reading source.
+`gograph envs` lists every `os.Getenv` / `os.LookupEnv` / `viper.GetString` site with file, line, and enclosing function — one command vs. grepping every file. Filter by name: `gograph envs DATABASE`.
 
-### 5. Keeping the map fresh
+### 5. Interface satisfaction discovery
+`gograph interfaces Worker` uses duck-typing to show which interfaces `Worker` satisfies without running the compiler. Essential when mocking a service layer for tests.
+
+### 6. Concurrency audit
+`gograph concurrency` shows every goroutine spawn, channel send, mutex lock, WaitGroup, and `sync.Once.Do` across the codebase. Filter: `gograph concurrency goroutine` or `gograph concurrency mutex`.
+
+### 7. Test coverage lookup
+`gograph tests ValidateToken` instantly shows which `Test*` functions exercise `ValidateToken` — no grepping test files needed.
+
+### 8. Keeping the map fresh
 After structural edits (new files, renamed symbols, new packages), the agent re-runs `gograph build .` so its repo map matches the current code. Cheap: parsing-only, no network, no compilation.
 
-### 6. Native Execution via MCP
+### 9. Native Execution via MCP
 Agents that support the Model Context Protocol (like Claude Desktop, Cursor, and Antigravity) can run `gograph` as a native MCP server:
 ```json
 {
@@ -88,16 +102,11 @@ This exposes `gograph_query`, `gograph_focus`, `gograph_callers`, and `gograph_c
    ```
    This writes `.gograph/graph.json` and `.gograph/GRAPH_REPORT.md`, and adds them to `.gitignore` non-destructively.
 
-3. **Tell the agent to use it.** Add this to `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`, or whatever project-instruction file the agent reads:
+3. **Tell the agent to use it.** You don't need a huge instruction template anymore. Just add this to `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`, or whatever file your agent reads:
 
-   > Before answering architecture, dependency, or "where is X?" questions about
-   > this repository, read `.gograph/GRAPH_REPORT.md` first. Use it as the repo
-   > map before searching raw files. NEVER use `rg`, `ripgrep`, `grep`, or `find`.
-   > You MUST use `gograph query "<term>"`, `gograph callers "<function>"`, and
-   > `gograph callees "<function>"`. After structural code changes, run
-   > `gograph build .`.
+   > Before answering architecture or repository questions, run `gograph capabilities` and follow the instructions it prints.
 
-   The same instruction is appended to every generated `GRAPH_REPORT.md`, so agents that read the report pick it up automatically even without explicit project rules.
+   The `gograph capabilities` command will output a token-optimized cheat sheet of commands and tell the agent everything it needs to know to stop grepping and start using the graph.
 
 4. **Optional — refresh on demand.** Have the agent run `gograph build .` after creating/renaming/removing symbols, or wire it into a `pre-commit` / `Makefile` target.
 
