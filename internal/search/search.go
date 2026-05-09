@@ -3,6 +3,8 @@ package search
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ozgurcd/gograph/internal/graph"
@@ -338,4 +340,45 @@ func Implementers(g *graph.Graph, interfaceName string) []Result {
 
 	sortResults(results)
 	return results
+}
+
+// Source extracts the exact source code lines for a given symbol.
+func Source(g *graph.Graph, rootDir, symbolName string) (string, error) {
+	var target *graph.SymbolNode
+	nl := strings.ToLower(symbolName)
+	
+	// Exact match preferred
+	for i, s := range g.Symbols {
+		if strings.ToLower(s.Name) == nl || strings.ToLower(s.ID) == nl {
+			target = &g.Symbols[i]
+			break
+		}
+	}
+	
+	if target == nil {
+		return "", fmt.Errorf("symbol '%s' not found", symbolName)
+	}
+
+	absPath := filepath.Join(rootDir, target.File)
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file %s: %w", target.File, err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+	start := target.Line - 1
+	end := target.EndLine
+	
+	if start < 0 {
+		start = 0
+	}
+	if end > len(lines) {
+		end = len(lines)
+	}
+	if start >= end {
+		return "", fmt.Errorf("invalid line range: %d to %d", target.Line, target.EndLine)
+	}
+
+	extracted := strings.Join(lines[start:end], "\n")
+	return fmt.Sprintf("// %s (%s:%d-%d)\n%s", target.ID, target.File, target.Line, target.EndLine, extracted), nil
 }

@@ -37,6 +37,7 @@ gograph focus "internal/auth"     # Generate a highly targeted context for one p
 gograph callers "ValidateToken"   # See exactly what functions call ValidateToken
 gograph callees "InitServer"      # See exactly what InitServer calls
 gograph implementers "AuthService" # See exactly which structs implement an interface
+gograph source "ValidateToken"    # Extract the exact source code for a specific symbol
 gograph node "UserStruct"         # Get detailed AST info about a specific node
 ```
 

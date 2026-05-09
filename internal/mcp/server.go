@@ -108,6 +108,28 @@ func Serve(g *graph.Graph) error {
 		return formatResults(results), nil
 	})
 
+	// Tool: gograph_source
+	sourceTool := mcp.NewTool("gograph_source",
+		mcp.WithDescription("Extract the exact source code for a specific function, method, struct, or interface. Extremely efficient for reading implementation logic without reading the entire file."),
+		mcp.WithString("symbol", mcp.Required(), mcp.Description("The name of the symbol (e.g., 'ValidateToken' or 'AuthService')")),
+	)
+	s.AddTool(sourceTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		sym, ok := args["symbol"].(string)
+		if !ok {
+			return mcp.NewToolResultError("symbol must be a string"), nil
+		}
+		// MCP currently defaults to root = "."
+		code, err := search.Source(g, ".", sym)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(code), nil
+	})
+
 	// Start stdio server
 	return server.ServeStdio(s)
 }

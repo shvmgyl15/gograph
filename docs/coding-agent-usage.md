@@ -30,6 +30,7 @@ gograph focus <package>         # isolate context for a specific package
 gograph callers <function>      # who calls it (best-effort, AST text-form)
 gograph callees <function>      # what it calls
 gograph implementers <interface> # which structs implement an interface
+gograph source <symbol>         # extract exact source code of a symbol
 gograph mcp <path>              # runs an MCP server over stdio
 ```
 
