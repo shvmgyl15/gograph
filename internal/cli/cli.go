@@ -30,7 +30,7 @@ const errorsFile = ".gograph/graph-errors.md"
 const configFile = ".gograph/graph-config.md"
 const concFile = ".gograph/graph-concurrency.md"
 const testsFile = ".gograph/graph-tests.md"
-const Version = "1.3.0"
+const Version = "1.3.1"
 
 // Run is the entrypoint called from main.
 func Run(args []string) int {
@@ -69,6 +69,10 @@ func Run(args []string) int {
 		return runOrphans()
 	case "godobj":
 		return runGodObj(args[1:])
+	case "complexity":
+		return runComplexity(args[1:])
+	case "coupling":
+		return runCoupling(args[1:])
 	case "capabilities":
 		return runCapabilities()
 	case "mcp":
@@ -119,6 +123,8 @@ path <from> <to>     : shortest call chain between two symbols (BFS)
 stale                : check if graph is out of date vs source files
 orphans              : reachability-based dead code analysis
 godobj               : find god-object struct candidates (--methods N --fields N --calls N --top N)
+complexity [sym]     : cyclomatic complexity estimate per function (highest first)
+coupling [pkg]       : fan-in, fan-out, and instability per package
 imports <pkg>        : trace external/internal usage`)
 	return 0
 }
@@ -634,32 +640,78 @@ func sortGraph(g *graph.Graph) {
 }
 
 func printHelp() {
-	fmt.Print(`gograph — Go repository graph tool
+	fmt.Print(`gograph — local AST-based Go repository context indexer for AI agents
 
-Commands:
-  build [path]         Walk and parse a Go repository. Default: .
-  query <term...>      Search symbols, packages, files, imports, calls.
-  focus <package>      Focus context purely on a single package and its edges.
-  node <name>          Show details for a symbol/package/file.
-  callers <name>       Show functions that call the given function/method.
-  callees <name>       Show calls made inside the given function/method.
-  implementers <name>  Show structs that implement the given interface.
-  interfaces <name>    Show interfaces satisfied by the given struct.
-  envs [term]          Show environment variable configurations.
-  concurrency [term]   Show goroutines, channels, mutexes, etc.
-  tests <name>         Show tests that exercise a given symbol.
-  path <from> <to>     Shortest call chain between two symbols (BFS traversal).
-  stale                Check if graph.json is out of date vs source files.
-  orphans              Truly unreachable symbols via reachability analysis.
-  godobj               Find god-object struct candidates (--methods N --fields N --calls N --top N).
-  capabilities         Show a token-optimized list of features for coding agents.
-  mcp [path]           Start an MCP server over stdio for AI integration.
-  version, -v          Print version.
-  help, -h             Show this help.
+USAGE
+  gograph <command> [arguments]
 
-Outputs:
-  .gograph/graph.json      Machine-readable graph (JSON).
-  .gograph/GRAPH_REPORT.md Human-readable report (Markdown).
+INDEXING
+  build [path]               Walk and parse a Go repository. Generates graph.json
+                             and 9 targeted Markdown reports in .gograph/.
+                             Run after any major code change. Default path: .
+  stale                      Check if graph.json is older than any source file.
+                             Agents should run this before structural analysis.
+
+SEARCH & NAVIGATION
+  query <term...>            Search across symbols, packages, files, imports, and
+                             call sites. Case-insensitive, OR logic across terms.
+  focus <package>            Show all symbols, imports, and call edges for one
+                             package. Token-efficient alternative to reading files.
+  node <name>                Show full AST details for a symbol, package, or file.
+  source <name>              Extract the raw source code of a named symbol.
+  public <package>           List only the exported (public) API of a package.
+  fields <struct>            List all fields and types of a struct.
+  embeds <struct>            Find which structs embed the given struct.
+  imports <pkg>              Find all files importing a given package path.
+
+CALL GRAPH
+  callers <name>             Functions/methods that call the named symbol.
+  callees <name>             Functions/methods called by the named symbol.
+  impact <name>              Full downstream blast radius (recursive callers).
+  path <from> <to>           Shortest call chain between two symbols (BFS).
+  orphans                    Functions unreachable from any entry point
+                             (reachability analysis — stricter than 0-incoming).
+
+INTERFACES & TYPES
+  implementers <interface>   Structs that implement the named interface (duck-typing).
+  interfaces <struct>        Interfaces satisfied by the named struct (duck-typing).
+
+CODE QUALITY
+  complexity [symbol]        Cyclomatic complexity per function, highest first.
+                             Filter by symbol name substring. Labels: LOW / MEDIUM /
+                             HIGH / VERY HIGH (McCabe thresholds: 5 / 10 / 20).
+  coupling [package]         Fan-in, fan-out, and instability per package.
+                             Instability = FanOut / (FanIn + FanOut). Range [0,1].
+  godobj [flags]             God-object struct candidates scored by method count,
+                             field count, and outgoing calls.
+                             Flags: --methods N  --fields N  --calls N  --top N
+                             Defaults: --methods 5  --fields 8  --calls 15  --top 10
+
+EXTRACTION
+  routes                     All HTTP REST API routes and their handler functions.
+  sql                        Raw SQL queries mapped to the functions that run them.
+  errors                     Custom error variables and panics mapped to their source.
+  envs [term]                Every os.Getenv / viper.Get* read with file and line.
+  concurrency [term]         Goroutine spawns, channel ops, mutex locks, WaitGroups.
+  tests [symbol]             Test functions that exercise a named symbol.
+
+AGENT INTEGRATION
+  capabilities               Token-optimized cheat sheet for AI agents. Run this
+                             first so the agent knows how to use gograph.
+  mcp [path]                 Start a Model Context Protocol server over stdio.
+                             Exposes graph queries as native tools for AI clients.
+
+OTHER
+  version, -v                Print version.
+  help, -h                   Show this help.
+
+OUTPUTS (after 'build')
+  .gograph/graph.json        Machine-readable graph (JSON).
+  .gograph/GRAPH_REPORT.md   Master index report.
+  .gograph/graph-symbols.md  .gograph/graph-routes.md
+  .gograph/graph-sql.md      .gograph/graph-concurrency.md
+  .gograph/graph-tests.md    .gograph/graph-deps.md
+  .gograph/graph-errors.md   .gograph/graph-config.md
 `)
 }
 
@@ -779,3 +831,63 @@ func runGodObj(args []string) int {
 	return 0
 }
 
+// runComplexity estimates cyclomatic complexity for matching functions.
+func runComplexity(args []string) int {
+	term := ""
+	if len(args) > 0 {
+		term = args[0]
+	}
+	g, err := loadGraph(".")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	results := search.Complexity(g, term)
+	if len(results) == 0 {
+		if term != "" {
+			fmt.Printf("No functions found matching %q.\n", term)
+		} else {
+			fmt.Println("No functions found in graph.")
+		}
+		return 0
+	}
+	fmt.Printf("Cyclomatic Complexity (sorted highest first):\n\n")
+	for _, r := range results {
+		fmt.Printf("[%-9s] score=%-4d %s  (%s:%d)\n",
+			r.Label, r.Score, r.Symbol, r.File, r.Line)
+	}
+	return 0
+}
+
+// runCoupling shows package fan-in, fan-out, and instability metrics.
+func runCoupling(args []string) int {
+	term := ""
+	if len(args) > 0 {
+		term = args[0]
+	}
+	g, err := loadGraph(".")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	results := search.Coupling(g, term)
+	if len(results) == 0 {
+		if term != "" {
+			fmt.Printf("No packages found matching %q.\n", term)
+		} else {
+			fmt.Println("No package import edges found in graph.")
+		}
+		return 0
+	}
+	fmt.Printf("Package Coupling (sorted by instability, highest first):\n\n")
+	fmt.Printf("%-55s  %6s  %6s  %s\n", "Package", "FanOut", "FanIn", "Instability")
+	fmt.Printf("%s\n", strings.Repeat("-", 82))
+	for _, r := range results {
+		instStr := fmt.Sprintf("%.2f", r.Instability)
+		if r.Instability < 0 {
+			instStr = "n/a"
+		}
+		fmt.Printf("%-55s  %6d  %6d  %s\n", r.Package, r.FanOut, r.FanIn, instStr)
+	}
+	return 0
+}
