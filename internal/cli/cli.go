@@ -33,6 +33,8 @@ func Run(args []string) int {
 		return runBuild(args[1:])
 	case "query":
 		return runQuery(args[1:])
+	case "focus":
+		return runFocus(args[1:])
 	case "node":
 		return runNode(args[1:])
 	case "callers":
@@ -164,6 +166,27 @@ func runQuery(args []string) int {
 	results := search.Query(g, args)
 	if len(results) == 0 {
 		fmt.Println("no results")
+		return 0
+	}
+	for _, r := range results {
+		fmt.Println(r.String())
+	}
+	return 0
+}
+
+func runFocus(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: gograph focus <package>")
+		return 1
+	}
+	g, err := loadGraph(".")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	results := search.Focus(g, args[0])
+	if len(results) == 0 {
+		fmt.Printf("no focus data found for package %q\n", args[0])
 		return 0
 	}
 	for _, r := range results {
@@ -379,6 +402,7 @@ func printHelp() {
 Commands:
   build [path]         Walk and parse a Go repository. Default: .
   query <term...>      Search symbols, packages, files, imports, calls.
+  focus <package>      Focus context purely on a single package and its edges.
   node <name>          Show details for a symbol/package/file.
   callers <name>       Show functions that call the given function/method.
   callees <name>       Show calls made inside the given function/method.

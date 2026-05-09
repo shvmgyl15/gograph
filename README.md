@@ -12,6 +12,7 @@ It is the **ideal companion tool to pair with AI coding agents** like Claude Cod
 ## Features
 - **Local Only:** No network calls or external API dependencies. All analysis is done securely on your machine.
 - **Go Focused:** Deeply understands Go project structures, packages, and dependencies.
+- **Targeted Focus:** Extract incredibly targeted context for a single package using `focus` to save LLM tokens.
 - **Tech Stack Extraction:** Automatically parses `go.mod` to summarize your external dependencies (like `gin` or `pgx`) so agents instantly understand your stack.
 - **Fast:** Written in Go for high performance.
 
@@ -32,6 +33,7 @@ gograph build .
 **2. Query the Graph (Lightning fast, no re-parsing):**
 ```bash
 gograph query "Auth"              # Search for symbols, files, or packages
+gograph focus "internal/auth"     # Generate a highly targeted context for one package
 gograph callers "ValidateToken"   # See exactly what functions call ValidateToken
 gograph callees "InitServer"      # See exactly what InitServer calls
 gograph node "UserStruct"         # Get detailed AST info about a specific node

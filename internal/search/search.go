@@ -206,3 +206,72 @@ func sortResults(results []Result) {
 		}
 	}
 }
+
+// Focus returns all files, symbols, imports, and calls associated with a specific package.
+func Focus(g *graph.Graph, pkgName string) []Result {
+	nl := strings.ToLower(pkgName)
+	var results []Result
+
+	// Find the package(s)
+	var targetPkgs []graph.PackageNode
+	for _, pkg := range g.Packages {
+		if strings.ToLower(pkg.Name) == nl || strings.ToLower(pkg.Dir) == nl {
+			targetPkgs = append(targetPkgs, pkg)
+			results = append(results, Result{Kind: "package", Name: pkg.Name, File: pkg.Dir, Score: 10})
+		}
+	}
+
+	if len(targetPkgs) == 0 {
+		return results
+	}
+
+	// Make a set of files belonging to this package
+	pkgFiles := make(map[string]bool)
+	for _, pkg := range targetPkgs {
+		for _, f := range pkg.Files {
+			pkgFiles[f] = true
+		}
+	}
+
+	// Add files and symbols
+	for _, f := range g.Files {
+		if pkgFiles[f.Path] {
+			results = append(results, Result{Kind: "file", Name: f.Path, File: f.Path, Score: 9})
+		}
+	}
+
+	for _, s := range g.Symbols {
+		if pkgFiles[s.File] {
+			name := s.Name
+			if s.Receiver != "" {
+				name = fmt.Sprintf("(%s).%s", s.Receiver, s.Name)
+			}
+			results = append(results, Result{Kind: string(s.Kind), Name: name, File: s.File, Line: s.Line, Score: 8})
+		}
+	}
+
+	// Add things this package imports
+	for _, imp := range g.Imports {
+		if pkgFiles[imp.FromFile] {
+			results = append(results, Result{Kind: "imports", Name: imp.ImportPath, File: imp.FromFile, Detail: "dependency", Score: 7})
+		}
+	}
+
+	// Add things that call into this package
+	for _, c := range g.Calls {
+		if pkgFiles[c.File] {
+			results = append(results, Result{Kind: "callee", Name: c.CalleeRaw, File: c.File, Line: c.Line, Detail: "called by " + c.CallerName, Score: 6})
+		} else {
+			for _, pkg := range targetPkgs {
+				prefix := pkg.Name + "."
+				if strings.HasPrefix(c.CalleeRaw, prefix) {
+					results = append(results, Result{Kind: "caller", Name: c.CallerName, File: c.File, Line: c.Line, Detail: "calls " + c.CalleeRaw, Score: 5})
+					break
+				}
+			}
+		}
+	}
+
+	sortResults(results)
+	return results
+}
