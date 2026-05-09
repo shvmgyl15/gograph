@@ -62,6 +62,10 @@ gograph stale                     # Check if graph.json is out of date vs source
 gograph orphans                   # Symbols truly unreachable from any entry point
 gograph godobj                    # Find god-object struct candidates
 gograph godobj --methods 10 --fields 12 --calls 30 --top 5  # Custom thresholds
+gograph complexity                # Cyclomatic complexity for all functions (highest first)
+gograph complexity "Run"          # Complexity for a specific function
+gograph coupling                  # Package fan-in, fan-out, instability table
+gograph coupling "internal/auth" # Filter to a specific package
 ```
 
 **3. Run as an MCP Server (For AI Agents):**

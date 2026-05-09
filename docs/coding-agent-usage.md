@@ -49,6 +49,10 @@ gograph stale                   # check if graph.json is out of date vs source f
 gograph orphans                 # truly unreachable symbols (reachability from entry points)
 gograph godobj                  # find god-object struct candidates (default thresholds)
 gograph godobj --methods 10 --fields 12 --calls 30 --top 5  # custom thresholds
+gograph complexity              # cyclomatic complexity for all functions, highest first
+gograph complexity "Run"        # complexity for a specific function by name
+gograph coupling                # package fan-in, fan-out, and instability table
+gograph coupling "internal/auth" # filter to a specific package
 gograph capabilities            # print token-optimized AI agent cheat sheet
 gograph mcp <path>              # runs an MCP server over stdio
 ```
@@ -109,7 +113,51 @@ God Object Candidates (methods>5, fields>8, calls>15):
 ```
 Results are best-effort — data structs with many fields but no methods are expected in well-structured Go code and can be tuned out by raising `--fields`.
 
-### 12. Native Execution via MCP
+### 12. Cyclomatic complexity
+`gograph complexity` estimates the cyclomatic complexity of every function in the graph, sorted highest-first. Each branch-inducing construct (`if`, `for`, `range`, `switch case`, `select case`, `&&`, `||`) increments the score by 1, starting at 1.
+
+Labels follow McCabe thresholds:
+| Score | Label |
+|-------|-------|
+| 1–5   | LOW |
+| 6–10  | MEDIUM |
+| 11–20 | HIGH |
+| > 20  | VERY HIGH |
+
+Filter to a specific function: `gograph complexity "ValidateToken"`
+
+Example output:
+```
+Cyclomatic Complexity (sorted highest first):
+
+[VERY HIGH] score=23   Run  (internal/cli/cli.go:36)
+[MEDIUM   ] score=10   runGodObj  (internal/cli/cli.go:783)
+[LOW      ] score=3    loadGraph  (internal/cli/cli.go:220)
+```
+An agent can use this to identify risky functions before a refactor and prioritize test coverage.
+
+### 13. Package coupling
+`gograph coupling` computes three metrics for every package:
+- **Fan-out** — how many distinct packages this package imports (measures dependency breadth)
+- **Fan-in** — how many distinct packages import this package (blast radius of changes)
+- **Instability** — `FanOut / (FanIn + FanOut)`, range [0.0–1.0]
+  - `0.0` = maximally stable (nothing it depends on changes)
+  - `1.0` = maximally unstable (depends on many things, nothing depends on it)
+
+Filter to a specific package: `gograph coupling "internal/auth"`
+
+Example output:
+```
+Package Coupling (sorted by instability, highest first):
+
+Package                                                  FanOut   FanIn  Instability
+----------------------------------------------------------------------------------
+cli                                                          14       0  1.00
+search                                                        9       0  1.00
+graph                                                         3       8  0.27
+```
+
+### 14. Native Execution via MCP
 Agents that support the Model Context Protocol (like Claude Desktop, Cursor, and Antigravity) can run `gograph` as a native MCP server:
 ```json
 {
