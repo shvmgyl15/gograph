@@ -44,6 +44,9 @@ gograph public <pkg>            # list only the exported API surface of a packag
 gograph envs [term]             # list every environment variable read in the codebase
 gograph concurrency [term]      # map goroutines, channels, mutexes, waitgroups, sync.Once
 gograph tests [symbol]          # find which test functions exercise a named symbol
+gograph path <from> <to>        # shortest call chain between two symbols (BFS traversal)
+gograph stale                   # check if graph.json is out of date vs source files
+gograph orphans                 # truly unreachable symbols (reachability from entry points)
 gograph capabilities            # print token-optimized AI agent cheat sheet
 gograph mcp <path>              # runs an MCP server over stdio
 ```
@@ -71,8 +74,21 @@ Instead of `ls -R` + reading 10 random files, the agent reads `.gograph/GRAPH_RE
 ### 7. Test coverage lookup
 `gograph tests ValidateToken` instantly shows which `Test*` functions exercise `ValidateToken` — no grepping test files needed.
 
-### 8. Keeping the map fresh
-After structural edits (new files, renamed symbols, new packages), the agent re-runs `gograph build .` so its repo map matches the current code. Cheap: parsing-only, no network, no compilation.
+### 8. Call chain pathfinding
+`gograph path CreateUser sql` performs BFS over the call graph to find the shortest path between two symbols. Example output:
+```
+Call path: CreateUser → sql
+  1. [path] CreateUser — calls UserService.Create (handlers/user.go:42)
+  2. [path] UserService.Create — calls db.ExecContext (service/user.go:88)
+  3. [path] db.ExecContext (service/user.go:88)
+```
+This lets an agent confirm whether an HTTP handler actually reaches a given SQL call without reading every file in between.
+
+### 9. Graph freshness check
+`gograph stale` compares `graph.json`'s `generated_at` timestamp against the `mtime` of every `.go` file. If any source file is newer, it lists the changed files and tells the agent to re-run `gograph build .`. Agents should run this before any structural analysis.
+
+### 10. Reachability-based dead code
+`gograph orphans` performs a BFS from all entry points (`main()`, exported functions, HTTP handlers) and flags any function or method never reached. This is stricter than a simple 0-incoming-calls check — a function called only by other dead code is also reported.
 
 ### 9. Native Execution via MCP
 Agents that support the Model Context Protocol (like Claude Desktop, Cursor, and Antigravity) can run `gograph` as a native MCP server:

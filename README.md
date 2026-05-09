@@ -57,6 +57,9 @@ gograph public "internal/auth"    # Filter graph to only show exported public sy
 gograph envs                      # List every environment variable read in the codebase
 gograph concurrency               # Map all goroutines, channels, mutexes, and sync primitives
 gograph tests "ValidateToken"     # Find which test functions exercise a named symbol
+gograph path "CreateUser" "sql"   # Shortest call chain between two symbols
+gograph stale                     # Check if graph.json is out of date vs source files
+gograph orphans                   # Symbols truly unreachable from any entry point
 ```
 
 **3. Run as an MCP Server (For AI Agents):**
