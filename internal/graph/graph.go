@@ -68,6 +68,14 @@ type SymbolNode struct {
 	Signature        string            `json:"signature,omitempty"`
 	MethodSignature  string            `json:"method_signature,omitempty"`
 	InterfaceMethods map[string]string `json:"interface_methods,omitempty"`
+	StructFields     []StructField     `json:"struct_fields,omitempty"`
+}
+
+// StructField represents a field inside a struct.
+type StructField struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+	Tag  string `json:"tag,omitempty"`
 }
 
 // CallEdge records a call expression found inside a function/method body.

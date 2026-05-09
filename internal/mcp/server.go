@@ -108,6 +108,24 @@ func Serve(g *graph.Graph) error {
 		return formatResults(results), nil
 	})
 
+	// Tool: gograph_fields
+	fieldsTool := mcp.NewTool("gograph_fields",
+		mcp.WithDescription("Extract all fields from a specific struct, including their types and struct tags. Useful for understanding data models."),
+		mcp.WithString("struct", mcp.Required(), mcp.Description("The name of the struct (e.g., 'User')")),
+	)
+	s.AddTool(fieldsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		structName, ok := args["struct"].(string)
+		if !ok {
+			return mcp.NewToolResultError("struct must be a string"), nil
+		}
+		results := search.Fields(g, structName)
+		return formatResults(results), nil
+	})
+
 	// Tool: gograph_source
 	sourceTool := mcp.NewTool("gograph_source",
 		mcp.WithDescription("Extract the exact source code for a specific function, method, struct, or interface. Extremely efficient for reading implementation logic without reading the entire file."),
@@ -136,6 +154,24 @@ func Serve(g *graph.Graph) error {
 	)
 	s.AddTool(orphansTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		results := search.Orphans(g)
+		return formatResults(results), nil
+	})
+
+	// Tool: gograph_impact
+	impactTool := mcp.NewTool("gograph_impact",
+		mcp.WithDescription("Traverse the call graph backwards to find all symbols that eventually call the target symbol. Useful for blast radius analysis."),
+		mcp.WithString("symbol", mcp.Required(), mcp.Description("The name of the symbol (e.g., 'ValidateToken')")),
+	)
+	s.AddTool(impactTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		sym, ok := args["symbol"].(string)
+		if !ok {
+			return mcp.NewToolResultError("symbol must be a string"), nil
+		}
+		results := search.Impact(g, sym)
 		return formatResults(results), nil
 	})
 

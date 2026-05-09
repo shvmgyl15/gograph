@@ -418,3 +418,82 @@ func Orphans(g *graph.Graph) []Result {
 	sortResults(results)
 	return results
 }
+
+// Fields extracts all fields for a given struct.
+func Fields(g *graph.Graph, structName string) []Result {
+	var results []Result
+	nl := strings.ToLower(structName)
+
+	for _, s := range g.Symbols {
+		if s.Kind == graph.KindStruct && (strings.ToLower(s.Name) == nl || strings.ToLower(s.ID) == nl) {
+			for _, f := range s.StructFields {
+				detail := f.Type
+				if f.Tag != "" {
+					detail += " " + f.Tag
+				}
+				results = append(results, Result{
+					Kind:   "field",
+					Name:   f.Name,
+					File:   s.File,
+					Line:   s.Line,
+					Detail: detail,
+					Score:  10,
+				})
+			}
+			break
+		}
+	}
+
+	return results
+}
+
+// Impact traverses the call graph backwards to find all symbols that eventually call the target symbol.
+func Impact(g *graph.Graph, name string) []Result {
+	nl := strings.ToLower(name)
+	callerSymbols := make(map[string]graph.SymbolNode)
+	for _, s := range g.Symbols {
+		callerSymbols[s.ID] = s
+	}
+
+	queue := []string{nl}
+	visitedTerms := make(map[string]bool)
+	visitedTerms[nl] = true
+	
+	var results []Result
+	seenIDs := make(map[string]bool)
+
+	for len(queue) > 0 {
+		term := queue[0]
+		queue = queue[1:]
+
+		for _, c := range g.Calls {
+			if strings.Contains(strings.ToLower(c.CalleeRaw), term) {
+				callerID := c.CallerSymbolID
+				if !seenIDs[callerID] {
+					seenIDs[callerID] = true
+					
+					sym, ok := callerSymbols[callerID]
+					if ok {
+						results = append(results, Result{
+							Kind:   "impact",
+							Name:   sym.Name,
+							File:   sym.File,
+							Line:   sym.Line,
+							Detail: "downstream impact of " + name,
+							Score:  8,
+						})
+						
+						nextTerm := strings.ToLower(sym.Name)
+						if !visitedTerms[nextTerm] {
+							visitedTerms[nextTerm] = true
+							queue = append(queue, nextTerm)
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	sortResults(results)
+	return results
+}

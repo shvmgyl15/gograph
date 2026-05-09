@@ -37,7 +37,9 @@ gograph focus "internal/auth"     # Generate a highly targeted context for one p
 gograph callers "ValidateToken"   # See exactly what functions call ValidateToken
 gograph callees "InitServer"      # See exactly what InitServer calls
 gograph implementers "AuthService" # See exactly which structs implement an interface
+gograph fields "User"             # Extract all fields and types of a struct
 gograph source "ValidateToken"    # Extract the exact source code for a specific symbol
+gograph impact "ValidateToken"    # View the full blast radius (all downstream callers)
 gograph orphans                   # List functions and methods with 0 explicit incoming calls
 gograph node "UserStruct"         # Get detailed AST info about a specific node
 ```
@@ -54,7 +56,7 @@ You can add this to your AI client's configuration (like Claude Desktop or VS Co
 To get the absolute best results from your AI coding assistant, copy and paste this exact prompt into your `.cursorrules`, `CLAUDE.md`, or AI system instructions:
 
 > **System Prompt:**
-> Before answering architecture, dependency, or "where is X?" questions about this repository, read `.gograph/GRAPH_REPORT.md` first. Use it as your source of truth for the repository map before randomly searching raw files. For symbol lookup, use the `gograph query "<term>"` and `gograph callers "<function>"` commands. After making structural code changes, always run `gograph build .` to keep your map up to date.
+> Before answering architecture, dependency, or "where is X?" questions about this repository, read `.gograph/GRAPH_REPORT.md` first. Use it as your source of truth for the repository map before randomly searching raw files. NEVER use `rg`, `ripgrep`, `grep`, or `find` to explore this repository. You MUST use `gograph` exclusively for structural navigation and symbol lookup. For symbol lookup, use the `gograph query "<term>"` and `gograph callers "<function>"` commands. After making structural code changes, always run `gograph build .` to keep your map up to date.
 
 ## Example Output
 

@@ -30,7 +30,9 @@ gograph focus <package>         # isolate context for a specific package
 gograph callers <function>      # who calls it (best-effort, AST text-form)
 gograph callees <function>      # what it calls
 gograph implementers <interface> # which structs implement an interface
+gograph fields <struct>         # extract fields and types of a struct
 gograph source <symbol>         # extract exact source code of a symbol
+gograph impact <symbol>         # find downstream callers (blast radius)
 gograph orphans                 # find dead code
 gograph mcp <path>              # runs an MCP server over stdio
 ```
@@ -84,8 +86,8 @@ This exposes `gograph_query`, `gograph_focus`, `gograph_callers`, and `gograph_c
 
    > Before answering architecture, dependency, or "where is X?" questions about
    > this repository, read `.gograph/GRAPH_REPORT.md` first. Use it as the repo
-   > map before searching raw files. For symbol lookup, use
-   > `gograph query "<term>"`, `gograph callers "<function>"`, and
+   > map before searching raw files. NEVER use `rg`, `ripgrep`, `grep`, or `find`.
+   > You MUST use `gograph query "<term>"`, `gograph callers "<function>"`, and
    > `gograph callees "<function>"`. After structural code changes, run
    > `gograph build .`.
 

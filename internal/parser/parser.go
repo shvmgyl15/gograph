@@ -85,9 +85,26 @@ func extractGenDecl(fset *token.FileSet, d *ast.GenDecl, relPath, pkgName string
 		}
 		var kind graph.SymbolKind
 		var methods map[string]string
+		var fields []graph.StructField
 		switch t := ts.Type.(type) {
 		case *ast.StructType:
 			kind = graph.KindStruct
+			if t.Fields != nil {
+				for _, f := range t.Fields.List {
+					typeStr := typeString(f.Type)
+					tagStr := ""
+					if f.Tag != nil {
+						tagStr = f.Tag.Value
+					}
+					if len(f.Names) == 0 {
+						fields = append(fields, graph.StructField{Name: typeStr, Type: typeStr, Tag: tagStr})
+					} else {
+						for _, n := range f.Names {
+							fields = append(fields, graph.StructField{Name: n.Name, Type: typeStr, Tag: tagStr})
+						}
+					}
+				}
+			}
 		case *ast.InterfaceType:
 			kind = graph.KindInterface
 			if t.Methods != nil {
@@ -124,6 +141,7 @@ func extractGenDecl(fset *token.FileSet, d *ast.GenDecl, relPath, pkgName string
 			EndLine:          endPos.Line,
 			Doc:              strings.TrimSpace(doc),
 			InterfaceMethods: methods,
+			StructFields:     fields,
 		}
 		result.Symbols = append(result.Symbols, sym)
 	}
