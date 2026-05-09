@@ -22,7 +22,7 @@ import (
 const outputDir = ".gograph"
 const graphFile = ".gograph/graph.json"
 const reportFile = ".gograph/GRAPH_REPORT.md"
-const Version = "1.1.1"
+const Version = "1.1.2"
 
 // Run is the entrypoint called from main.
 func Run(args []string) int {
@@ -73,11 +73,48 @@ func runBuild(args []string) int {
 
 	fmt.Printf("gograph build: scanning %s\n", absRoot)
 
+	g, err := BuildGraph(absRoot)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error building graph: %v\n", err)
+		return 1
+	}
+
+	outDir := filepath.Join(absRoot, outputDir)
+	if err := os.MkdirAll(outDir, 0o750); err != nil {
+		fmt.Fprintf(os.Stderr, "error creating output dir: %v\n", err)
+		return 1
+	}
+
+	if err := writeGitignore(absRoot); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not update .gitignore: %v\n", err)
+	}
+
+	jsonPath := filepath.Join(absRoot, graphFile)
+	if err := writeJSON(jsonPath, g); err != nil {
+		fmt.Fprintf(os.Stderr, "error writing graph.json: %v\n", err)
+		return 1
+	}
+
+	mdContent := report.Generate(g)
+	mdPath := filepath.Join(absRoot, reportFile)
+	if err := os.WriteFile(mdPath, []byte(mdContent), 0o640); err != nil {
+		fmt.Fprintf(os.Stderr, "error writing GRAPH_REPORT.md: %v\n", err)
+		return 1
+	}
+
+	fmt.Printf("  packages: %d  files: %d  symbols: %d  calls: %d\n",
+		len(g.Packages), len(g.Files), len(g.Symbols), len(g.Calls))
+	fmt.Printf("  wrote %s\n", jsonPath)
+	fmt.Printf("  wrote %s\n", mdPath)
+	return 0
+}
+
+func BuildGraph(absRoot string) (*graph.Graph, error) {
 	files, walkErrs := scanner.Walk(absRoot)
 	for _, e := range walkErrs {
 		fmt.Fprintf(os.Stderr, "  warning: %v\n", e)
 	}
-	fmt.Printf("  found %d Go files to parse\n", len(files))
+	fmt.Fprintf(os.Stderr, "  found %d Go files to parse\n", len(files))
 
 	g := &graph.Graph{
 		Version:     graph.Version,
@@ -131,35 +168,7 @@ func runBuild(args []string) int {
 	}
 
 	sortGraph(g)
-
-	outDir := filepath.Join(absRoot, outputDir)
-	if err := os.MkdirAll(outDir, 0o750); err != nil {
-		fmt.Fprintf(os.Stderr, "error creating output dir: %v\n", err)
-		return 1
-	}
-
-	if err := writeGitignore(absRoot); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not update .gitignore: %v\n", err)
-	}
-
-	jsonPath := filepath.Join(absRoot, graphFile)
-	if err := writeJSON(jsonPath, g); err != nil {
-		fmt.Fprintf(os.Stderr, "error writing graph.json: %v\n", err)
-		return 1
-	}
-
-	mdContent := report.Generate(g)
-	mdPath := filepath.Join(absRoot, reportFile)
-	if err := os.WriteFile(mdPath, []byte(mdContent), 0o640); err != nil {
-		fmt.Fprintf(os.Stderr, "error writing GRAPH_REPORT.md: %v\n", err)
-		return 1
-	}
-
-	fmt.Printf("  packages: %d  files: %d  symbols: %d  calls: %d\n",
-		len(g.Packages), len(g.Files), len(g.Symbols), len(g.Calls))
-	fmt.Printf("  wrote %s\n", jsonPath)
-	fmt.Printf("  wrote %s\n", mdPath)
-	return 0
+	return g, nil
 }
 
 func runQuery(args []string) int {
@@ -293,12 +302,23 @@ func runMCP(args []string) int {
 	if len(args) > 0 {
 		root = args[0]
 	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to resolve path: %v\n", err)
+		return 1
+	}
+
 	g, err := loadGraph(root)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load graph for MCP server: %v\n", err)
 		return 1
 	}
-	if err := mcp.Serve(g); err != nil {
+
+	rebuild := func() (*graph.Graph, error) {
+		return BuildGraph(absRoot)
+	}
+
+	if err := mcp.Serve(g, rebuild); err != nil {
 		fmt.Fprintf(os.Stderr, "MCP server error: %v\n", err)
 		return 1
 	}
