@@ -3,14 +3,14 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/ozgurcd/gograph)](https://goreportcard.com/report/github.com/ozgurcd/gograph)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-`gograph` is a local-only CLI tool designed to generate repository structures and improve codebase context awareness. 
+`gograph` is a local AST/type-aware Go repository context indexer for AI coding agents.
 
-It is a **companion tool to pair with AI coding agents** like Claude Code, OpenCode, and Google Antigravity. By feeding `gograph`'s output to these agents, you improve their contextual understanding of your project architecture and dependency graph.
+It builds a compact graph of packages, symbols, calls, routes, config reads, tests, and code-quality signals so agents can navigate Go repositories with fewer raw file reads.
 
 > **Note on Language Support:** I originally built `gograph` specifically for **Golang** because that is what I needed for my own workflows. It currently only parses and maps Go codebases. However, the architecture is extensible! If you want to add support for other languages (Python, TypeScript, Rust, etc.), **contributions are more than welcome.** Please see the [Contributing Guide](CONTRIBUTING.md) to get started.
 
 ## Features
-- **Local Only:** Graph building makes no network calls and sends no source code to external APIs. All analysis is done securely on your machine.
+- **Local Only:** Graph building performs no network calls and sends no source code to external APIs. MCP integration is local stdio-based.
 - **Go Focused:** Maps Go project structures, packages, and dependencies using the standard AST.
 - **Targeted Focus:** Extract incredibly targeted context for a single package using `focus` to save LLM tokens.
 - **Token-Saving Context Bundle:** `context <symbol>` replaces 4–5 separate tool calls — returns node, source, callers, callees, and tests in one response.
@@ -27,6 +27,20 @@ It is a **companion tool to pair with AI coding agents** like Claude Code, OpenC
 - **Dead Code Detection:** `orphans` uses full reachability analysis from entry points — stricter than simple 0-call-count checks.
 - **Clean Graph (No Generated Files):** Uses strict line-based detection to automatically exclude generated files like mocks or protobufs.
 - **Fast:** Written in Go for high performance.
+
+## Non-goals
+- No multi-language parsing.
+- No AI/model API calls.
+- No embeddings.
+- No SaaS backend.
+- No telemetry.
+- No replacement for compiler/type-checker correctness.
+- No guarantee that heuristic extractors find every route, SQL query, test relation, or dynamic call.
+
+## Correctness model
+- **Default mode** uses Go AST parsing and best-effort heuristics. It tolerates incomplete or non-compiling repositories.
+- **Precise mode** uses type-checked enrichment and requires compilable packages.
+- Heuristic extractors such as routes, SQL, tests, and error mapping are navigation aids, not authoritative program analysis.
 
 ## Installation
 
