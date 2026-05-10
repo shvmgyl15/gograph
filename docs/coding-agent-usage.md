@@ -22,18 +22,21 @@ A single command (`gograph build .`) emits two artifacts under `.gograph/`:
 | `GRAPH_REPORT.md` | Human + agent readable summary: external dependencies (Tech Stack), package list, entry points, top files by symbol/call density, top symbols by outgoing calls, env vars read, full import graph. |
 | `graph.json` | Machine-readable full graph — dependencies, packages, files, structs, interfaces, funcs, methods, imports, call edges, env reads, SQL queries, errors, concurrency primitives, test edges. |
 
+*Note: Use `gograph build . --precise` for type-checked interface analysis and more precise call edges (requires compilable code).*
+
 And query commands the agent can invoke without re-parsing:
 
 ```sh
 gograph query <term>            # symbol/package/file/import/call substring search
 gograph focus <package>         # isolate context for a specific package
-gograph callers <function>      # who calls it (best-effort, AST text-form)
+gograph callers <function>      # who calls it (precise if --precise used, else AST best-effort)
 gograph callees <function>      # what it calls
 gograph implementers <interface> # which structs implement an interface
-gograph interfaces <struct>     # which interfaces a struct satisfies (duck-typing)
+gograph interfaces <struct>     # which interfaces a struct satisfies (precise if --precise used)
 gograph fields <struct>         # extract fields and types of a struct
 gograph source <symbol>         # extract exact source code of a symbol
 gograph impact <symbol>         # find downstream callers (blast radius)
+gograph impact --uncommitted    # find blast radius of all uncommitted code changes
 gograph orphans                 # find dead code
 gograph routes                  # extract all HTTP REST API routes
 gograph imports <pkg>           # trace external/internal package usage

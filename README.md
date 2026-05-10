@@ -10,7 +10,7 @@ It is a **companion tool to pair with AI coding agents** like Claude Code, OpenC
 > **Note on Language Support:** I originally built `gograph` specifically for **Golang** because that is what I needed for my own workflows. It currently only parses and maps Go codebases. However, the architecture is extensible! If you want to add support for other languages (Python, TypeScript, Rust, etc.), **contributions are more than welcome.** Please see the [Contributing Guide](CONTRIBUTING.md) to get started.
 
 ## Features
-- **Local Only:** No network calls or external API dependencies. All analysis is done securely on your machine.
+- **Local Only:** Graph building makes no network calls and sends no source code to external APIs. All analysis is done securely on your machine.
 - **Go Focused:** Maps Go project structures, packages, and dependencies using the standard AST.
 - **Targeted Focus:** Extract incredibly targeted context for a single package using `focus` to save LLM tokens.
 - **Token-Saving Context Bundle:** `context <symbol>` replaces 4–5 separate tool calls — returns node, source, callers, callees, and tests in one response.
@@ -39,7 +39,7 @@ go install github.com/ozgurcd/gograph@latest
 **1. Generate the Graph (Run this after every major code change):**
 ```bash
 gograph build .
-# OR for absolute type-checked precision (slower, but exact dynamic dispatch & interface satisfaction proofs):
+# OR for more precise type-checked analysis (slower, but provides exact dynamic dispatch & interface satisfaction proofs):
 gograph build . --precise
 ```
 *This instantly generates `.gograph/graph.json` and `.gograph/GRAPH_REPORT.md`.*
@@ -55,6 +55,7 @@ gograph interfaces "UserService"  # See which interfaces a struct satisfies (typ
 gograph fields "User"             # Extract all fields and types of a struct
 gograph source "ValidateToken"    # Extract the source code for a specific symbol
 gograph impact "ValidateToken"    # View the full blast radius (all downstream callers)
+gograph impact --uncommitted      # Calculate the blast radius of all your uncommitted code changes
 gograph orphans                   # List functions and methods with 0 explicit incoming calls
 gograph node "UserStruct"         # Get detailed AST info about a specific node
 gograph routes                    # Extract all HTTP REST API routes (e.g. GET /api)

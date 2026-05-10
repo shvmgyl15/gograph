@@ -184,6 +184,7 @@ func writeSummary(sb *strings.Builder, g *graph.Graph) {
 
 func writeRoutingTable(sb *strings.Builder) {
 	sb.WriteString("## 2. Structural Index\n\n")
+	sb.WriteString("> **🚨 CRITICAL WARNING FOR AI AGENTS:** DO NOT READ `graph.json` DIRECTLY. It is a massive database file that will exhaust your context window and crash your session. Use the `gograph` CLI commands (e.g., `gograph query`, `gograph focus`) to extract targeted slices of data instead.\n\n")
 	sb.WriteString("To save token context, the full graph report has been split into targeted files. Read only what you need:\n\n")
 	sb.WriteString("| Category | File | Description |\n|----------|------|-------------|\n")
 	sb.WriteString("| **Symbols** | [`graph-symbols.md`](graph-symbols.md) | Top files, heavily called symbols, and package layouts |\n")

@@ -3,7 +3,7 @@ BUILD_DIR = bin
 CMD       = ./cmd/gograph
 INSTALL   = /usr/local/bin
 
-.PHONY: build test run-build clean bump-patch bump-minor bump-major install
+.PHONY: build test run-build clean bump-patch bump-minor bump-major install release
 
 # Read the current version from .bumpversion.cfg after bumping.
 # grep picks the 'current_version = x.y.z' line; awk extracts the last field.
@@ -12,6 +12,11 @@ build: bump-patch
 	@mkdir -p $(BUILD_DIR)
 	go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY) $(CMD)
 	@echo "Built $(BUILD_DIR)/$(BINARY) v$(VERSION)"
+
+release:
+	$(eval VERSION := $(shell grep '^current_version' .bumpversion.cfg | awk '{print $$3}'))
+	git tag -a v$(VERSION) -m "Release v$(VERSION)" || true
+	git push origin master --tags
 
 # install only copies whatever is already in bin/ — no implicit build.
 install:

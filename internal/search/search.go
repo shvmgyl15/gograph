@@ -493,15 +493,23 @@ func Fields(g *graph.Graph, structName string) []Result {
 
 // Impact traverses the call graph backwards to find all symbols that eventually call the target symbol.
 func Impact(g *graph.Graph, name string) []Result {
-	nl := strings.ToLower(name)
+	return ImpactMultiple(g, []string{name}, "downstream impact of "+name)
+}
+
+// ImpactMultiple calculates blast radius for multiple root symbols simultaneously.
+func ImpactMultiple(g *graph.Graph, names []string, reason string) []Result {
 	callerSymbols := make(map[string]graph.SymbolNode)
 	for _, s := range g.Symbols {
 		callerSymbols[s.ID] = s
 	}
 
-	queue := []string{nl}
+	var queue []string
 	visitedTerms := make(map[string]bool)
-	visitedTerms[nl] = true
+	for _, name := range names {
+		nl := strings.ToLower(name)
+		queue = append(queue, nl)
+		visitedTerms[nl] = true
+	}
 	
 	var results []Result
 	seenIDs := make(map[string]bool)
@@ -523,7 +531,7 @@ func Impact(g *graph.Graph, name string) []Result {
 							Name:   sym.Name,
 							File:   sym.File,
 							Line:   sym.Line,
-							Detail: "downstream impact of " + name,
+							Detail: reason,
 							Score:  8,
 						})
 						

@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -140,18 +142,21 @@ Use gograph to understand repository structure, dependencies, and call graphs.
 To save tokens, the graph is split into targeted files in .gograph/. 
 Read .gograph/GRAPH_REPORT.md first.
 
+🚨 CRITICAL WARNING: DO NOT READ .gograph/graph.json DIRECTLY! It is a massive database file that will crash your context window. Use the commands below to extract targeted JSON slices instead.
+
 COMMANDS (token-optimized):
 (Note: All search/navigation commands support --json for stable machine parsing)
 build . [--precise]  : parse AST, gen GRAPH_REPORT.md & .gograph/*
 
 RULES FOR --precise:
 - Default (build .): Use during active, messy development. It's lightning-fast, tolerates syntax/build errors, and uses AST heuristics (duck-typing) for interfaces.
-- Precise (build . --precise): Use before a major refactor or when measuring blast radius (impact). Slower, but compiles full SSA for absolute cryptographic proof of interface satisfaction and exact dynamic method dispatches. Code MUST be compilable.
+- Precise (build . --precise): Use before a major refactor or when measuring blast radius (impact). Slower, but provides type-checked interface analysis and more precise call edges; requires compilable code.
 query <str>          : search symbols/files/pkgs
 focus <pkg>          : isolate context for a package
 callers <fn>         : who calls fn
 callees <fn>         : what fn calls
 impact <sym>         : blast radius (downstream callers)
+impact --uncommitted : blast radius of all your uncommitted code changes
 source <sym>         : exact code of sym
 node <sym>           : AST info of sym
 fields <struct>      : fields/types of struct
@@ -677,7 +682,7 @@ INDEXING
                              and 9 targeted Markdown reports in .gograph/.
                              Run after any major code change. Default path: .
                              Supports --precise to perform type-checked Class
-                             Hierarchy Analysis (CHA) for absolute call edges.
+                             Hierarchy Analysis (CHA) for more precise call edges.
   stale                      Check if graph.json is older than any source file.
                              Agents should run this before structural analysis.
 
@@ -697,6 +702,8 @@ CALL GRAPH
   callers <name>             Functions/methods that call the named symbol.
   callees <name>             Functions/methods called by the named symbol.
   impact <name>              Full downstream blast radius (recursive callers).
+  impact --uncommitted       Perform blast radius analysis on all currently modified,
+                             uncommitted code lines using git diff.
   path <from> <to>           Shortest call chain between two symbols (BFS).
   orphans                    Functions unreachable from any entry point
                              (reachability analysis — stricter than 0-incoming).
@@ -1259,16 +1266,85 @@ func runImports(args []string) int {
 // runImpact traverses the call graph backwards to find all symbols that eventually call the target.
 func runImpact(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: gograph impact <symbol>")
+		fmt.Fprintln(os.Stderr, "usage: gograph impact <symbol> OR gograph impact --uncommitted")
 		return 1
 	}
+
 	g, err := loadGraph(".")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+
+	if args[0] == "--uncommitted" {
+		return runImpactUncommitted(g)
+	}
+
 	results := search.Impact(g, strings.Join(args, " "))
 	return printResults("impact", strings.Join(args, " "), results, fmt.Sprintf("No callers found in blast radius of %q.", args[0]))
+}
+
+// runImpactUncommitted parses git diff to find modified symbols, then computes their blast radius.
+func runImpactUncommitted(g *graph.Graph) int {
+	// Parse git diff for unstaged and staged changes
+	out, err := exec.Command("git", "diff", "HEAD", "-U0").Output()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error running git diff:", err)
+		return 1
+	}
+
+	diffStr := string(out)
+	fileLines := make(map[string][]int)
+	var currentFile string
+
+	for _, line := range strings.Split(diffStr, "\n") {
+		if strings.HasPrefix(line, "+++ b/") {
+			currentFile = strings.TrimPrefix(line, "+++ b/")
+		} else if strings.HasPrefix(line, "@@ ") && currentFile != "" {
+			parts := strings.Split(line, " ")
+			if len(parts) >= 3 {
+				plusPart := strings.TrimPrefix(parts[2], "+")
+				sp := strings.Split(plusPart, ",")
+				start, _ := strconv.Atoi(sp[0])
+				count := 1
+				if len(sp) > 1 {
+					count, _ = strconv.Atoi(sp[1])
+				}
+				for i := 0; i < count; i++ {
+					fileLines[currentFile] = append(fileLines[currentFile], start+i)
+				}
+			}
+		}
+	}
+
+	var modifiedSymbolNames []string
+	seenSymbols := make(map[string]bool)
+
+	for file, lines := range fileLines {
+		for _, s := range g.Symbols {
+			// Basic path matching; in practice, relative paths from git root might need adjusting
+			// depending on where gograph is run, but assuming it's run at repo root:
+			if strings.HasSuffix(s.File, file) {
+				for _, line := range lines {
+					if line >= s.Line && line <= s.EndLine {
+						if !seenSymbols[s.Name] {
+							seenSymbols[s.Name] = true
+							modifiedSymbolNames = append(modifiedSymbolNames, s.Name)
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if len(modifiedSymbolNames) == 0 {
+		return printResults("impact", "--uncommitted", nil, "No uncommitted modified symbols found in the graph.")
+	}
+
+	reason := fmt.Sprintf("downstream impact of uncommitted changes (%d symbols)", len(modifiedSymbolNames))
+	results := search.ImpactMultiple(g, modifiedSymbolNames, reason)
+	return printResults("impact", "--uncommitted", results, "No callers found in blast radius of uncommitted changes.")
 }
 
 // runRoutes lists all HTTP REST API routes and their handler functions.
