@@ -27,14 +27,14 @@ A single command (`gograph build .`) emits two artifacts under `.gograph/`:
 And query commands the agent can invoke without re-parsing:
 
 ```sh
-gograph query <term>            # symbol/package/file/import/call substring search
+gograph query <term>            # symbol/package/file/import/call substring search (works great for finding specific test names!)
 gograph focus <package>         # isolate context for a specific package
 gograph callers <function> [--no-tests] # who calls it (returns exact call-site source snippet)
 gograph callees <function> [--no-tests] # what it calls (returns exact call-site source snippet)
 gograph implementers <interface> # which structs implement an interface
 gograph interfaces <struct>     # which interfaces a struct satisfies (precise if --precise used)
 gograph fields <struct>         # extract fields and types of a struct
-gograph source <symbol>         # extract exact source code of a symbol
+gograph source <symbol>         # extract exact source code of a symbol (USE THIS instead of grep to read function bodies, mock stubs, or full interface definitions)
 gograph impact <symbol>         # find downstream callers (blast radius)
 gograph impact --uncommitted    # find blast radius of all uncommitted code changes
 gograph orphans                 # find dead code
@@ -111,7 +111,14 @@ This lets an agent confirm whether an HTTP handler actually reaches a given SQL 
 ### 9. Graph freshness check
 `gograph stale` compares `graph.json`'s `generated_at` timestamp against the `mtime` of every `.go` file. If any source file is newer, it lists the changed files and tells the agent to re-run `gograph build .`. Agents should run this before any structural analysis.
 
-### 10. Reachability-based dead code
+### 10. Reading Internal Implementations (Mock Stubs, Algorithms)
+When you need to read the actual body of a method (e.g., to check if a mock repository has a `panic("not implemented")` stub), or when you need to see the **full list of method signatures in an interface**, **do not use `grep` to find the line number.** 
+
+Simply run:
+`gograph source NotificationSender`
+It will instantly extract and print the entire source block for that specific method or interface, bypassing the need for manual file reads.
+
+### 11. Reachability-based dead code
 `gograph orphans` performs a BFS from all entry points (`main()`, exported functions, HTTP handlers) and flags any function or method never reached. This is stricter than a simple 0-incoming-calls check — a function called only by other dead code is also reported.
 
 ### 11. God-object detection

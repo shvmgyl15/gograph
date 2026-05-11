@@ -43,21 +43,24 @@ func Run(args []string) int {
 		return 0
 	}
 
-	// Strip --json from args before dispatch; set the package-level flag.
+	// Strip --json and --files-only from args before dispatch; set the package-level flag.
 	jsonMode = false
+	filesOnlyMode = false
 	filtered := args[:0]
 	for _, a := range args {
-		if a == "--help" || a == "-h" {
+		switch a {
+		case "--help", "-h":
 			if len(args) > 1 && args[0] != "--help" && args[0] != "-h" {
 				printCommandHelp(args[0])
 			} else {
 				printHelp()
 			}
 			return 0
-		}
-		if a == "--json" {
+		case "--json":
 			jsonMode = true
-		} else {
+		case "--files-only":
+			filesOnlyMode = true
+		default:
 			filtered = append(filtered, a)
 		}
 	}
@@ -160,16 +163,8 @@ func Run(args []string) int {
 func runCapabilities() int {
 	fmt.Println(`gograph: AST-aware Repository Navigation Tool for AI Agents
 
-INSTRUCTIONS FOR AI AGENTS:
-Use gograph first for repo navigation; use grep/raw reads only when the graph lacks detail or exact source is needed.
-Use gograph to understand repository structure, dependencies, and call graphs.
-To save tokens, the graph is split into targeted files in .gograph/. 
-Read .gograph/GRAPH_REPORT.md first.
-
-🚨 CRITICAL WARNING: DO NOT READ .gograph/graph.json DIRECTLY! It is a massive database file that will crash your context window. Use the commands below to extract targeted JSON slices instead.
-
 COMMANDS (token-optimized):
-(Note: All search/navigation commands support --json for stable machine parsing)
+(Note: All search/navigation commands support --json and --files-only)
 build . [--precise]  : parse AST, gen GRAPH_REPORT.md & .gograph/*
 
 RULES FOR --precise:
@@ -181,7 +176,7 @@ callers <fn> [--no-tests]: who calls fn (returns exact call-site source snippet)
 callees <fn> [--no-tests]: what fn calls (returns exact call-site source snippet)
 impact <sym>         : blast radius (downstream callers)
 impact --uncommitted : blast radius of all your uncommitted code changes
-source <sym>         : exact code of sym
+source <sym>         : exact code of sym (USE THIS instead of grep to read function bodies, mock stubs, or full interface definitions)
 node <sym>           : AST info of sym
 fields <struct>      : fields/types of struct
 embeds <struct>      : structs embedding this struct
@@ -376,6 +371,16 @@ func printResults(cmd, query string, results []search.Result, emptyMsg string) i
 	}
 	if len(results) == 0 {
 		fmt.Println(emptyMsg)
+		return 0
+	}
+	if filesOnlyMode {
+		seenFiles := make(map[string]bool)
+		for _, r := range results {
+			if r.File != "" && !seenFiles[r.File] {
+				fmt.Println(r.File)
+				seenFiles[r.File] = true
+			}
+		}
 		return 0
 	}
 	for _, r := range results {
