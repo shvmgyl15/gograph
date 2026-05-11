@@ -45,6 +45,10 @@ It builds a compact graph of packages, symbols, calls, routes, config reads, tes
 ## Installation
 
 ```bash
+# MacOS / Linux (via Homebrew)
+brew install ozgurcd/tap/gograph
+
+# Or using Go:
 go install github.com/ozgurcd/gograph@latest
 ```
 
@@ -62,8 +66,8 @@ gograph build . --precise
 ```bash
 gograph query "Auth"              # Search for symbols, files, or packages
 gograph focus "internal/auth"     # Generate a highly targeted context for one package
-gograph callers "ValidateToken"   # See what functions call ValidateToken
-gograph callees "InitServer"      # See what InitServer calls
+gograph callers "ValidateToken" [--no-tests] # See what functions call ValidateToken (with exact source snippet)
+gograph callees "InitServer" [--no-tests]    # See what InitServer calls (with exact source snippet)
 gograph implementers "AuthService" # See which structs implement an interface
 gograph interfaces "UserService"  # See which interfaces a struct satisfies (type-checked if --precise was used)
 gograph fields "User"             # Extract all fields and types of a struct

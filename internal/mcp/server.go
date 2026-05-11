@@ -77,7 +77,7 @@ func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error)) error {
 		if !ok {
 			return mcp.NewToolResultError("function must be a string"), nil
 		}
-		results := search.Callers(g, fn)
+		results := search.Callers(g, fn, true)
 		return formatResults(results), nil
 	})
 
@@ -98,7 +98,7 @@ func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error)) error {
 		if !ok {
 			return mcp.NewToolResultError("function must be a string"), nil
 		}
-		results := search.Callees(g, fn)
+		results := search.Callees(g, fn, true)
 		return formatResults(results), nil
 	})
 

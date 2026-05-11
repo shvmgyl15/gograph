@@ -177,8 +177,8 @@ RULES FOR --precise:
 - Precise (build . --precise): Use before a major refactor or when measuring blast radius (impact). Slower, but provides type-checked interface analysis and more precise call edges; requires compilable code.
 query <str>          : search symbols/files/pkgs
 focus <pkg>          : isolate context for a package
-callers <fn>         : who calls fn
-callees <fn>         : what fn calls
+callers <fn> [--no-tests]: who calls fn (returns exact call-site source snippet)
+callees <fn> [--no-tests]: what fn calls (returns exact call-site source snippet)
 impact <sym>         : blast radius (downstream callers)
 impact --uncommitted : blast radius of all your uncommitted code changes
 source <sym>         : exact code of sym
@@ -442,8 +442,17 @@ func runCallers(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	results := search.Callers(g, strings.Join(args, " "))
-	return printResults("callers", strings.Join(args, " "), results, "no callers found")
+	includeTests := true
+	termParts := args[:0]
+	for _, a := range args {
+		if a == "--no-tests" {
+			includeTests = false
+		} else {
+			termParts = append(termParts, a)
+		}
+	}
+	results := search.Callers(g, strings.Join(termParts, " "), includeTests)
+	return printResults("callers", strings.Join(termParts, " "), results, "no callers found")
 }
 
 func runCallees(args []string) int {
@@ -456,8 +465,17 @@ func runCallees(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	results := search.Callees(g, strings.Join(args, " "))
-	return printResults("callees", strings.Join(args, " "), results, "no callees found")
+	includeTests := true
+	termParts := args[:0]
+	for _, a := range args {
+		if a == "--no-tests" {
+			includeTests = false
+		} else {
+			termParts = append(termParts, a)
+		}
+	}
+	results := search.Callees(g, strings.Join(termParts, " "), includeTests)
+	return printResults("callees", strings.Join(termParts, " "), results, "no callees found")
 }
 
 func runImplementers(args []string) int {
@@ -734,8 +752,8 @@ SEARCH & NAVIGATION
   skeleton                   Output the whole repository's API signatures with bodies stripped.
 
 CALL GRAPH
-  callers <name>             Functions/methods that call the named symbol.
-  callees <name>             Functions/methods called by the named symbol.
+  callers <function> [--no-tests]    find functions that call a target function (returns exact call-site source snippet)
+  callees <function> [--no-tests]    find functions that a target function calls (returns exact call-site source snippet)
   impact <name>              Full downstream blast radius (recursive callers).
   impact --uncommitted       Perform blast radius analysis on all currently modified,
                              uncommitted code lines using git diff.

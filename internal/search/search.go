@@ -148,7 +148,7 @@ func Node(g *graph.Graph, name string) []Result {
 // Callers returns functions/methods that contain a call expression matching name.
 // Each result includes call-site provenance (CallSiteFile, CallSiteLine) pointing
 // to the exact line of the call expression, not just the enclosing function.
-func Callers(g *graph.Graph, name string) []Result {
+func Callers(g *graph.Graph, name string, includeTests bool) []Result {
 	nl := strings.ToLower(name)
 	callerSymbols := make(map[string]graph.SymbolNode)
 	for _, s := range g.Symbols {
@@ -163,6 +163,9 @@ func Callers(g *graph.Graph, name string) []Result {
 	seen := make(map[siteKey]bool)
 	var results []Result
 	for _, c := range g.Calls {
+		if !includeTests && isTestFile(c.File) {
+			continue
+		}
 		if strings.Contains(strings.ToLower(c.CalleeRaw), nl) {
 			k := siteKey{c.CallerSymbolID, c.File, c.Line}
 			if seen[k] {
@@ -174,12 +177,27 @@ func Callers(g *graph.Graph, name string) []Result {
 			if ok {
 				file, line = sym.File, sym.Line
 			}
+
+			snippet := ""
+			absPath := filepath.Join(g.Root, c.File)
+			if data, err := os.ReadFile(absPath); err == nil {
+				lines := strings.Split(string(data), "\n")
+				if c.Line > 0 && c.Line <= len(lines) {
+					snippet = strings.TrimSpace(lines[c.Line-1])
+				}
+			}
+
+			detail := fmt.Sprintf("calls %s", c.CalleeRaw)
+			if snippet != "" {
+				detail += fmt.Sprintf("  ->  `%s`", snippet)
+			}
+
 			results = append(results, Result{
 				Kind:         "caller",
 				Name:         c.CallerName,
 				File:         file,
 				Line:         line,
-				Detail:       fmt.Sprintf("calls %s", c.CalleeRaw),
+				Detail:       detail,
 				CallSiteFile: c.File,
 				CallSiteLine: c.Line,
 			})
@@ -190,7 +208,7 @@ func Callers(g *graph.Graph, name string) []Result {
 }
 
 // Callees returns call expressions found inside the given function/method name.
-func Callees(g *graph.Graph, name string) []Result {
+func Callees(g *graph.Graph, name string, includeTests bool) []Result {
 	nl := strings.ToLower(name)
 	matchedIDs := make(map[string]bool)
 	for _, s := range g.Symbols {
@@ -203,13 +221,32 @@ func Callees(g *graph.Graph, name string) []Result {
 
 	var results []Result
 	for _, c := range g.Calls {
+		if !includeTests && isTestFile(c.File) {
+			continue
+		}
 		if matchedIDs[c.CallerSymbolID] {
+			snippet := ""
+			absPath := filepath.Join(g.Root, c.File)
+			if data, err := os.ReadFile(absPath); err == nil {
+				lines := strings.Split(string(data), "\n")
+				if c.Line > 0 && c.Line <= len(lines) {
+					snippet = strings.TrimSpace(lines[c.Line-1])
+				}
+			}
+
+			detail := fmt.Sprintf("called by %s", c.CallerName)
+			if snippet != "" {
+				detail += fmt.Sprintf("  ->  `%s`", snippet)
+			}
+
 			results = append(results, Result{
-				Kind:   "callee",
-				Name:   c.CalleeRaw,
-				File:   c.File,
-				Line:   c.Line,
-				Detail: fmt.Sprintf("called by %s", c.CallerName),
+				Kind:         "callee",
+				Name:         c.CalleeRaw,
+				File:         c.File,
+				Line:         c.Line,
+				Detail:       detail,
+				CallSiteFile: c.File,
+				CallSiteLine: c.Line,
 			})
 		}
 	}

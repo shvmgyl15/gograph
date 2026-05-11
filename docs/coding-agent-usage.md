@@ -29,8 +29,8 @@ And query commands the agent can invoke without re-parsing:
 ```sh
 gograph query <term>            # symbol/package/file/import/call substring search
 gograph focus <package>         # isolate context for a specific package
-gograph callers <function>      # who calls it (precise if --precise used, else AST best-effort)
-gograph callees <function>      # what it calls
+gograph callers <function> [--no-tests] # who calls it (returns exact call-site source snippet)
+gograph callees <function> [--no-tests] # what it calls (returns exact call-site source snippet)
 gograph implementers <interface> # which structs implement an interface
 gograph interfaces <struct>     # which interfaces a struct satisfies (precise if --precise used)
 gograph fields <struct>         # extract fields and types of a struct
@@ -84,7 +84,7 @@ Instead of `ls -R` + reading 10 random files, the agent reads `.gograph/GRAPH_RE
 `gograph query X` returns file:line locations for matching symbols, packages, files, imports, and call sites — typically one tool call vs. several `grep` rounds.
 
 ### 3. Impact analysis before a refactor
-`gograph callers SomeFunc` lists every call site without the agent having to grep all `.go` files. Combined with `callees`, the agent can reason about blast radius before editing.
+`gograph callers SomeFunc` lists every call site without the agent having to grep all `.go` files. It **returns the exact line of code** so the agent can immediately see the arguments passed to the function. Combined with `callees`, the agent can reason about blast radius before editing. Use the `--no-tests` flag (`gograph callers SomeFunc --no-tests`) to instantly filter out test callers when checking production usage.
 
 ### 4. Configuration / secrets surface
 `gograph envs` lists every `os.Getenv` / `os.LookupEnv` / `viper.GetString` site with file, line, and enclosing function — one command vs. grepping every file. Filter by name: `gograph envs DATABASE`.

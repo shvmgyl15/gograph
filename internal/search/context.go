@@ -37,8 +37,8 @@ func Context(g *graph.Graph, rootDir, term string) *ContextResult {
 		Node:      node,
 		Source:    src,
 		SourceErr: srcErr,
-		Callers:   Callers(g, term),
-		Callees:   Callees(g, term),
+		Callers:   Callers(g, term, true),
+		Callees:   Callees(g, term, true),
 		Tests:     Tests(g, term),
 	}
 }

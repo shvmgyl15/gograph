@@ -55,6 +55,13 @@ func makeGraph() *graph.Graph {
 				File:           "internal/auth/service.go",
 				Line:           44,
 			},
+			{
+				CallerSymbolID: "internal/auth/service_test.go::TestIssueToken",
+				CallerName:     "TestIssueToken",
+				CalleeRaw:      "jwt.Sign",
+				File:           "internal/auth/service_test.go",
+				Line:           20,
+			},
 		},
 	}
 }
@@ -128,18 +135,25 @@ func TestQuery_MatchCall(t *testing.T) {
 
 func TestCallers(t *testing.T) {
 	g := makeGraph()
-	results := search.Callers(g, "jwt.Sign")
-	if len(results) == 0 {
-		t.Fatal("expected callers of jwt.Sign")
+	// includeTests = true -> should return 2 callers for jwt.Sign
+	results := search.Callers(g, "jwt.Sign", true)
+	if len(results) != 2 {
+		t.Fatalf("expected 2 callers of jwt.Sign, got %d", len(results))
 	}
-	if results[0].Name != "(*AuthService).IssueToken" {
-		t.Errorf("expected IssueToken as caller, got %q", results[0].Name)
+
+	// includeTests = false -> should return 1 caller (the production one)
+	resultsNoTests := search.Callers(g, "jwt.Sign", false)
+	if len(resultsNoTests) != 1 {
+		t.Fatalf("expected 1 production caller of jwt.Sign, got %d", len(resultsNoTests))
+	}
+	if resultsNoTests[0].Name != "(*AuthService).IssueToken" {
+		t.Errorf("expected IssueToken as caller, got %q", resultsNoTests[0].Name)
 	}
 }
 
 func TestCallees(t *testing.T) {
 	g := makeGraph()
-	results := search.Callees(g, "IssueToken")
+	results := search.Callees(g, "IssueToken", true)
 	if len(results) == 0 {
 		t.Fatal("expected callees of IssueToken")
 	}
