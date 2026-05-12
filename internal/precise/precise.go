@@ -93,8 +93,13 @@ func Enrich(absRoot string, g *graph.Graph) error {
 	// 2. Precise Call Graph via CHA
 	cg := cha.CallGraph(prog)
 	if cg != nil {
-		g.Calls = nil // Clear AST calls to replace with precise edges
+		// Do not clear g.Calls (g.Calls = nil). We want to be strictly additive.
+		// Instead, map the existing AST calls so we don't duplicate them.
 		seenEdges := make(map[string]bool)
+		for _, edge := range g.Calls {
+			key := fmt.Sprintf("%s->%s@%s:%d", edge.CallerName, edge.CalleeRaw, edge.File, edge.Line)
+			seenEdges[key] = true
+		}
 		
 		for _, node := range cg.Nodes {
 			if node.Func == nil || node.Func.Pkg == nil {
@@ -124,7 +129,7 @@ func Enrich(absRoot string, g *graph.Graph) error {
 				}
 				seenEdges[key] = true
 
-				// Append to graph
+				// Append to graph (Additive enrichment)
 				g.Calls = append(g.Calls, graph.CallEdge{
 					CallerName: callerName,
 					CalleeRaw:  calleeName,
