@@ -107,6 +107,8 @@ func Run(args []string) int {
 		return runSQL(args[1:])
 	case "errors":
 		return runErrors(args[1:])
+	case "errorflow":
+		return runErrorFlow(args[1:])
 	case "path":
 		return runPath(args[1:])
 	case "stale":
@@ -153,6 +155,8 @@ func Run(args []string) int {
 		return runBoundaries(args[1:])
 	case "plan":
 		return runPlan(args[1:])
+	case "review":
+		return runReview(args[1:])
 	case "help", "--help", "-h":
 		printHelp()
 		return 0
@@ -176,48 +180,60 @@ build . [--precise]  : parse AST, gen GRAPH_REPORT.md & .gograph/*
 RULES FOR --precise:
 - Default (build .): Use during active, messy development. It's lightning-fast, tolerates syntax/build errors, and uses AST heuristics (duck-typing) for interfaces.
 - Precise (build . --precise): Use before a major refactor or when measuring blast radius (impact). Slower, but provides type-checked interface analysis and more precise call edges; requires compilable code.
-query <str>          : search symbols/files/pkgs
-focus <pkg>          : isolate context for a package
-callers <fn> [--no-tests]: who calls fn (returns exact call-site source snippet)
+
+AGENT WORKFLOW RULES (CRITICAL):
+1. BEFORE editing code: ALWAYS run 'gograph plan <symbol>' to understand the impact, mapped tests, and execution risks (SQL/Env/Routes) of your target.
+2. AFTER editing code: ALWAYS run 'gograph build . --precise' followed by 'gograph review --uncommitted' to verify test coverage, complexity, and that no unintended execution risks were introduced.
+
+QUERY COMMANDS:
+boundaries [--config] : verify package architecture constraints using boundaries.json
+boundaries --create   : auto-generate a baseline boundaries.json from the current repo
 callees <fn> [--no-tests]: what fn calls (returns exact call-site source snippet)
+callers <fn> [--no-tests]: who calls fn (returns exact call-site source snippet)
+complexity [sym]     : cyclomatic complexity estimate per function (highest first)
+concurrency [str]    : goroutines/channels/mutexes
+coupling [pkg]       : fan-in, fan-out, and instability per package
+embeds <struct>      : structs embedding this struct
+envs [str]           : os.Getenv/viper reads
+errors [--no-tests]  : custom errors/panics (use --no-tests to exclude test files)
+fields <struct>      : fields/types of struct
+focus <pkg>          : isolate context for a package
+godobj               : find god-object struct candidates (--methods N --fields N --calls N --top N)
 impact <sym>         : blast radius (downstream callers)
 impact --uncommitted : blast radius of all your uncommitted code changes
-source <sym>         : exact code of sym (USE THIS instead of grep to read function bodies, mock stubs, or full interface definitions)
-node <sym>           : AST info of sym
-fields <struct>      : fields/types of struct
-embeds <struct>      : structs embedding this struct
-interfaces <struct>  : duck-type interface check
 implementers <iface> : structs implementing iface
-public <pkg>         : exported API of pkg
-routes               : HTTP REST routes
-sql                  : raw SQL queries mapped
-errors [--no-tests]: custom errors/panics (use --no-tests to exclude test files)
-envs [str]           : os.Getenv/viper reads
-concurrency [str]    : goroutines/channels/mutexes
-tests <sym>          : tests exercising sym
-path <from> <to>     : shortest call chain between two symbols (BFS)
-trace <err_str> [--no-tests]: trace an error backwards from entry points to origin (use --no-tests to exclude test files)
-mutate <field>       : find functions that mutate a specific struct field
-arity [--min 5]      : find functions with many arguments (long parameter list smell)
-skeleton             : output the whole repository's API signatures (function bodies stripped)
-stale                : check if graph is out of date vs source files
+imports <pkg>        : trace external/internal usage
+interfaces <struct>  : duck-type interface check
+node <sym>           : AST info of sym
 orphans              : reachability-based dead code analysis
-boundaries [--config] : verify package architecture constraints using boundaries.json
+path <from> <to>     : shortest call chain between two symbols (BFS)
+public <pkg>         : exported API of pkg
+query <str>          : search symbols/files/pkgs
+routes               : HTTP REST routes
+source <sym>         : exact code of sym (USE THIS instead of grep to read function bodies, mock stubs, or full interface definitions)
+sql                  : raw SQL queries mapped
+stale                : check if graph is out of date vs source files
+tests <sym>          : tests exercising sym
+
+TOKEN SAVERS (COMPOSED COMMANDS):
+errorflow <term>     : trace likely error paths up to entry points (AST heuristic, NO SSA)
+arity [--min 5]      : find functions with many arguments (long parameter list smell)
+changes              : symbols modified/new/deleted since last build
+constructors <struct>: factory functions returning struct
+context <sym> [--limit N]: bundle node+source+callers+callees+tests (saves 4-5 tool calls)
+deps <pkg> [--transitive] : import dependency tree of a package
+fixtures <pkg>       : test helper structs and functions in test files
+globals <pkg>        : pkg-level vars, consts, and mutators
+hotspot [--top N]    : rank functions by incoming calls (study these first)
+mocks <iface>        : structs implementing iface in test files
+mutate <field>       : find functions that mutate a specific struct field
 plan <sym>           : generate an operational change plan (read-first, tests, risk profile)
 plan --uncommitted   : generate a change plan for all currently uncommitted modified symbols
-godobj               : find god-object struct candidates (--methods N --fields N --calls N --top N)
-complexity [sym]     : cyclomatic complexity estimate per function (highest first)
-coupling [pkg]       : fan-in, fan-out, and instability per package
-context <sym> [--limit N]: bundle node+source+callers+callees+tests (saves 4-5 tool calls). Use --limit to cap output.
-hotspot [--top N]    : rank functions by incoming calls (study these first)
-deps <pkg> [--transitive] : import dependency tree of a package
-changes              : symbols modified/new/deleted since last build
-imports <pkg>        : trace external/internal usage
-constructors <struct>: factory functions returning struct
+review <sym>         : generate a post-edit final review report for a modified symbol
+review --uncommitted : generate a post-edit final review report for all uncommitted changes
 schema <table>       : structs mapped to DB table via tags
-globals <pkg>        : pkg-level vars, consts, and mutators
-mocks <iface>        : structs implementing iface in test files
-fixtures <pkg>       : test helper structs and functions in test files`)
+skeleton             : output the whole repository's API signatures (function bodies stripped)
+trace <err_str> [--no-tests]: trace an error backwards from entry points to origin`)
 	return 0
 }
 
@@ -753,6 +769,12 @@ INDEXING
   stale                      Check if graph.json is older than any source file.
                              Agents should run this before structural analysis.
 
+AGENT WORKFLOW RULES (CRITICAL)
+  1. BEFORE editing: ALWAYS run 'gograph plan <symbol>' to understand the impact,
+     mapped tests, and execution risks (SQL/Env/Routes) of your target.
+  2. AFTER editing: ALWAYS run 'gograph build . --precise' followed by 'gograph review --uncommitted'
+     to verify test coverage, complexity, and that no unintended risks were introduced.
+
 SEARCH & NAVIGATION
   query <term...>            Search across symbols, packages, files, imports, and
                              call sites. Case-insensitive, OR logic across terms.
@@ -789,6 +811,8 @@ INTERFACES & TYPES
   fixtures <pkg>             Find test helper structs and functions in test files.
 
 CODE QUALITY
+  boundaries [--config]      Verify package architecture constraints using boundaries.json.
+  boundaries --create        Auto-generate a baseline boundaries.json from the current repo.
   complexity [symbol]        Cyclomatic complexity per function, highest first.
                              Filter by symbol name substring. Labels: LOW / MEDIUM /
                              HIGH / VERY HIGH (McCabe thresholds: 5 / 10 / 20).
@@ -808,10 +832,16 @@ CODE QUALITY
                              field count, and outgoing calls.
                              Flags: --methods N  --fields N  --calls N  --top N
                              Defaults: --methods 5  --fields 8  --calls 15  --top 10
+  plan <symbol>              Generate an operational change plan (callers, tests, risk profile)
+                             before editing a symbol.
+  plan --uncommitted         Generate a change plan for all currently uncommitted modified symbols.
+  review <symbol>            Generate a post-edit final review report for a modified symbol.
+  review --uncommitted       Generate a post-edit final review report for all uncommitted changes.
 
 EXTRACTION
   routes                     All HTTP REST API routes and their handler functions.
   sql                        Raw SQL queries mapped to the functions that run them.
+  errorflow <term>           Trace likely error paths up to entry points (AST heuristic, NO SSA)
   errors                     Custom error variables and panics mapped to their source.
   envs [term]                Every os.Getenv / viper.Get* read with file and line.
   concurrency [term]         Goroutine spawns, channel ops, mutex locks, WaitGroups.
@@ -1496,9 +1526,9 @@ func getUncommittedSymbols(g *graph.Graph) ([]string, error) {
 			if strings.HasSuffix(s.File, file) {
 				for _, line := range lines {
 					if line >= s.Line && line <= s.EndLine {
-						if !seenSymbols[s.Name] {
-							seenSymbols[s.Name] = true
-							modifiedSymbolNames = append(modifiedSymbolNames, s.Name)
+						if !seenSymbols[s.ID] {
+							seenSymbols[s.ID] = true
+							modifiedSymbolNames = append(modifiedSymbolNames, s.ID)
 						}
 						break
 					}
@@ -1636,6 +1666,83 @@ func runTrace(args []string) int {
 		}
 		fmt.Println()
 	}
+	return 0
+}
+
+func runErrorFlow(args []string) int {
+	if len(args) == 0 {
+		if jsonMode {
+			return PrintJSON(errEnvelope("errorflow", "Usage: gograph errorflow <error-string|ErrSymbol>"))
+		}
+		fmt.Println("Usage: gograph errorflow <error-string|ErrSymbol>")
+		return 1
+	}
+
+	g, err := loadGraph(".")
+	if err != nil {
+		if jsonMode {
+			return PrintJSON(errEnvelope("errorflow", err.Error()))
+		}
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+
+	term := strings.Join(args, " ")
+	report := search.ErrorFlow(g, term)
+
+	if jsonMode {
+		return PrintJSON(okEnvelope("errorflow", term, report, len(report.Paths)))
+	}
+
+	fmt.Printf("ErrorFlow Report for %q\n", term)
+	fmt.Println("==================================================")
+	fmt.Println("⚠️  DISCLAIMER: Likely error path based on static call graph and AST references.")
+	fmt.Println("   Highly useful for navigation, not proof. No SSA/data-flow tracking performed.")
+	fmt.Println("==================================================")
+	fmt.Println()
+
+	if len(report.DefinitionSites) > 0 {
+		fmt.Println("1. Definition Sites:")
+		for _, r := range report.DefinitionSites {
+			fmt.Printf("   - %s (%s:%d) -> %s\n", r.Name, r.File, r.Line, r.Detail)
+		}
+		fmt.Println()
+	}
+
+	if len(report.ReturnSites) > 0 {
+		fmt.Println("2. Return / Wrap / Check Sites:")
+		for _, r := range report.ReturnSites {
+			fmt.Printf("   - %s (%s:%d) -> %s\n", r.Name, r.File, r.Line, r.Detail)
+		}
+		fmt.Println()
+	}
+
+	if len(report.Paths) > 0 {
+		fmt.Println("3. Likely Route / Entrypoint Paths:")
+		for i, p := range report.Paths {
+			confidence := "MEDIUM"
+			if len(report.DefinitionSites) > 0 {
+				confidence = "HIGH"
+			}
+			fmt.Printf("   Path %d [Confidence: %s] (Originates in %s):\n", i+1, confidence, p.Error.Function)
+			for j, step := range p.Path {
+				fmt.Printf("      %d. %s (%s:%d) - %s\n", j+1, step.Name, step.File, step.Line, step.Detail)
+			}
+			fmt.Println()
+		}
+	} else {
+		fmt.Println("3. Likely Route / Entrypoint Paths:\n   - No complete path to an HTTP route or main entrypoint found.")
+		fmt.Println()
+	}
+
+	if len(report.RelatedTests) > 0 {
+		fmt.Println("4. Related Tests:")
+		for _, r := range report.RelatedTests {
+			fmt.Printf("   - %s (%s:%d) -> %s\n", r.Name, r.File, r.Line, r.Detail)
+		}
+		fmt.Println()
+	}
+
 	return 0
 }
 
@@ -1794,3 +1901,44 @@ func runPlan(args []string) int {
 	return 0
 }
 
+// runReview generates a post-edit checklist for modified symbols.
+func runReview(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: gograph review <symbol> OR gograph review --uncommitted")
+		return 1
+	}
+
+	g, err := loadGraph(".")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+
+	var symbolNames []string
+	var title string
+
+	if args[0] == "--uncommitted" {
+		symbolNames, err = getUncommittedSymbols(g)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		if len(symbolNames) == 0 {
+			fmt.Println("No uncommitted modified symbols found in the graph.")
+			return 0
+		}
+		title = "Uncommitted Changes"
+	} else {
+		symbolNames = []string{args[0]}
+		title = args[0]
+	}
+
+	report := search.Review(g, symbolNames, title)
+	
+	if jsonMode {
+		return printResults("review", title, []search.Result{{Kind: "review", Detail: report}}, "")
+	}
+	
+	fmt.Print(report)
+	return 0
+}

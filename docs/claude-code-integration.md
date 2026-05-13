@@ -6,7 +6,17 @@
 
 By providing Claude Code with `gograph`, you give it a **semantic, AST-aware understanding** of your Go repository, drastically reducing token usage and improving coding accuracy.
 
-## 1. Installation
+## 1. Why Gograph instead of Gopls (LSP)?
+
+While some agents try to use `gopls` directly via MCP, **`gograph` is designed specifically for LLM token economy and latency**. In a recent benchmark against a production Go microservice (6,000+ files), `gograph` dramatically outperformed `gopls` for agentic use-cases:
+
+- **Token Cost & Tool-Call Overhead**: `gopls` returns bare file positions (e.g. `file:line:col`). To understand the code, an LLM must follow up with 5 to 27 individual `Read` tool calls just to assemble context for one symbol. `gograph context` bundles the node, callers, callees, and exact source into **one single tool call**, dropping LLM token consumption by up to 50%.
+- **Latency**: `gograph` query latency averages **160ms**, whereas `gopls` calls (like `workspace_symbol` or `references`) often range from **1,600ms to 6,000ms**, causing severe agent slowdowns.
+- **Interface Accuracy**: `gopls call_hierarchy` fails (returns `rc=2`) on interface types. `gograph` natively traverses interfaces and returns all concrete method implementations.
+
+*Note on Token Usage*: The one edge-case where `gograph` uses more tokens than `gopls` is when querying a highly-implemented Interface type. `gograph` proactively embeds the source code for *all* concrete implementations, whereas `gopls` only returns the file positions. This makes `gograph` slightly heavier (token-wise) in this specific scenario, but still vastly faster in wall-clock time.
+
+## 2. Installation
 
 Ensure `gograph` is built and accessible in your system `$PATH` so Claude Code can invoke it directly from the terminal.
 

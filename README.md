@@ -76,55 +76,57 @@ gograph build . --precise
 
 **2. Query the Graph (Lightning fast, no re-parsing):**
 ```bash
-gograph query "Auth"              # Search for symbols, files, or packages
-gograph focus "internal/auth"     # Generate a highly targeted context for one package
-gograph callers "ValidateToken" [--no-tests] # See what functions call ValidateToken (with exact source snippet)
-gograph callees "InitServer" [--no-tests]    # See what InitServer calls (with exact source snippet)
-gograph implementers "AuthService" # See which structs implement an interface
-gograph interfaces "UserService"  # See which interfaces a struct satisfies (type-checked if --precise was used)
-gograph fields "User"             # Extract all fields and types of a struct
-gograph source "ValidateToken"    # Extract the source code for a specific symbol (function, interface, const)
-gograph impact "ValidateToken"    # View the full blast radius (all downstream callers)
-gograph impact --uncommitted      # Calculate the blast radius of all your uncommitted code changes
-gograph orphans                   # List functions and methods with 0 explicit incoming calls
-gograph node "UserStruct"         # Get detailed AST info about a specific node
-gograph routes                    # Extract all HTTP REST API routes (e.g. GET /api)
-gograph imports "redis"           # Find all files that import a specific external package
-gograph sql                       # Extract database SQL queries from the AST
-gograph errors                    # Map every custom error and panic to its function
-gograph embeds "Mutex"            # See which structs embed a target struct
-gograph public "internal/auth"    # Filter graph to only show exported public symbols
-gograph envs                      # List every environment variable read in the codebase
-gograph concurrency               # Map all goroutines, channels, mutexes, and sync primitives
-gograph tests "ValidateToken"     # Find which test functions exercise a named symbol
-gograph path "CreateUser" "sql"   # Shortest call chain between two symbols
-gograph stale                     # Check if graph.json is out of date vs source files
-gograph orphans                   # Symbols truly unreachable from any entry point
-gograph godobj                    # Find god-object struct candidates
-gograph godobj --methods 10 --fields 12 --calls 30 --top 5  # Custom thresholds
+gograph boundaries [--config]     # Verify package architecture constraints using boundaries.json
+gograph callees "InitServer"      # See what InitServer calls (with exact source snippet)
+gograph callers "ValidateToken"   # See what functions call ValidateToken (with exact source snippet)
 gograph complexity                # Cyclomatic complexity for all functions (highest first)
 gograph complexity "Run"          # Complexity for a specific function
+gograph concurrency               # Map all goroutines, channels, mutexes, and sync primitives
 gograph coupling                  # Package fan-in, fan-out, instability table
-gograph coupling "internal/auth" # Filter to a specific package
+gograph coupling "internal/auth"  # Filter to a specific package
+gograph embeds "Mutex"            # See which structs embed a target struct
+gograph envs                      # List every environment variable read in the codebase
+gograph errors                    # Map every custom error and panic to its function
+gograph fields "User"             # Extract all fields and types of a struct
+gograph focus "internal/auth"     # Generate a highly targeted context for one package
+gograph godobj                    # Find god-object struct candidates
+gograph godobj --methods 10 --fields 12 --calls 30 --top 5  # Custom thresholds
+gograph impact "ValidateToken"    # View the full blast radius (all downstream callers)
+gograph impact --uncommitted      # Calculate the blast radius of all your uncommitted code changes
+gograph implementers "AuthService" # See which structs implement an interface
+gograph imports "redis"           # Find all files that import a specific external package
+gograph interfaces "UserService"  # See which interfaces a struct satisfies (type-checked if --precise was used)
+gograph node "UserStruct"         # Get detailed AST info about a specific node
+gograph orphans                   # List functions and methods with 0 explicit incoming calls (dead code)
+gograph path "CreateUser" "sql"   # Shortest call chain between two symbols
+gograph public "internal/auth"    # Filter graph to only show exported public symbols
+gograph query "Auth"              # Search for symbols, files, or packages
+gograph routes                    # Extract all HTTP REST API routes (e.g. GET /api)
+gograph source "ValidateToken"    # Extract the source code for a specific symbol
+gograph sql                       # Extract database SQL queries from the AST
+gograph stale                     # Check if graph.json is out of date vs source files
+gograph tests "ValidateToken"     # Find which test functions exercise a named symbol
 # --- TOKEN SAVERS ---
+gograph arity --min 5             # Find functions with many arguments (long parameter list smell)
+gograph changes                   # New/modified/deleted symbols since last build
+gograph constructors "User"       # Find factory functions returning the named struct
 gograph context "ValidateToken"   # Node + source + callers + callees + tests in ONE call
-gograph hotspot                   # Top 10 most-called functions (where to focus first)
-gograph hotspot --top 20          # Expand to top 20
 gograph deps "internal/auth"      # Direct import dependencies of a package
 gograph deps "internal/auth" --transitive  # Full transitive closure
-gograph changes                   # New/modified/deleted symbols since last build
-gograph trace "parse failed"      # Trace an error string backwards to entry points
-gograph mutate "User.Status"      # Find functions that mutate a specific struct field
-gograph arity --min 5             # Find functions with many arguments (long parameter list smell)
-gograph skeleton                  # Output the whole repository's API signatures (bodies stripped)
-gograph constructors "User"       # Find factory functions returning the named struct
-gograph schema "users"            # Find structs mapped to a database table/schema via tags
-gograph globals "internal/auth"   # Find pkg-level vars, consts, and functions mutating them
-gograph mocks "AuthService"       # Find structs implementing an interface in test/mock files
 gograph fixtures "internal/auth"  # Find test helper structs and functions in test files
-
+gograph globals "internal/auth"   # Find pkg-level vars, consts, and functions mutating them
+gograph hotspot                   # Top 10 most-called functions (where to focus first)
+gograph hotspot --top 20          # Expand to top 20
+gograph mocks "AuthService"       # Find structs implementing an interface in test/mock files
+gograph mutate "User.Status"      # Find functions that mutate a specific struct field
 gograph plan "ValidateToken"      # Generate an operational change plan (callers, tests, risk profile) before editing a symbol
 gograph plan --uncommitted        # Generate a change plan for all currently uncommitted modified symbols
+gograph review "ValidateToken"    # Generate a post-edit final review report for a modified symbol
+gograph review --uncommitted      # Generate a post-edit final review report for all uncommitted changes
+gograph schema "users"            # Find structs mapped to a database table/schema via tags
+gograph skeleton                  # Output the whole repository's API signatures (bodies stripped)
+gograph trace "parse failed"      # Trace an error string backwards to entry points
+gograph errorflow "invalid token" # Trace an error's path from definition up to HTTP handlers (heuristic, NO SSA)
 
 **3. Architecture Boundary Enforcement:**
 You can configure `gograph` to actively enforce clean architecture by defining boundaries. Create a `.gograph/boundaries.json` file in your root directory:

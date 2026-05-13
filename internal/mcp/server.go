@@ -252,6 +252,28 @@ func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error)) error {
 		return mcp.NewToolResultText(planText), nil
 	})
 
+	// Tool: gograph_review
+	reviewTool := mcp.NewTool("gograph_review",
+		mcp.WithDescription("Generate a post-edit final review report for a modified symbol. Use this after making changes to verify test coverage, complexity, and downstream execution risks (SQL, Envs, etc)."),
+		mcp.WithString("symbol", mcp.Required(), mcp.Description("The name of the symbol you just edited (e.g., 'ValidateToken')")),
+	)
+	s.AddTool(reviewTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		sym, ok := args["symbol"].(string)
+		if !ok {
+			return mcp.NewToolResultError("symbol must be a string"), nil
+		}
+		
+		reviewText := search.Review(g, []string{sym}, sym)
+		return mcp.NewToolResultText(reviewText), nil
+	})
+
 	// Tool: gograph_routes
 	routesTool := mcp.NewTool("gograph_routes",
 		mcp.WithDescription("Extract all HTTP REST API routes found in the codebase (e.g. GET /api)."),
@@ -262,6 +284,28 @@ func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error)) error {
 		}
 		results := search.Routes(g)
 		return formatResults(results), nil
+	})
+
+	// Tool: gograph_errorflow
+	errorflowTool := mcp.NewTool("gograph_errorflow",
+		mcp.WithDescription("Trace likely error paths up to entry points (HTTP routes or CLI commands). Use this to find where an error originates and how it is handled. (AST heuristic, NO SSA)"),
+		mcp.WithString("term", mcp.Required(), mcp.Description("The error string or sentinel error name (e.g., 'ErrInvalidToken' or 'invalid token')")),
+	)
+	s.AddTool(errorflowTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		term, ok := args["term"].(string)
+		if !ok {
+			return mcp.NewToolResultError("term must be a string"), nil
+		}
+		
+		report := search.ErrorFlow(g, term)
+		return mcp.NewToolResultText(report.String()), nil
 	})
 
 	// Tool: gograph_imports

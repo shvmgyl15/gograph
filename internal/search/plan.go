@@ -20,7 +20,7 @@ func Plan(g *graph.Graph, symbolNames []string, title string) string {
 	for _, symName := range symbolNames {
 		// Find symbol
 		for _, s := range g.Symbols {
-			if s.Name == symName {
+			if s.ID == symName || s.Name == symName {
 				line := fmt.Sprintf("   - %s:%d %s", s.File, s.Line, s.Name)
 				if !readSet[line] {
 					readSet[line] = true
@@ -81,9 +81,11 @@ func Plan(g *graph.Graph, symbolNames []string, title string) string {
 	isPublic := "no"
 	for _, symName := range symbolNames {
 		if len(symName) > 0 {
-			// Find actual symbol name (ignoring receiver)
-			parts := strings.Split(symName, ".")
-			name := parts[len(parts)-1]
+			// Find actual symbol name (ignoring receiver and ID parts)
+			parts := strings.Split(symName, "::")
+			short := parts[len(parts)-1]
+			parts2 := strings.Split(short, ".")
+			name := parts2[len(parts2)-1]
 			if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
 				isPublic = "yes"
 				break

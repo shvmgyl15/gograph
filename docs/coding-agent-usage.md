@@ -248,7 +248,64 @@ Change plan for ValidateToken
 ```
 Agents should **always** run `gograph plan` before editing a symbol to avoid breaking downstream callers or missing test updates. It can also be run for all uncommitted changes using `gograph plan --uncommitted`.
 
-### 17. Hotspot ranking
+### 17. Change review (Post-Edit Verification)
+`gograph review <symbol>` (or `gograph review --uncommitted`) acts as the final gate *after* you have made code changes, but *before* you commit them.
+
+It aggregates the current AST state of the modified files and generates a completion report, answering critical safety questions:
+- What exactly changed?
+- Which of the modified symbols lack mapped tests? (Highlights coverage gaps)
+- Did complexity increase? (Flags functions that exceeded the McCabe threshold)
+- Did the public API or HTTP route surface change?
+- What are the downstream execution risks? (Did you accidentally introduce an `os.Getenv` or a SQL query into a tight loop?)
+
+Example:
+```
+gograph review --uncommitted
+```
+```
+Code Review for Uncommitted Changes
+
+Analyzed 2 modified symbols.
+
+1. What changed?
+   - internal/auth/validator.go:42 ValidateToken (function)
+   - internal/auth/service.go:88 AuthService.Login (method)
+
+2. Which changed symbols lack mapped tests?
+   - AuthService.Login
+
+3. Complexity & Architectural Risk (Current State)
+   - [HIGH COMPLEXITY] ValidateToken: score=12
+
+4. Did public API or route surface change?
+   - [PUBLIC API] ValidateToken
+   - [PUBLIC API] Login
+   - [HTTP ROUTE] POST /login -> Login
+
+5. Downstream Execution Risks (What do these changes touch?)
+   - Reads Environment Variables: JWT_SECRET
+   - Touches SQL: false
+   - Emits Custom Errors/Panics: true
+   - Uses Concurrency Primitives: false
+```
+If you are an agent making autonomous edits, you must always run `gograph build . --precise` followed by `gograph review --uncommitted` as your final step to verify no regressions were introduced.
+
+### 18. Error Flow Tracing
+`gograph errorflow <error-string|ErrSymbol>` is a powerful backend diagnostic command that maps the lifecycle of an error up to the HTTP layer.
+
+Unlike `gograph trace`, which just finds string origins, `errorflow` searches for:
+1. **Definition sites**: Where the sentinel error is declared (`var ErrInvalidToken = errors.New(...)`).
+2. **Return/wrap sites**: Where the error string is created or wrapped (`fmt.Errorf("... %w", ErrInvalidToken)`).
+3. **Upward Paths**: It traverses the AST call graph upwards until it hits an entrypoint (like an HTTP route or `main`).
+
+**⚠️ Important Disclaimer:** `gograph errorflow` uses a pure **AST (Abstract Syntax Tree) call-graph heuristic**. It does **NOT** use SSA (Static Single Assignment) or data-flow/taint tracking. This means it is highly useful for navigating likely error paths, but it cannot mathematically prove that an error flows to a specific route if it is swallowed by complex middleware or interface indirection. The command assigns a `HIGH`, `MEDIUM`, or `LOW` confidence rating to each path based on its findings.
+
+Example:
+```bash
+gograph errorflow ErrInvalidToken
+```
+
+### 19. Hotspot ranking
 `gograph hotspot [--top N]` ranks all functions by how many call sites depend on them (fan-in). The top hotspots are the most load-bearing code in the codebase — the functions an agent must understand before making any structural change.
 
 ```
