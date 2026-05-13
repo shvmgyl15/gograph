@@ -66,7 +66,9 @@ func GenerateSQL(g *graph.Graph) string {
 	}
 	sb.WriteString("| Query | Function | File | Line |\n|-------|----------|------|------|\n")
 	for _, sql := range g.SQLs {
-		fmt.Fprintf(&sb, "| `%s` | `%s` | `%s` | %d |\n", sql.Query, sql.Function, sql.File, sql.Line)
+		cleanQuery := strings.ReplaceAll(sql.Query, "\n", " ")
+		cleanQuery = strings.ReplaceAll(cleanQuery, "\r", "")
+		fmt.Fprintf(&sb, "| `%s` | `%s` | `%s` | %d |\n", cleanQuery, sql.Function, sql.File, sql.Line)
 	}
 	sb.WriteString("\n")
 	return sb.String()
