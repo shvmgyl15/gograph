@@ -17,7 +17,7 @@ type ErrorFlowReport struct {
 
 func (r *ErrorFlowReport) String() string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("ErrorFlow Report for %q\n", r.Term))
+	fmt.Fprintf(&sb, "ErrorFlow Report for %q\n", r.Term)
 	sb.WriteString("==================================================\n")
 	sb.WriteString("⚠️  DISCLAIMER: Likely error path based on static call graph and AST references.\n")
 	sb.WriteString("   Highly useful for navigation, not proof. No SSA/data-flow tracking performed.\n")
@@ -26,7 +26,7 @@ func (r *ErrorFlowReport) String() string {
 	if len(r.DefinitionSites) > 0 {
 		sb.WriteString("1. Definition Sites:\n")
 		for _, s := range r.DefinitionSites {
-			sb.WriteString(fmt.Sprintf("   - %s (%s:%d) -> %s\n", s.Name, s.File, s.Line, s.Detail))
+			fmt.Fprintf(&sb, "   - %s (%s:%d) -> %s\n", s.Name, s.File, s.Line, s.Detail)
 		}
 		sb.WriteString("\n")
 	}
@@ -34,7 +34,7 @@ func (r *ErrorFlowReport) String() string {
 	if len(r.ReturnSites) > 0 {
 		sb.WriteString("2. Return / Wrap / Check Sites:\n")
 		for _, s := range r.ReturnSites {
-			sb.WriteString(fmt.Sprintf("   - %s (%s:%d) -> %s\n", s.Name, s.File, s.Line, s.Detail))
+			fmt.Fprintf(&sb, "   - %s (%s:%d) -> %s\n", s.Name, s.File, s.Line, s.Detail)
 		}
 		sb.WriteString("\n")
 	}
@@ -46,9 +46,9 @@ func (r *ErrorFlowReport) String() string {
 			if len(r.DefinitionSites) > 0 {
 				confidence = "HIGH"
 			}
-			sb.WriteString(fmt.Sprintf("   Path %d [Confidence: %s] (Originates in %s):\n", i+1, confidence, p.Error.Function))
+			fmt.Fprintf(&sb, "   Path %d [Confidence: %s] (Originates in %s):\n", i+1, confidence, p.Error.Function)
 			for j, step := range p.Path {
-				sb.WriteString(fmt.Sprintf("      %d. %s (%s:%d) - %s\n", j+1, step.Name, step.File, step.Line, step.Detail))
+				fmt.Fprintf(&sb, "      %d. %s (%s:%d) - %s\n", j+1, step.Name, step.File, step.Line, step.Detail)
 			}
 			sb.WriteString("\n")
 		}
@@ -59,7 +59,7 @@ func (r *ErrorFlowReport) String() string {
 	if len(r.RelatedTests) > 0 {
 		sb.WriteString("4. Related Tests:\n")
 		for _, s := range r.RelatedTests {
-			sb.WriteString(fmt.Sprintf("   - %s (%s:%d) -> %s\n", s.Name, s.File, s.Line, s.Detail))
+			fmt.Fprintf(&sb, "   - %s (%s:%d) -> %s\n", s.Name, s.File, s.Line, s.Detail)
 		}
 		sb.WriteString("\n")
 	}

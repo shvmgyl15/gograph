@@ -25,8 +25,9 @@ install:
 	sudo cp $(BUILD_DIR)/$(BINARY) $(INSTALL)/
 	@echo "Installed $(BINARY) to $(INSTALL)/"
 
-test:
-	go test ./...
+test: build
+	@echo "Running all unit tests and e2e integration tests..."
+	go test -v ./...
 
 test-coverage:
 	go test ./... -coverprofile=coverage.out

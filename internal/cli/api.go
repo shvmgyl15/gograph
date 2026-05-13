@@ -14,22 +14,19 @@ import (
 
 func runAPI(args []string) int {
 	var baselineRef string
-	var useJSON bool
 	var force bool
 
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--since" && i+1 < len(args) {
 			baselineRef = args[i+1]
 			i++
-		} else if args[i] == "--json" {
-			useJSON = true
 		} else if args[i] == "--force" || args[i] == "-y" {
 			force = true
 		}
 	}
 
 	if baselineRef == "" {
-		if useJSON {
+		if jsonMode {
 			return PrintJSON(errEnvelope("api", "missing --since flag. Usage: gograph api --since <ref>"))
 		}
 		fmt.Fprintln(os.Stderr, "usage: gograph api --since <git-ref|file.json> [--json] [--force]")
@@ -38,7 +35,7 @@ func runAPI(args []string) int {
 
 	currentGraph, err := loadGraph(".")
 	if err != nil {
-		if useJSON {
+		if jsonMode {
 			return PrintJSON(errEnvelope("api", err.Error()))
 		}
 		fmt.Fprintln(os.Stderr, "error loading current graph:", err)
@@ -50,7 +47,7 @@ func runAPI(args []string) int {
 	if strings.HasSuffix(baselineRef, ".json") {
 		data, err := os.ReadFile(baselineRef)
 		if err != nil {
-			if useJSON {
+			if jsonMode {
 				return PrintJSON(errEnvelope("api", err.Error()))
 			}
 			fmt.Fprintf(os.Stderr, "error loading baseline graph %s: %v\n", baselineRef, err)
@@ -58,7 +55,7 @@ func runAPI(args []string) int {
 		}
 		var g graph.Graph
 		if err := json.Unmarshal(data, &g); err != nil {
-			if useJSON {
+			if jsonMode {
 				return PrintJSON(errEnvelope("api", err.Error()))
 			}
 			fmt.Fprintf(os.Stderr, "error parsing baseline graph %s: %v\n", baselineRef, err)
@@ -66,7 +63,7 @@ func runAPI(args []string) int {
 		}
 		baselineGraph = &g
 	} else {
-		if !force && !useJSON {
+		if !force && !jsonMode {
 			fmt.Printf("⚠️  WARNING: To compare contracts, gograph must copy the repository state at '%s' (excluding .git/ and non-source files) into a temporary directory for baseline analysis. The directory will be deleted immediately after.\nProceed? [y/N]: ", baselineRef)
 			reader := bufio.NewReader(os.Stdin)
 			text, _ := reader.ReadString('\n')
@@ -79,18 +76,18 @@ func runAPI(args []string) int {
 
 		tmpDir, err := os.MkdirTemp("", "gograph-baseline-*")
 		if err != nil {
-			if useJSON {
+			if jsonMode {
 				return PrintJSON(errEnvelope("api", err.Error()))
 			}
 			fmt.Fprintln(os.Stderr, "error creating temp dir:", err)
 			return 1
 		}
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
-		cmd := exec.Command("bash", "-c", fmt.Sprintf(`git archive %s "**/*.go" "*.go" "go.mod" "go.sum" "go.work" "go.work.sum" | tar -x -C %s`, baselineRef, tmpDir))
+		cmd := exec.Command("bash", "-c", fmt.Sprintf(`set -o pipefail; git archive %s "**/*.go" "*.go" "go.mod" "go.sum" "go.work" "go.work.sum" | tar -x -C %s`, baselineRef, tmpDir))
 		if err := cmd.Run(); err != nil {
 			// If git archive fails (e.g., bad ref or not a git repo), we fail gracefully.
-			if useJSON {
+			if jsonMode {
 				return PrintJSON(errEnvelope("api", fmt.Sprintf("git archive failed: %v", err)))
 			}
 			fmt.Fprintf(os.Stderr, "error extracting baseline via git archive: %v\n", err)
@@ -99,7 +96,7 @@ func runAPI(args []string) int {
 
 		baselineGraph, err = BuildGraph(tmpDir)
 		if err != nil {
-			if useJSON {
+			if jsonMode {
 				return PrintJSON(errEnvelope("api", err.Error()))
 			}
 			fmt.Fprintf(os.Stderr, "error building baseline graph: %v\n", err)
@@ -109,11 +106,15 @@ func runAPI(args []string) int {
 
 	res := search.APIDrift(baselineGraph, currentGraph, baselineRef)
 
-	if useJSON {
+	if jsonMode {
 		return PrintJSON(okEnvelope("api", baselineRef, res, 0))
 	}
 
-	fmt.Printf("API / contract drift since %s\n\n", baselineRef)
+	fmt.Printf("API / contract drift since %s\n", baselineRef)
+	if !strings.HasSuffix(baselineRef, ".json") {
+		fmt.Printf("(Evaluated using a temporary baseline graph extracted from Git ref %s)\n", baselineRef)
+	}
+	fmt.Println()
 
 	if len(res.ExportedSymbols.Changed) > 0 || len(res.Interfaces.Removed) > 0 || len(res.ExportedSymbols.Removed) > 0 || len(res.Interfaces.Changed) > 0 {
 		fmt.Println("Breaking Go API changes:")
@@ -180,7 +181,9 @@ func runAPI(args []string) int {
 	fmt.Println("Risk summary:")
 	fmt.Printf("  breaking Go API: %v\n", res.BreakingGoAPI)
 	fmt.Printf("  breaking HTTP API: %s\n", res.BreakingHTTPAPI)
-	fmt.Printf("  stale mocks: %v\n", res.StaleMocksLikely)
+	fmt.Printf("  stale mocks: %v\n\n", res.StaleMocksLikely)
+
+	fmt.Println("Note: Contract drift is based on static AST and graph comparison. It identifies likely compatibility risks but does not prove runtime behavior.")
 
 	return 0
 }

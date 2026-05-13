@@ -7,22 +7,97 @@ import (
 	"github.com/ozgurcd/gograph/internal/graph"
 )
 
-// Review generates a post-edit review report for modified symbols.
-func Review(g *graph.Graph, symbolNames []string, title string) string {
-	if len(symbolNames) == 0 {
-		return "No modified symbols found to review."
+type ReviewResult struct {
+	Title      string   `json:"title"`
+	Changes    []Result `json:"changes"`
+	Tests      []string `json:"tests"`
+	PublicAPI  string   `json:"public_api"` // "yes", "no"
+	Routes     []string `json:"routes"`
+	Envs       []string `json:"envs"`
+	TouchesSQL string   `json:"touches_sql"` // "yes", "no"
+	Errors     []string `json:"errors"`
+	Message    string   `json:"message,omitempty"` // For "No modified symbols found"
+}
+
+func (r *ReviewResult) String() string {
+	if r.Message != "" {
+		return r.Message
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Code Review for %s\n\n", title))
+	fmt.Fprintf(&sb, "Code Review for %s\n\n", r.Title)
 
-	// Find the subset of symbols actually present in the graph
+	sb.WriteString("1. What changed?\n")
+	for _, c := range r.Changes {
+		fmt.Fprintf(&sb, "   - %s:%d %s (%s)\n", c.File, c.Line, c.Name, string(c.Kind))
+	}
+	sb.WriteString("\n")
+
+	sb.WriteString("2. Tests likely needing review:\n")
+	if len(r.Tests) > 0 {
+		for _, tf := range r.Tests {
+			fmt.Fprintf(&sb, "   - %s\n", tf)
+		}
+	} else {
+		sb.WriteString("   - (No direct tests found)\n")
+	}
+	sb.WriteString("\n")
+
+	sb.WriteString("3. Surface Area:\n")
+	fmt.Fprintf(&sb, "   - Public API: %s\n", r.PublicAPI)
+
+	if len(r.Routes) > 0 {
+		if len(r.Routes) > 3 {
+			fmt.Fprintf(&sb, "   - HTTP routes: %s, and %d more\n", strings.Join(r.Routes[:3], ", "), len(r.Routes)-3)
+		} else {
+			fmt.Fprintf(&sb, "   - HTTP routes: %s\n", strings.Join(r.Routes, ", "))
+		}
+	} else {
+		sb.WriteString("   - HTTP routes: no\n")
+	}
+
+	if len(r.Envs) > 0 {
+		if len(r.Envs) > 3 {
+			fmt.Fprintf(&sb, "   - Env reads: %s, and %d more\n", strings.Join(r.Envs[:3], ", "), len(r.Envs)-3)
+		} else {
+			fmt.Fprintf(&sb, "   - Env reads: %s\n", strings.Join(r.Envs, ", "))
+		}
+	} else {
+		sb.WriteString("   - Env reads: no\n")
+	}
+
+	fmt.Fprintf(&sb, "   - SQL touches: %s\n", r.TouchesSQL)
+
+	if len(r.Errors) > 0 {
+		if len(r.Errors) > 3 {
+			fmt.Fprintf(&sb, "   - Error returns: %s, and %d more\n", strings.Join(r.Errors[:3], ", "), len(r.Errors)-3)
+		} else {
+			fmt.Fprintf(&sb, "   - Error returns: %s\n", strings.Join(r.Errors, ", "))
+		}
+	} else {
+		sb.WriteString("   - Error returns: none detected\n")
+	}
+
+	return sb.String()
+}
+
+// Review generates a post-edit review report for modified symbols.
+func Review(g *graph.Graph, symbolNames []string, title string) *ReviewResult {
+	if len(symbolNames) == 0 {
+		return &ReviewResult{Message: "No modified symbols found to review."}
+	}
+
+	res := &ReviewResult{
+		Title:      title,
+		PublicAPI:  "no",
+		TouchesSQL: "no",
+	}
+
 	var validSymbols []string
 	symbolMap := make(map[string]*graph.SymbolNode)
 	for i := range g.Symbols {
 		s := &g.Symbols[i]
 		symbolMap[s.ID] = s
-		// also map by name so we can do review "ValidateToken" directly
 		if _, exists := symbolMap[s.Name]; !exists {
 			symbolMap[s.Name] = s
 		}
@@ -34,74 +109,58 @@ func Review(g *graph.Graph, symbolNames []string, title string) string {
 		}
 	}
 
-	sb.WriteString("1. What changed?\n")
 	for _, name := range validSymbols {
 		sym := symbolMap[name]
-		sb.WriteString(fmt.Sprintf("   - %s:%d %s (%s)\n", sym.File, sym.Line, sym.Name, sym.Kind))
+		res.Changes = append(res.Changes, Result{File: sym.File, Line: sym.Line, Name: sym.Name, Kind: string(sym.Kind)})
 	}
-	if len(symbolNames) > len(validSymbols) {
-		sb.WriteString(fmt.Sprintf("   - ... plus %d symbols deleted or unparseable.\n", len(symbolNames)-len(validSymbols)))
-	}
-	sb.WriteString("\n")
 
-	sb.WriteString("2. Which changed symbols lack mapped tests?\n")
-	uncoveredTests := 0
-	for _, name := range validSymbols {
-		if len(Tests(g, name)) == 0 {
-			sb.WriteString(fmt.Sprintf("   - %s\n", name))
-			uncoveredTests++
+	testFiles := make(map[string]bool)
+	for _, symName := range validSymbols {
+		ts := Tests(g, symName)
+		for _, t := range ts {
+			testFiles[t.File] = true
 		}
 	}
-	if uncoveredTests == 0 {
-		sb.WriteString("   - None. All changed symbols have mapped tests.\n")
+	for tf := range testFiles {
+		res.Tests = append(res.Tests, tf)
 	}
-	sb.WriteString("\n")
 
-	sb.WriteString("3. Complexity & Architectural Risk (Current State)\n")
-	riskFound := false
-	for _, name := range validSymbols {
-		sym := symbolMap[name]
-		if sym.Kind == "function" || sym.Kind == "method" {
-			results := Complexity(g, name)
-			if len(results) > 0 {
-				score := results[0].Score
-				if score > 10 {
-					sb.WriteString(fmt.Sprintf("   - [HIGH COMPLEXITY] %s: score=%d\n", name, score))
-					riskFound = true
+	for _, symName := range validSymbols {
+		sym := symbolMap[symName]
+		if sym.Kind == graph.KindFunction || sym.Kind == graph.KindMethod || sym.Kind == graph.KindStruct || sym.Kind == graph.KindInterface {
+			if len(symName) > 0 {
+				parts := strings.Split(symName, "::")
+				short := parts[len(parts)-1]
+				parts2 := strings.Split(short, ".")
+				name := parts2[len(parts2)-1]
+				if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
+					res.PublicAPI = "yes"
+					break
 				}
 			}
 		}
 	}
-	if !riskFound {
-		sb.WriteString("   - No high complexity functions modified.\n")
-	}
-	sb.WriteString("\n")
 
-	sb.WriteString("4. Did public API or route surface change?\n")
-	apiChanged := false
-	for _, name := range validSymbols {
-		parts := strings.Split(name, "::")
-		short := parts[len(parts)-1]
-		parts2 := strings.Split(short, ".")
-		short2 := parts2[len(parts2)-1]
-		if len(short2) > 0 && short2[0] >= 'A' && short2[0] <= 'Z' {
-			sb.WriteString(fmt.Sprintf("   - [PUBLIC API] %s\n", name))
-			apiChanged = true
-		}
-		for _, r := range g.Routes {
-			if r.Handler == name {
-				sb.WriteString(fmt.Sprintf("   - [HTTP ROUTE] %s %s -> %s\n", r.Method, r.Path, name))
-				apiChanged = true
+	routeSet := make(map[string]bool)
+	blastRadius := ImpactMultiple(g, validSymbols, "review", true)
+	blastMap := make(map[string]bool)
+	for _, b := range blastRadius {
+		blastMap[b.Name] = true
+	}
+	for _, s := range validSymbols {
+		blastMap[s] = true
+	}
+
+	for _, route := range g.Routes {
+		if blastMap[route.Handler] {
+			rt := fmt.Sprintf("%s %s", route.Method, route.Path)
+			if !routeSet[rt] {
+				routeSet[rt] = true
+				res.Routes = append(res.Routes, rt)
 			}
 		}
 	}
-	if !apiChanged {
-		sb.WriteString("   - No public API or HTTP routes modified.\n")
-	}
-	sb.WriteString("\n")
 
-	sb.WriteString("5. Downstream Execution Risks (What do these changes touch?)\n")
-	// BFS for ALL modified symbols
 	downstream := make(map[string]bool)
 	queue := make([]string, len(validSymbols))
 	copy(queue, validSymbols)
@@ -121,49 +180,33 @@ func Review(g *graph.Graph, symbolNames []string, title string) string {
 		}
 	}
 
-	var envLines []string
-	seenEnvs := make(map[string]bool)
+	envSet := make(map[string]bool)
 	for _, env := range g.EnvReads {
 		if downstream[env.Function] {
-			if !seenEnvs[env.Key] {
-				seenEnvs[env.Key] = true
-				envLines = append(envLines, env.Key)
+			if !envSet[env.Key] {
+				envSet[env.Key] = true
+				res.Envs = append(res.Envs, env.Key)
 			}
 		}
 	}
 
-	if len(envLines) > 0 {
-		sb.WriteString(fmt.Sprintf("   - Reads Environment Variables: %s\n", strings.Join(envLines, ", ")))
-	} else {
-		sb.WriteString("   - Reads Environment Variables: no\n")
-	}
-
-	touchesSQL := false
 	for _, sql := range g.SQLs {
 		if downstream[sql.Function] {
-			touchesSQL = true
+			res.TouchesSQL = "yes"
 			break
 		}
 	}
-	sb.WriteString(fmt.Sprintf("   - Touches SQL: %v\n", touchesSQL))
 
-	touchesErrors := false
-	for _, err := range g.Errors {
-		if downstream[err.Function] {
-			touchesErrors = true
-			break
+	errSet := make(map[string]bool)
+	for _, errEdge := range g.Errors {
+		if downstream[errEdge.Function] {
+			eStr := errEdge.Message
+			if !errSet[eStr] {
+				errSet[eStr] = true
+				res.Errors = append(res.Errors, eStr)
+			}
 		}
 	}
-	sb.WriteString(fmt.Sprintf("   - Emits Custom Errors/Panics: %v\n", touchesErrors))
 
-	touchesConcurrency := false
-	for _, c := range g.Concurrency {
-		if downstream[c.Function] {
-			touchesConcurrency = true
-			break
-		}
-	}
-	sb.WriteString(fmt.Sprintf("   - Uses Concurrency Primitives: %v\n", touchesConcurrency))
-
-	return sb.String()
+	return res
 }

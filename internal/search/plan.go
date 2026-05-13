@@ -7,48 +7,33 @@ import (
 	"github.com/ozgurcd/gograph/internal/graph"
 )
 
-// Plan generates an operational change plan for one or more symbols.
-func Plan(g *graph.Graph, symbolNames []string, title string) string {
+type PlanResult struct {
+	Title      string   `json:"title"`
+	ReadFirst  []Result `json:"read_first"`
+	Tests      []string `json:"tests"`
+	PublicAPI  string   `json:"public_api"` // "yes", "no"
+	Routes     []string `json:"routes"`
+	Envs       []string `json:"envs"`
+	TouchesSQL string   `json:"touches_sql"` // "yes", "no"
+}
+
+func (r *PlanResult) String() string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Change plan for %s\n\n", title))
+	fmt.Fprintf(&sb, "Change plan for %s\n\n", r.Title)
 
 	// 1. Read first
 	sb.WriteString("1. Read first:\n")
-	readSet := make(map[string]bool)
-	var readLines []string
-
-	for _, symName := range symbolNames {
-		// Find symbol
-		for _, s := range g.Symbols {
-			if s.ID == symName || s.Name == symName {
-				line := fmt.Sprintf("   - %s:%d %s", s.File, s.Line, s.Name)
-				if !readSet[line] {
-					readSet[line] = true
-					readLines = append(readLines, line)
-				}
-			}
-		}
-		// Find immediate callers
-		callers := Callers(g, symName, true)
-		for _, c := range callers {
-			line := fmt.Sprintf("   - %s:%d %s", c.File, c.Line, c.Name)
-			if !readSet[line] {
-				readSet[line] = true
-				readLines = append(readLines, line)
-			}
-		}
-	}
-	if len(readLines) > 0 {
-		// Limit to 15 to avoid massive spam
-		limit := len(readLines)
+	if len(r.ReadFirst) > 0 {
+		limit := len(r.ReadFirst)
 		if limit > 15 {
 			limit = 15
 		}
 		for i := 0; i < limit; i++ {
-			sb.WriteString(readLines[i] + "\n")
+			c := r.ReadFirst[i]
+			fmt.Fprintf(&sb, "   - %s:%d %s\n", c.File, c.Line, c.Name)
 		}
-		if len(readLines) > 15 {
-			sb.WriteString(fmt.Sprintf("   ... and %d more\n", len(readLines)-15))
+		if len(r.ReadFirst) > 15 {
+			fmt.Fprintf(&sb, "   ... and %d more\n", len(r.ReadFirst)-15)
 		}
 	} else {
 		sb.WriteString("   - (No source or callers found)\n")
@@ -57,17 +42,9 @@ func Plan(g *graph.Graph, symbolNames []string, title string) string {
 
 	// 2. Update likely affected tests
 	sb.WriteString("2. Update likely affected tests:\n")
-	testFiles := make(map[string]bool)
-	
-	for _, symName := range symbolNames {
-		ts := Tests(g, symName)
-		for _, t := range ts {
-			testFiles[t.File] = true
-		}
-	}
-	if len(testFiles) > 0 {
-		for tf := range testFiles {
-			sb.WriteString(fmt.Sprintf("   - %s\n", tf))
+	if len(r.Tests) > 0 {
+		for _, tf := range r.Tests {
+			fmt.Fprintf(&sb, "   - %s\n", tf)
 		}
 	} else {
 		sb.WriteString("   - (No direct tests found)\n")
@@ -76,26 +53,93 @@ func Plan(g *graph.Graph, symbolNames []string, title string) string {
 
 	// 3. Risk Profile
 	sb.WriteString("3. Risk:\n")
-	
+	fmt.Fprintf(&sb, "   - Public API: %s\n", r.PublicAPI)
+
+	// Check Routes
+	if len(r.Routes) > 0 {
+		if len(r.Routes) > 3 {
+			fmt.Fprintf(&sb, "   - Called by HTTP route: %s, and %d more\n", strings.Join(r.Routes[:3], ", "), len(r.Routes)-3)
+		} else {
+			fmt.Fprintf(&sb, "   - Called by HTTP route: %s\n", strings.Join(r.Routes, ", "))
+		}
+	} else {
+		sb.WriteString("   - Called by HTTP route: no\n")
+	}
+
+	// Check Envs
+	if len(r.Envs) > 0 {
+		if len(r.Envs) > 3 {
+			fmt.Fprintf(&sb, "   - Reads env: %s, and %d more\n", strings.Join(r.Envs[:3], ", "), len(r.Envs)-3)
+		} else {
+			fmt.Fprintf(&sb, "   - Reads env: %s\n", strings.Join(r.Envs, ", "))
+		}
+	} else {
+		sb.WriteString("   - Reads env: no\n")
+	}
+
+	fmt.Fprintf(&sb, "   - Touches SQL: %s\n", r.TouchesSQL)
+
+	return sb.String()
+}
+
+// Plan generates an operational change plan for one or more symbols.
+func Plan(g *graph.Graph, symbolNames []string, title string) *PlanResult {
+	res := &PlanResult{
+		Title:      title,
+		PublicAPI:  "no",
+		TouchesSQL: "no",
+	}
+
+	readSet := make(map[string]bool)
+
+	for _, symName := range symbolNames {
+		// Find symbol
+		for _, s := range g.Symbols {
+			if s.ID == symName || s.Name == symName {
+				line := fmt.Sprintf("%s:%d %s", s.File, s.Line, s.Name)
+				if !readSet[line] {
+					readSet[line] = true
+					res.ReadFirst = append(res.ReadFirst, Result{File: s.File, Line: s.Line, Name: s.Name})
+				}
+			}
+		}
+		// Find immediate callers
+		callers := Callers(g, symName, true)
+		for _, c := range callers {
+			line := fmt.Sprintf("%s:%d %s", c.File, c.Line, c.Name)
+			if !readSet[line] {
+				readSet[line] = true
+				res.ReadFirst = append(res.ReadFirst, c)
+			}
+		}
+	}
+
+	testFiles := make(map[string]bool)
+	for _, symName := range symbolNames {
+		ts := Tests(g, symName)
+		for _, t := range ts {
+			testFiles[t.File] = true
+		}
+	}
+	for tf := range testFiles {
+		res.Tests = append(res.Tests, tf)
+	}
+
 	// Check Public API
-	isPublic := "no"
 	for _, symName := range symbolNames {
 		if len(symName) > 0 {
-			// Find actual symbol name (ignoring receiver and ID parts)
 			parts := strings.Split(symName, "::")
 			short := parts[len(parts)-1]
 			parts2 := strings.Split(short, ".")
 			name := parts2[len(parts2)-1]
 			if len(name) > 0 && name[0] >= 'A' && name[0] <= 'Z' {
-				isPublic = "yes"
+				res.PublicAPI = "yes"
 				break
 			}
 		}
 	}
-	sb.WriteString(fmt.Sprintf("   - Public API: %s\n", isPublic))
 
 	// Check Routes
-	var routeLines []string
 	routeSet := make(map[string]bool)
 	blastRadius := ImpactMultiple(g, symbolNames, "plan", true)
 	blastMap := make(map[string]bool)
@@ -111,18 +155,9 @@ func Plan(g *graph.Graph, symbolNames []string, title string) string {
 			rt := fmt.Sprintf("%s %s", route.Method, route.Path)
 			if !routeSet[rt] {
 				routeSet[rt] = true
-				routeLines = append(routeLines, rt)
+				res.Routes = append(res.Routes, rt)
 			}
 		}
-	}
-	if len(routeLines) > 0 {
-		if len(routeLines) > 3 {
-			sb.WriteString(fmt.Sprintf("   - Called by HTTP route: %s, and %d more\n", strings.Join(routeLines[:3], ", "), len(routeLines)-3))
-		} else {
-			sb.WriteString(fmt.Sprintf("   - Called by HTTP route: %s\n", strings.Join(routeLines, ", ")))
-		}
-	} else {
-		sb.WriteString("   - Called by HTTP route: no\n")
 	}
 
 	// Check Envs and SQL via downstream BFS
@@ -145,34 +180,22 @@ func Plan(g *graph.Graph, symbolNames []string, title string) string {
 		}
 	}
 
-	var envLines []string
 	envSet := make(map[string]bool)
 	for _, env := range g.EnvReads {
 		if downstream[env.Function] {
 			if !envSet[env.Key] {
 				envSet[env.Key] = true
-				envLines = append(envLines, env.Key)
+				res.Envs = append(res.Envs, env.Key)
 			}
 		}
 	}
-	if len(envLines) > 0 {
-		if len(envLines) > 3 {
-			sb.WriteString(fmt.Sprintf("   - Reads env: %s, and %d more\n", strings.Join(envLines[:3], ", "), len(envLines)-3))
-		} else {
-			sb.WriteString(fmt.Sprintf("   - Reads env: %s\n", strings.Join(envLines, ", ")))
-		}
-	} else {
-		sb.WriteString("   - Reads env: no\n")
-	}
 
-	touchesSQL := "no"
 	for _, sql := range g.SQLs {
 		if downstream[sql.Function] {
-			touchesSQL = "yes"
+			res.TouchesSQL = "yes"
 			break
 		}
 	}
-	sb.WriteString(fmt.Sprintf("   - Touches SQL: %s\n", touchesSQL))
 
-	return sb.String()
+	return res
 }

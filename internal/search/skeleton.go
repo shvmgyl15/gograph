@@ -27,7 +27,7 @@ func Skeleton(g *graph.Graph) string {
 	sort.Strings(pkgs)
 
 	for _, pkg := range pkgs {
-		sb.WriteString(fmt.Sprintf("package %s\n\n", pkg))
+		fmt.Fprintf(&sb, "package %s\n\n", pkg)
 
 		// Sort symbols by Name inside package
 		syms := pkgSymbols[pkg]
@@ -38,20 +38,20 @@ func Skeleton(g *graph.Graph) string {
 		for _, sym := range syms {
 			switch sym.Kind {
 			case graph.KindStruct:
-				sb.WriteString(fmt.Sprintf("type %s struct {\n", sym.Name))
+				fmt.Fprintf(&sb, "type %s struct {\n", sym.Name)
 				for _, emb := range sym.EmbeddedStructs {
-					sb.WriteString(fmt.Sprintf("\t%s\n", emb))
+					fmt.Fprintf(&sb, "\t%s\n", emb)
 				}
 				for _, field := range sym.StructFields {
 					if field.Tag != "" {
-						sb.WriteString(fmt.Sprintf("\t%s %s `%s`\n", field.Name, field.Type, field.Tag))
+						fmt.Fprintf(&sb, "\t%s %s `%s`\n", field.Name, field.Type, field.Tag)
 					} else {
-						sb.WriteString(fmt.Sprintf("\t%s %s\n", field.Name, field.Type))
+						fmt.Fprintf(&sb, "\t%s %s\n", field.Name, field.Type)
 					}
 				}
 				sb.WriteString("}\n\n")
 			case graph.KindInterface:
-				sb.WriteString(fmt.Sprintf("type %s interface {\n", sym.Name))
+				fmt.Fprintf(&sb, "type %s interface {\n", sym.Name)
 				// We don't have ordered interface methods, but we can print them
 				var methods []string
 				for m, sig := range sym.InterfaceMethods {
@@ -63,9 +63,9 @@ func Skeleton(g *graph.Graph) string {
 				}
 				sb.WriteString("}\n\n")
 			case graph.KindFunction:
-				sb.WriteString(fmt.Sprintf("%s\n", sym.Signature))
+				fmt.Fprintf(&sb, "%s\n", sym.Signature)
 			case graph.KindMethod:
-				sb.WriteString(fmt.Sprintf("%s\n", sym.Signature))
+				fmt.Fprintf(&sb, "%s\n", sym.Signature)
 			}
 		}
 		sb.WriteString("\n// " + strings.Repeat("-", 40) + "\n\n")

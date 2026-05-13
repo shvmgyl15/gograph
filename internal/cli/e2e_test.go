@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,15 +36,22 @@ type Service interface {
 	DoWork()
 }
 
+func ReturnError() error {
+	return fmt.Errorf("invalid arguments")
+}
+
 func main() {
 	fmt.Println("Hello", GlobalCounter)
+	if err := ReturnError(); err != nil {
+		fmt.Println("caught:", err)
+	}
 }
 `
 	if err := os.WriteFile(mainGo, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write dummy source: %v", err)
 	}
 
-	// Go run cmd/gograph/main.go ... 
+	// Go run cmd/gograph/main.go ...
 	// Use the compiled binary from the project root.
 	repoRoot, _ := filepath.Abs("../../")
 	binPath := filepath.Join(repoRoot, "bin", "gograph")
@@ -91,5 +99,42 @@ func main() {
 	}
 	if !strings.Contains(out, "GlobalCounter") {
 		t.Errorf("expected globals to find GlobalCounter, got: %s", out)
+	}
+
+	// 5. Test plan
+	out, err = runCmd("plan", "ReturnError")
+	if err != nil {
+		t.Fatalf("plan failed: %v\nOutput:\n%s", err, out)
+	}
+	if !strings.Contains(out, "Change plan for ReturnError") {
+		t.Errorf("expected plan output, got: %s", out)
+	}
+
+	// 6. Test review
+	out, err = runCmd("review", "ReturnError")
+	if err != nil {
+		t.Fatalf("review failed: %v\nOutput:\n%s", err, out)
+	}
+	if !strings.Contains(out, "Code Review for ReturnError") {
+		t.Errorf("expected review output, got: %s", out)
+	}
+
+	// 7. Test errorflow
+	out, err = runCmd("errorflow", "invalid arguments")
+	if err != nil {
+		t.Fatalf("errorflow failed: %v\nOutput:\n%s", err, out)
+	}
+	if !strings.Contains(out, "ErrorFlow Report for") {
+		t.Errorf("expected errorflow output, got: %s", out)
+	}
+
+	// 8. Test JSON flags
+	outJSON, err := runCmd("--json", "plan", "ReturnError")
+	var env map[string]interface{}
+	if err := json.Unmarshal([]byte(outJSON), &env); err != nil {
+		t.Fatalf("Failed to parse JSON for plan: %v\nOutput: %s", err, outJSON)
+	}
+	if env["status"] != "ok" {
+		t.Errorf("expected JSON success status, got: %s", outJSON)
 	}
 }

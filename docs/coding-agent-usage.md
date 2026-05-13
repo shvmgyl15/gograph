@@ -404,6 +404,7 @@ Example:
 gograph api --since main
 ```
 *Note: Contract drift is based on static AST and graph comparison. It identifies likely breaking surface changes, but it does not prove runtime compatibility.*
+*Tip: Run `gograph build . --precise` before `gograph api --since main` for best results.*
 
 ### 22. Native Execution via MCP
 Agents that support the Model Context Protocol (like Claude Desktop, Cursor, and Antigravity) can run `gograph` as a native MCP server:
@@ -417,7 +418,16 @@ Agents that support the Model Context Protocol (like Claude Desktop, Cursor, and
   }
 }
 ```
-This exposes the entire `gograph_*` tool suite (including `gograph_api`, `gograph_context`, `gograph_plan`, `gograph_review`, `gograph_errorflow`, `gograph_boundaries`, and more) directly to the agent as executable tools, bypassing the need for terminal commands.
+This exposes the entire `gograph_*` tool suite directly to the agent as executable tools, bypassing the need for terminal commands.
+
+### Phase 1 MCP Tools (Structured JSON)
+
+The following core commands now return structured, machine-readable JSON over the MCP transport, sharing the exact same analytical engine as the CLI but mapped to the `MCPResponse` shape:
+
+- **`gograph_context`**: Bundles node details, callers, callees, tests, and source code into one compact response.
+- **`gograph_plan`**: Pre-edit planning. Highlights likely affected tests, routes, env reads, SQL touches, and public API impact for a given symbol or uncommitted changes.
+- **`gograph_review`**: Post-edit review. Summarizes what changed and its risk profile for a given symbol or uncommitted changes.
+- **`gograph_errorflow`**: Traces likely error paths up to entry points (HTTP routes or CLI commands). (*Limitation: Uses heuristic static call-graph and AST reference analysis, not SSA data-flow tracking.*)
 
 ## Recommended project setup
 

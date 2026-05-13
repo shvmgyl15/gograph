@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -14,8 +15,21 @@ import (
 	"github.com/ozgurcd/gograph/internal/search"
 )
 
-// Serve runs the gograph MCP server over stdio.
-func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph func(string) (*graph.Graph, error)) error {
+// MCPResponse is the stable structured data payload returned by complex tools.
+type MCPResponse struct {
+	Summary     string            `json:"summary,omitempty"`
+	Source      string            `json:"source,omitempty"`
+	Findings    []search.Result   `json:"findings,omitempty"`
+	Files       []string          `json:"files,omitempty"`
+	Symbols     []string          `json:"symbols,omitempty"`
+	Routes      []string          `json:"routes,omitempty"`
+	Tests       []string          `json:"tests,omitempty"`
+	Risk        map[string]string `json:"risk,omitempty"`
+	Limitations []string          `json:"limitations,omitempty"`
+}
+
+// NewServer creates and returns the MCP server with all tools registered.
+func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph func(string) (*graph.Graph, error)) *server.MCPServer {
 	s := server.NewMCPServer(
 		"gograph",
 		"1.1.0",
@@ -234,50 +248,6 @@ func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph func
 		return formatResults(results), nil
 	})
 
-	// Tool: gograph_plan
-	planTool := mcp.NewTool("gograph_plan",
-		mcp.WithDescription("Generate an operational change plan for a symbol before editing it. This aggregates callers, tests, and risk metrics (routes, sql, env) into a single actionable report."),
-		mcp.WithString("symbol", mcp.Required(), mcp.Description("The name of the symbol you intend to edit (e.g., 'ValidateToken')")),
-	)
-	s.AddTool(planTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		if newG, err := rebuild(); err == nil {
-			g = newG
-		}
-		args, ok := request.Params.Arguments.(map[string]any)
-		if !ok {
-			return mcp.NewToolResultError("invalid arguments"), nil
-		}
-		sym, ok := args["symbol"].(string)
-		if !ok {
-			return mcp.NewToolResultError("symbol must be a string"), nil
-		}
-
-		planText := search.Plan(g, []string{sym}, sym)
-		return mcp.NewToolResultText(planText), nil
-	})
-
-	// Tool: gograph_review
-	reviewTool := mcp.NewTool("gograph_review",
-		mcp.WithDescription("Generate a post-edit final review report for a modified symbol. Use this after making changes to verify test coverage, complexity, and downstream execution risks (SQL, Envs, etc)."),
-		mcp.WithString("symbol", mcp.Required(), mcp.Description("The name of the symbol you just edited (e.g., 'ValidateToken')")),
-	)
-	s.AddTool(reviewTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		if newG, err := rebuild(); err == nil {
-			g = newG
-		}
-		args, ok := request.Params.Arguments.(map[string]any)
-		if !ok {
-			return mcp.NewToolResultError("invalid arguments"), nil
-		}
-		sym, ok := args["symbol"].(string)
-		if !ok {
-			return mcp.NewToolResultError("symbol must be a string"), nil
-		}
-
-		reviewText := search.Review(g, []string{sym}, sym)
-		return mcp.NewToolResultText(reviewText), nil
-	})
-
 	// Tool: gograph_api
 	apiTool := mcp.NewTool("gograph_api",
 		mcp.WithDescription("Compare the public-facing contract and integration surface of the Go codebase against a baseline git reference. Identifies likely breaking changes to exported functions, structs, interfaces, and routes."),
@@ -301,7 +271,7 @@ func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph func
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("error creating temp dir: %v", err)), nil
 		}
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		cmd := exec.Command("bash", "-c", fmt.Sprintf(`git archive %s "**/*.go" "*.go" "go.mod" "go.sum" "go.work" "go.work.sum" | tar -x -C %s`, sinceRef, tmpDir))
 		if err := cmd.Run(); err != nil {
@@ -332,6 +302,139 @@ func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph func
 		return formatResults(results), nil
 	})
 
+	// Tool: gograph_context
+	contextTool := mcp.NewTool("gograph_context",
+		mcp.WithDescription("Compact symbol context. Bundles node details, callers, callees, tests, and source code into one structured response."),
+		mcp.WithString("symbol", mcp.Required(), mcp.Description("The exact name or ID of the symbol to retrieve context for.")),
+	)
+	s.AddTool(contextTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		symbol, ok := args["symbol"].(string)
+		if !ok || symbol == "" {
+			return mcp.NewToolResultError("symbol must be a non-empty string"), nil
+		}
+		root, _ := filepath.Abs(".")
+		result := search.Context(g, root, symbol)
+		if result == nil {
+			return mcp.NewToolResultText("{}"), nil
+		}
+
+		resp := MCPResponse{
+			Summary:  "Context for " + symbol,
+			Source:   result.Source,
+			Findings: append(append(append(result.Node, result.Callers...), result.Callees...), result.Tests...),
+		}
+		data, err := json.MarshalIndent(resp, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_plan
+	planTool := mcp.NewTool("gograph_plan",
+		mcp.WithDescription("Safe edit planning before code changes. Highlights likely affected tests, routes, env reads, SQL touches, and public API impact."),
+		mcp.WithString("symbol", mcp.Description("The symbol to plan changes for")),
+		mcp.WithBoolean("uncommitted", mcp.Description("Set to true to plan all uncommitted changes")),
+	)
+	s.AddTool(planTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		var symbolNames []string
+		var title string
+		if u, ok := args["uncommitted"].(bool); ok && u {
+			syms, err := search.UncommittedSymbols(g)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			symbolNames = syms
+			title = "Uncommitted Changes"
+		} else if sym, ok := args["symbol"].(string); ok && sym != "" {
+			symbolNames = []string{sym}
+			title = sym
+		} else {
+			return mcp.NewToolResultError("must provide either symbol or set uncommitted to true"), nil
+		}
+
+		planRes := search.Plan(g, symbolNames, title)
+		
+		resp := MCPResponse{
+			Summary:  "Change plan for " + planRes.Title,
+			Findings: planRes.ReadFirst,
+			Tests:    planRes.Tests,
+			Routes:   planRes.Routes,
+			Risk: map[string]string{
+				"public_api":  planRes.PublicAPI,
+				"touches_sql": planRes.TouchesSQL,
+			},
+		}
+		data, err := json.MarshalIndent(resp, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_review
+	reviewTool := mcp.NewTool("gograph_review",
+		mcp.WithDescription("Post-edit or symbol-focused review. Summarizes what changed and its risk profile."),
+		mcp.WithString("symbol", mcp.Description("The symbol to review")),
+		mcp.WithBoolean("uncommitted", mcp.Description("Set to true to review all uncommitted changes")),
+	)
+	s.AddTool(reviewTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		var symbolNames []string
+		var title string
+		if u, ok := args["uncommitted"].(bool); ok && u {
+			syms, err := search.UncommittedSymbols(g)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			symbolNames = syms
+			title = "Uncommitted Changes"
+		} else if sym, ok := args["symbol"].(string); ok && sym != "" {
+			symbolNames = []string{sym}
+			title = sym
+		} else {
+			return mcp.NewToolResultError("must provide either symbol or set uncommitted to true"), nil
+		}
+
+		revRes := search.Review(g, symbolNames, title)
+		
+		resp := MCPResponse{
+			Summary:  "Code Review for " + revRes.Title,
+			Findings: revRes.Changes,
+			Tests:    revRes.Tests,
+			Routes:   revRes.Routes,
+			Risk: map[string]string{
+				"public_api":  revRes.PublicAPI,
+				"touches_sql": revRes.TouchesSQL,
+			},
+		}
+		data, err := json.MarshalIndent(resp, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
 	// Tool: gograph_errorflow
 	errorflowTool := mcp.NewTool("gograph_errorflow",
 		mcp.WithDescription("Trace likely error paths up to entry points (HTTP routes or CLI commands). Use this to find where an error originates and how it is handled. (AST heuristic, NO SSA)"),
@@ -351,7 +454,33 @@ func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph func
 		}
 
 		report := search.ErrorFlow(g, term)
-		return mcp.NewToolResultText(report.String()), nil
+		
+		var findings []search.Result
+		findings = append(findings, report.DefinitionSites...)
+		findings = append(findings, report.ReturnSites...)
+		
+		// For TraceResults, since MCPResponse.Findings takes search.Result,
+		// we will map them into search.Result for uniform parsing.
+		for _, path := range report.Paths {
+			findings = append(findings, path.Path...)
+		}
+		
+		resp := MCPResponse{
+			Summary:  "ErrorFlow Report for " + report.Term,
+			Findings: findings,
+			Tests:    nil, // Will add tests later
+			Limitations: []string{
+				"Errorflow uses heuristic static call-graph and AST reference analysis. It does not perform SSA or full data-flow tracking.",
+			},
+		}
+		for _, t := range report.RelatedTests {
+			resp.Tests = append(resp.Tests, t.Name)
+		}
+		data, err := json.MarshalIndent(resp, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
 	})
 
 	// Tool: gograph_imports
@@ -458,6 +587,12 @@ func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph func
 	initNewTools(s, g, rebuild)
 
 	// Start stdio server
+	return s
+}
+
+// Serve runs the gograph MCP server over stdio.
+func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph func(string) (*graph.Graph, error)) error {
+	s := NewServer(g, rebuild, buildGraph)
 	return server.ServeStdio(s)
 }
 

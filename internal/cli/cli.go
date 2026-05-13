@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"go/token"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -33,6 +32,7 @@ const errorsFile = ".gograph/graph-errors.md"
 const configFile = ".gograph/graph-config.md"
 const concFile = ".gograph/graph-concurrency.md"
 const testsFile = ".gograph/graph-tests.md"
+
 // Version is set at build time via -ldflags; defaults to "dev" for local builds.
 var Version = "dev"
 
@@ -254,7 +254,7 @@ func runBuild(args []string) int {
 	if len(filteredArgs) > 0 {
 		root = filteredArgs[0]
 	}
-	
+
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error resolving path: %v\n", err)
@@ -276,7 +276,6 @@ func runBuild(args []string) int {
 			fmt.Fprintf(os.Stderr, "warning: precise enrichment failed: %v\n", err)
 		}
 	}
-
 
 	outDir := filepath.Join(absRoot, outputDir)
 	if err := os.MkdirAll(outDir, 0o750); err != nil {
@@ -655,7 +654,7 @@ func writeGitignore(root string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	prefix := "\n"
 	if len(existing) == 0 {
 		prefix = ""
@@ -841,6 +840,7 @@ CODE QUALITY
   review <symbol>            Generate a post-edit final review report for a modified symbol.
   review --uncommitted       Generate a post-edit final review report for all uncommitted changes.
   api --since <ref>          Identify breaking API and contract changes since a git reference (e.g. main).
+                             Run 'gograph build . --precise' before this for best results.
                              Use --force to bypass interactive prompt.
 
 EXTRACTION
@@ -1492,61 +1492,9 @@ func runImpact(args []string) int {
 	return printResults("impact", strings.Join(args, " "), results, fmt.Sprintf("No callers found in blast radius of %q.", args[0]))
 }
 
-// getUncommittedSymbols parses git diff to find modified symbols.
-func getUncommittedSymbols(g *graph.Graph) ([]string, error) {
-	out, err := exec.Command("git", "diff", "HEAD", "-U0").Output()
-	if err != nil {
-		return nil, fmt.Errorf("error running git diff: %v", err)
-	}
-
-	diffStr := string(out)
-	fileLines := make(map[string][]int)
-	var currentFile string
-
-	for _, line := range strings.Split(diffStr, "\n") {
-		if strings.HasPrefix(line, "+++ b/") {
-			currentFile = strings.TrimPrefix(line, "+++ b/")
-		} else if strings.HasPrefix(line, "@@ ") && currentFile != "" {
-			parts := strings.Split(line, " ")
-			if len(parts) >= 3 {
-				plusPart := strings.TrimPrefix(parts[2], "+")
-				sp := strings.Split(plusPart, ",")
-				start, _ := strconv.Atoi(sp[0])
-				count := 1
-				if len(sp) > 1 {
-					count, _ = strconv.Atoi(sp[1])
-				}
-				for i := 0; i < count; i++ {
-					fileLines[currentFile] = append(fileLines[currentFile], start+i)
-				}
-			}
-		}
-	}
-
-	var modifiedSymbolNames []string
-	seenSymbols := make(map[string]bool)
-
-	for file, lines := range fileLines {
-		for _, s := range g.Symbols {
-			if strings.HasSuffix(s.File, file) {
-				for _, line := range lines {
-					if line >= s.Line && line <= s.EndLine {
-						if !seenSymbols[s.ID] {
-							seenSymbols[s.ID] = true
-							modifiedSymbolNames = append(modifiedSymbolNames, s.ID)
-						}
-						break
-					}
-				}
-			}
-		}
-	}
-	return modifiedSymbolNames, nil
-}
-
 // runImpactUncommitted parses git diff to find modified symbols, then computes their blast radius.
 func runImpactUncommitted(g *graph.Graph) int {
-	modifiedSymbolNames, err := getUncommittedSymbols(g)
+	modifiedSymbolNames, err := search.UncommittedSymbols(g)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -1881,7 +1829,7 @@ func runPlan(args []string) int {
 	var title string
 
 	if args[0] == "--uncommitted" {
-		symbolNames, err = getUncommittedSymbols(g)
+		symbolNames, err = search.UncommittedSymbols(g)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
@@ -1897,12 +1845,12 @@ func runPlan(args []string) int {
 	}
 
 	plan := search.Plan(g, symbolNames, title)
-	
+
 	if jsonMode {
-		return printResults("plan", title, []search.Result{{Kind: "plan", Detail: plan}}, "")
+		return PrintJSON(okEnvelope("plan", title, plan, 1))
 	}
-	
-	fmt.Print(plan)
+
+	fmt.Print(plan.String())
 	return 0
 }
 
@@ -1923,7 +1871,7 @@ func runReview(args []string) int {
 	var title string
 
 	if args[0] == "--uncommitted" {
-		symbolNames, err = getUncommittedSymbols(g)
+		symbolNames, err = search.UncommittedSymbols(g)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
@@ -1939,11 +1887,11 @@ func runReview(args []string) int {
 	}
 
 	report := search.Review(g, symbolNames, title)
-	
+
 	if jsonMode {
-		return printResults("review", title, []search.Result{{Kind: "review", Detail: report}}, "")
+		return PrintJSON(okEnvelope("review", title, report, 1))
 	}
-	
-	fmt.Print(report)
+
+	fmt.Print(report.String())
 	return 0
 }

@@ -1,6 +1,7 @@
 package search
 
 import (
+	"reflect"
 	"strings"
 
 	"github.com/ozgurcd/gograph/internal/graph"
@@ -171,8 +172,11 @@ func APIDrift(baseline, current *graph.Graph, baselineRef string) *APIDriftResul
 				Method:  rOld.Method,
 				Path:    rOld.Path,
 				Type:    "changed",
-				Details: "handler changed: " + rOld.Handler + " -> " + rNew.Handler,
+				Details: "Existing route handler changed; HTTP behavior may have changed. (" + rOld.Handler + " -> " + rNew.Handler + ")",
 			})
+			if res.BreakingHTTPAPI == "no" {
+				res.BreakingHTTPAPI = "likely"
+			}
 		}
 	}
 
@@ -186,14 +190,38 @@ func APIDrift(baseline, current *graph.Graph, baselineRef string) *APIDriftResul
 	affectedMocksMap := make(map[string]bool)
 	affectedTestsMap := make(map[string]bool)
 
+	// Collect affected tests
+	var changedSymbols []string
+	for _, c := range res.ExportedSymbols.Changed {
+		changedSymbols = append(changedSymbols, c.Name)
+	}
+	for _, c := range res.Interfaces.Changed {
+		changedSymbols = append(changedSymbols, c.Name)
+	}
+	for _, c := range res.Structs.Changed {
+		changedSymbols = append(changedSymbols, c.Name)
+	}
+	for _, c := range res.Routes.Changed {
+		// Try to find tests for the new handler
+		parts := strings.Split(c.Details, " -> ")
+		if len(parts) == 2 {
+			changedSymbols = append(changedSymbols, strings.TrimSuffix(parts[1], ")"))
+		}
+	}
+	for _, sym := range changedSymbols {
+		for _, test := range Tests(current, sym) {
+			affectedTestsMap[test.Name] = true
+		}
+	}
+
 	for _, idf := range res.Interfaces.Changed {
 		implementers := Implementers(current, idf.Name)
 		for _, imp := range implementers {
-			if strings.Contains(strings.ToLower(imp.Name), "mock") || strings.Contains(strings.ToLower(imp.File), "mock") {
-				affectedMocksMap[imp.Name] = true
+			isMock := strings.Contains(strings.ToLower(imp.Name), "mock") || strings.Contains(strings.ToLower(imp.File), "mock")
+			if isMock {
+				affectedMocksMap[imp.Name+" (likely stale)"] = true
 			} else {
-				// Other implementers might also be broken, but user only asked for affected tests/mocks
-				affectedMocksMap[imp.Name] = true
+				affectedMocksMap[imp.Name+" (affected)"] = true
 			}
 		}
 	}
@@ -247,14 +275,38 @@ func compareInterface(old, new graph.SymbolNode) []string {
 	return changes
 }
 
+func extractContractName(f graph.StructField) (string, bool) {
+	tagBody := strings.Trim(f.Tag, "`")
+	if tagBody == "" {
+		return f.Name + " (inferred)", false
+	}
+	jsonTag := reflect.StructTag(tagBody).Get("json")
+	if jsonTag == "-" {
+		return "", true
+	}
+	if jsonTag != "" {
+		parts := strings.Split(jsonTag, ",")
+		if parts[0] != "" {
+			return parts[0], false
+		}
+	}
+	return f.Name + " (inferred)", false
+}
+
 func compareStruct(old, new graph.SymbolNode) (changes []string, breaking bool) {
 	oldFields := make(map[string]graph.StructField)
 	for _, f := range old.StructFields {
-		oldFields[f.Name] = f
+		name, ignored := extractContractName(f)
+		if !ignored {
+			oldFields[name] = f
+		}
 	}
 	newFields := make(map[string]graph.StructField)
 	for _, f := range new.StructFields {
-		newFields[f.Name] = f
+		name, ignored := extractContractName(f)
+		if !ignored {
+			newFields[name] = f
+		}
 	}
 
 	for name, oldF := range oldFields {
@@ -274,7 +326,7 @@ func compareStruct(old, new graph.SymbolNode) (changes []string, breaking bool) 
 	}
 	for name := range newFields {
 		if _, exists := oldFields[name]; !exists {
-			changes = append(changes, "added field "+name)
+			changes = append(changes, "added field "+name+"; compatibility depends on validation/runtime behavior")
 		}
 	}
 	return changes, breaking
