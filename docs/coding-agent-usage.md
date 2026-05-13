@@ -366,7 +366,46 @@ Affected symbols: 3 modified, 1 new, 0 deleted
 [MODIFIED] HandleLogin  (internal/api/handler.go:88)
 ```
 
-### 19. Native Execution via MCP
+### 20. Architecture Boundary Enforcement
+You can configure `gograph` to actively enforce clean architecture by defining boundaries in `.gograph/boundaries.json`:
+```json
+{
+  "layers": [
+    {
+      "name": "domain",
+      "packages": ["internal/domain/**"],
+      "may_import": []
+    },
+    {
+      "name": "handler",
+      "packages": ["internal/handler/**"],
+      "may_import": ["internal/service/**", "internal/domain/**"]
+    }
+  ]
+}
+```
+Run the enforcement check:
+```bash
+gograph boundaries
+```
+*If a violation is found (e.g., `handler` imports `internal/repository` directly), it will exit with code 1 and print the exact file that violated the rule. Extremely useful for CI/CD or Agent workflows!*
+
+### 21. API / Contract Drift
+`gograph api --since <ref>` compares the public-facing contract and integration surface of the Go codebase against a baseline git reference.
+
+It identifies structural changes that may break callers, clients, mocks, tests, or coding agents, focusing on:
+1. Exported Go API drift (signature changes)
+2. Interface drift
+3. Struct / JSON contract drift
+4. HTTP route surface drift
+
+Example:
+```bash
+gograph api --since main
+```
+*Note: Contract drift is based on static AST and graph comparison. It identifies likely breaking surface changes, but it does not prove runtime compatibility.*
+
+### 22. Native Execution via MCP
 Agents that support the Model Context Protocol (like Claude Desktop, Cursor, and Antigravity) can run `gograph` as a native MCP server:
 ```json
 {
@@ -378,7 +417,7 @@ Agents that support the Model Context Protocol (like Claude Desktop, Cursor, and
   }
 }
 ```
-This exposes `gograph_query`, `gograph_focus`, `gograph_callers`, and `gograph_callees` directly to the agent as executable tools, bypassing the need for terminal commands.
+This exposes the entire `gograph_*` tool suite (including `gograph_api`, `gograph_context`, `gograph_plan`, `gograph_review`, `gograph_errorflow`, `gograph_boundaries`, and more) directly to the agent as executable tools, bypassing the need for terminal commands.
 
 ## Recommended project setup
 

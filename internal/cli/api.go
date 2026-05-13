@@ -1,0 +1,186 @@
+package cli
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+
+	"github.com/ozgurcd/gograph/internal/graph"
+	"github.com/ozgurcd/gograph/internal/search"
+)
+
+func runAPI(args []string) int {
+	var baselineRef string
+	var useJSON bool
+	var force bool
+
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--since" && i+1 < len(args) {
+			baselineRef = args[i+1]
+			i++
+		} else if args[i] == "--json" {
+			useJSON = true
+		} else if args[i] == "--force" || args[i] == "-y" {
+			force = true
+		}
+	}
+
+	if baselineRef == "" {
+		if useJSON {
+			return PrintJSON(errEnvelope("api", "missing --since flag. Usage: gograph api --since <ref>"))
+		}
+		fmt.Fprintln(os.Stderr, "usage: gograph api --since <git-ref|file.json> [--json] [--force]")
+		return 1
+	}
+
+	currentGraph, err := loadGraph(".")
+	if err != nil {
+		if useJSON {
+			return PrintJSON(errEnvelope("api", err.Error()))
+		}
+		fmt.Fprintln(os.Stderr, "error loading current graph:", err)
+		return 1
+	}
+
+	var baselineGraph *graph.Graph
+
+	if strings.HasSuffix(baselineRef, ".json") {
+		data, err := os.ReadFile(baselineRef)
+		if err != nil {
+			if useJSON {
+				return PrintJSON(errEnvelope("api", err.Error()))
+			}
+			fmt.Fprintf(os.Stderr, "error loading baseline graph %s: %v\n", baselineRef, err)
+			return 1
+		}
+		var g graph.Graph
+		if err := json.Unmarshal(data, &g); err != nil {
+			if useJSON {
+				return PrintJSON(errEnvelope("api", err.Error()))
+			}
+			fmt.Fprintf(os.Stderr, "error parsing baseline graph %s: %v\n", baselineRef, err)
+			return 1
+		}
+		baselineGraph = &g
+	} else {
+		if !force && !useJSON {
+			fmt.Printf("⚠️  WARNING: To compare contracts, gograph must copy the repository state at '%s' (excluding .git/ and non-source files) into a temporary directory for baseline analysis. The directory will be deleted immediately after.\nProceed? [y/N]: ", baselineRef)
+			reader := bufio.NewReader(os.Stdin)
+			text, _ := reader.ReadString('\n')
+			text = strings.TrimSpace(strings.ToLower(text))
+			if text != "y" && text != "yes" {
+				fmt.Println("Aborted.")
+				return 0
+			}
+		}
+
+		tmpDir, err := os.MkdirTemp("", "gograph-baseline-*")
+		if err != nil {
+			if useJSON {
+				return PrintJSON(errEnvelope("api", err.Error()))
+			}
+			fmt.Fprintln(os.Stderr, "error creating temp dir:", err)
+			return 1
+		}
+		defer os.RemoveAll(tmpDir)
+
+		cmd := exec.Command("bash", "-c", fmt.Sprintf(`git archive %s "**/*.go" "*.go" "go.mod" "go.sum" "go.work" "go.work.sum" | tar -x -C %s`, baselineRef, tmpDir))
+		if err := cmd.Run(); err != nil {
+			// If git archive fails (e.g., bad ref or not a git repo), we fail gracefully.
+			if useJSON {
+				return PrintJSON(errEnvelope("api", fmt.Sprintf("git archive failed: %v", err)))
+			}
+			fmt.Fprintf(os.Stderr, "error extracting baseline via git archive: %v\n", err)
+			return 1
+		}
+
+		baselineGraph, err = BuildGraph(tmpDir)
+		if err != nil {
+			if useJSON {
+				return PrintJSON(errEnvelope("api", err.Error()))
+			}
+			fmt.Fprintf(os.Stderr, "error building baseline graph: %v\n", err)
+			return 1
+		}
+	}
+
+	res := search.APIDrift(baselineGraph, currentGraph, baselineRef)
+
+	if useJSON {
+		return PrintJSON(okEnvelope("api", baselineRef, res, 0))
+	}
+
+	fmt.Printf("API / contract drift since %s\n\n", baselineRef)
+
+	if len(res.ExportedSymbols.Changed) > 0 || len(res.Interfaces.Removed) > 0 || len(res.ExportedSymbols.Removed) > 0 || len(res.Interfaces.Changed) > 0 {
+		fmt.Println("Breaking Go API changes:")
+		for _, s := range res.ExportedSymbols.Removed {
+			fmt.Printf("  - %s removed\n", s)
+		}
+		for _, s := range res.Interfaces.Removed {
+			fmt.Printf("  - %s interface removed\n", s)
+		}
+		for _, c := range res.ExportedSymbols.Changed {
+			fmt.Printf("  - %s signature changed (%s)\n", c.Name, c.Details)
+		}
+		for _, c := range res.Interfaces.Changed {
+			fmt.Printf("  - %s interface changed (%s)\n", c.Name, c.Details)
+		}
+		fmt.Println()
+	}
+
+	if len(res.Structs.Changed) > 0 || len(res.Structs.Removed) > 0 || len(res.Routes.Removed) > 0 || len(res.Routes.Changed) > 0 {
+		fmt.Println("Possible HTTP contract changes:")
+		for _, r := range res.Routes.Removed {
+			fmt.Printf("  - %s removed\n", r)
+		}
+		for _, r := range res.Routes.Changed {
+			fmt.Printf("  - %s %s (%s)\n", r.Method, r.Path, r.Details)
+		}
+		for _, s := range res.Structs.Removed {
+			fmt.Printf("  - %s struct removed\n", s)
+		}
+		for _, c := range res.Structs.Changed {
+			fmt.Printf("  - %s struct changed (%s)\n", c.Name, c.Details)
+		}
+		fmt.Println()
+	}
+
+	if len(res.ExportedSymbols.Added) > 0 || len(res.Interfaces.Added) > 0 || len(res.Structs.Added) > 0 || len(res.Routes.Added) > 0 {
+		fmt.Println("Non-breaking additions:")
+		for _, r := range res.Routes.Added {
+			fmt.Printf("  - %s added\n", r)
+		}
+		for _, s := range res.Structs.Added {
+			fmt.Printf("  - %s struct added\n", s)
+		}
+		for _, s := range res.ExportedSymbols.Added {
+			fmt.Printf("  - %s added\n", s)
+		}
+		for _, s := range res.Interfaces.Added {
+			fmt.Printf("  - %s interface added\n", s)
+		}
+		fmt.Println()
+	}
+
+	if len(res.AffectedMocks) > 0 || len(res.AffectedTests) > 0 {
+		fmt.Println("Likely affected tests / mocks:")
+		for _, m := range res.AffectedMocks {
+			fmt.Printf("  - %s may be stale\n", m)
+		}
+		for _, t := range res.AffectedTests {
+			fmt.Printf("  - %s tests likely affected\n", t)
+		}
+		fmt.Println()
+	}
+
+	fmt.Println("Risk summary:")
+	fmt.Printf("  breaking Go API: %v\n", res.BreakingGoAPI)
+	fmt.Printf("  breaking HTTP API: %s\n", res.BreakingHTTPAPI)
+	fmt.Printf("  stale mocks: %v\n", res.StaleMocksLikely)
+
+	return 0
+}

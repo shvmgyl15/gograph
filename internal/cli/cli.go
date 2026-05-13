@@ -157,6 +157,8 @@ func Run(args []string) int {
 		return runPlan(args[1:])
 	case "review":
 		return runReview(args[1:])
+	case "api", "contract":
+		return runAPI(args[1:])
 	case "help", "--help", "-h":
 		printHelp()
 		return 0
@@ -231,6 +233,7 @@ plan <sym>           : generate an operational change plan (read-first, tests, r
 plan --uncommitted   : generate a change plan for all currently uncommitted modified symbols
 review <sym>         : generate a post-edit final review report for a modified symbol
 review --uncommitted : generate a post-edit final review report for all uncommitted changes
+api --since <ref>    : identify breaking API and contract changes since a git reference
 schema <table>       : structs mapped to DB table via tags
 skeleton             : output the whole repository's API signatures (function bodies stripped)
 trace <err_str> [--no-tests]: trace an error backwards from entry points to origin`)
@@ -604,7 +607,7 @@ func runMCP(args []string) int {
 		return BuildGraph(absRoot)
 	}
 
-	if err := mcp.Serve(g, rebuild); err != nil {
+	if err := mcp.Serve(g, rebuild, BuildGraph); err != nil {
 		fmt.Fprintf(os.Stderr, "MCP server error: %v\n", err)
 		return 1
 	}
@@ -837,6 +840,8 @@ CODE QUALITY
   plan --uncommitted         Generate a change plan for all currently uncommitted modified symbols.
   review <symbol>            Generate a post-edit final review report for a modified symbol.
   review --uncommitted       Generate a post-edit final review report for all uncommitted changes.
+  api --since <ref>          Identify breaking API and contract changes since a git reference (e.g. main).
+                             Use --force to bypass interactive prompt.
 
 EXTRACTION
   routes                     All HTTP REST API routes and their handler functions.

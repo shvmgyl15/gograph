@@ -2,6 +2,10 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -11,7 +15,7 @@ import (
 )
 
 // Serve runs the gograph MCP server over stdio.
-func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error)) error {
+func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph func(string) (*graph.Graph, error)) error {
 	s := server.NewMCPServer(
 		"gograph",
 		"1.1.0",
@@ -211,7 +215,7 @@ func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error)) error {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
-		
+
 		configPath := ".gograph/boundaries.json"
 		if args, ok := request.Params.Arguments.(map[string]any); ok {
 			if cp, ok := args["config"].(string); ok && cp != "" {
@@ -223,7 +227,7 @@ func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error)) error {
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		
+
 		if len(results) == 0 {
 			return mcp.NewToolResultText("No boundary violations found. Architecture is clean!"), nil
 		}
@@ -247,7 +251,7 @@ func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error)) error {
 		if !ok {
 			return mcp.NewToolResultError("symbol must be a string"), nil
 		}
-		
+
 		planText := search.Plan(g, []string{sym}, sym)
 		return mcp.NewToolResultText(planText), nil
 	})
@@ -269,9 +273,51 @@ func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error)) error {
 		if !ok {
 			return mcp.NewToolResultError("symbol must be a string"), nil
 		}
-		
+
 		reviewText := search.Review(g, []string{sym}, sym)
 		return mcp.NewToolResultText(reviewText), nil
+	})
+
+	// Tool: gograph_api
+	apiTool := mcp.NewTool("gograph_api",
+		mcp.WithDescription("Compare the public-facing contract and integration surface of the Go codebase against a baseline git reference. Identifies likely breaking changes to exported functions, structs, interfaces, and routes."),
+		mcp.WithString("since", mcp.Required(), mcp.Description("The baseline git reference (e.g., 'main' or 'HEAD~1') to compare against")),
+	)
+	s.AddTool(apiTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		sinceRef, ok := args["since"].(string)
+		if !ok {
+			return mcp.NewToolResultError("since must be a string"), nil
+		}
+
+		// Run a temporary git archive extraction for the baseline
+		tmpDir, err := os.MkdirTemp("", "gograph-baseline-*")
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("error creating temp dir: %v", err)), nil
+		}
+		defer os.RemoveAll(tmpDir)
+
+		cmd := exec.Command("bash", "-c", fmt.Sprintf(`git archive %s "**/*.go" "*.go" "go.mod" "go.sum" "go.work" "go.work.sum" | tar -x -C %s`, sinceRef, tmpDir))
+		if err := cmd.Run(); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("git archive failed (invalid ref?): %v", err)), nil
+		}
+
+		baselineGraph, err := buildGraph(tmpDir)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("error building baseline graph: %v", err)), nil
+		}
+
+		res := search.APIDrift(baselineGraph, g, sinceRef)
+
+		// Convert the APIDriftResult into formatted JSON string for the agent
+		b, _ := json.MarshalIndent(res, "", "  ")
+		return mcp.NewToolResultText(string(b)), nil
 	})
 
 	// Tool: gograph_routes
@@ -303,7 +349,7 @@ func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error)) error {
 		if !ok {
 			return mcp.NewToolResultError("term must be a string"), nil
 		}
-		
+
 		report := search.ErrorFlow(g, term)
 		return mcp.NewToolResultText(report.String()), nil
 	})

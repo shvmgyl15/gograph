@@ -107,6 +107,7 @@ gograph sql                       # Extract database SQL queries from the AST
 gograph stale                     # Check if graph.json is out of date vs source files
 gograph tests "ValidateToken"     # Find which test functions exercise a named symbol
 # --- TOKEN SAVERS ---
+gograph api --since main          # Identify breaking API and contract changes since a git reference
 gograph arity --min 5             # Find functions with many arguments (long parameter list smell)
 gograph changes                   # New/modified/deleted symbols since last build
 gograph constructors "User"       # Find factory functions returning the named struct
