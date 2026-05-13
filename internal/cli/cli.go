@@ -149,6 +149,10 @@ func Run(args []string) int {
 		return runMocks(args[1:])
 	case "fixtures":
 		return runFixtures(args[1:])
+	case "boundaries":
+		return runBoundaries(args[1:])
+	case "plan":
+		return runPlan(args[1:])
 	case "help", "--help", "-h":
 		printHelp()
 		return 0
@@ -198,6 +202,9 @@ arity [--min 5]      : find functions with many arguments (long parameter list s
 skeleton             : output the whole repository's API signatures (function bodies stripped)
 stale                : check if graph is out of date vs source files
 orphans              : reachability-based dead code analysis
+boundaries [--config] : verify package architecture constraints using boundaries.json
+plan <sym>           : generate an operational change plan (read-first, tests, risk profile)
+plan --uncommitted   : generate a change plan for all currently uncommitted modified symbols
 godobj               : find god-object struct candidates (--methods N --fields N --calls N --top N)
 complexity [sym]     : cyclomatic complexity estimate per function (highest first)
 coupling [pkg]       : fan-in, fan-out, and instability per package
@@ -1450,13 +1457,11 @@ func runImpact(args []string) int {
 	return printResults("impact", strings.Join(args, " "), results, fmt.Sprintf("No callers found in blast radius of %q.", args[0]))
 }
 
-// runImpactUncommitted parses git diff to find modified symbols, then computes their blast radius.
-func runImpactUncommitted(g *graph.Graph) int {
-	// Parse git diff for unstaged and staged changes
+// getUncommittedSymbols parses git diff to find modified symbols.
+func getUncommittedSymbols(g *graph.Graph) ([]string, error) {
 	out, err := exec.Command("git", "diff", "HEAD", "-U0").Output()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error running git diff:", err)
-		return 1
+		return nil, fmt.Errorf("error running git diff: %v", err)
 	}
 
 	diffStr := string(out)
@@ -1488,8 +1493,6 @@ func runImpactUncommitted(g *graph.Graph) int {
 
 	for file, lines := range fileLines {
 		for _, s := range g.Symbols {
-			// Basic path matching; in practice, relative paths from git root might need adjusting
-			// depending on where gograph is run, but assuming it's run at repo root:
 			if strings.HasSuffix(s.File, file) {
 				for _, line := range lines {
 					if line >= s.Line && line <= s.EndLine {
@@ -1502,6 +1505,16 @@ func runImpactUncommitted(g *graph.Graph) int {
 				}
 			}
 		}
+	}
+	return modifiedSymbolNames, nil
+}
+
+// runImpactUncommitted parses git diff to find modified symbols, then computes their blast radius.
+func runImpactUncommitted(g *graph.Graph) int {
+	modifiedSymbolNames, err := getUncommittedSymbols(g)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
 	}
 
 	if len(modifiedSymbolNames) == 0 {
@@ -1698,3 +1711,86 @@ func runFixtures(args []string) int {
 	results := search.Fixtures(g, args[0])
 	return printResults("fixtures", args[0], results, fmt.Sprintf("No fixtures found for package '%s'.", args[0]))
 }
+
+func runBoundaries(args []string) int {
+	configPath := ".gograph/boundaries.json"
+	createMode := false
+	for i, a := range args {
+		if a == "--config" && i+1 < len(args) {
+			configPath = args[i+1]
+			break
+		}
+		if a == "--create" {
+			createMode = true
+		}
+	}
+	g, err := loadGraph(".")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading graph: %v\n", err)
+		return 1
+	}
+
+	if createMode {
+		if err := search.CreateBoundaries(g, configPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create boundaries: %v\n", err)
+			return 1
+		}
+		fmt.Printf("Successfully created baseline boundaries at %s\n", configPath)
+		return 0
+	}
+
+	results, err := search.Boundaries(g, configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Boundaries error: %v\n", err)
+		return 1
+	}
+	code := printResults("boundaries", configPath, results, "No boundary violations found. Architecture is clean!")
+	if len(results) > 0 && !jsonMode {
+		// Exit with non-zero if violations exist (useful for CI/CD)
+		return 1
+	}
+	return code
+}
+
+// runPlan generates an operational change plan for one or more symbols or for uncommitted changes.
+func runPlan(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: gograph plan <symbol> OR gograph plan --uncommitted")
+		return 1
+	}
+
+	g, err := loadGraph(".")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+
+	var symbolNames []string
+	var title string
+
+	if args[0] == "--uncommitted" {
+		symbolNames, err = getUncommittedSymbols(g)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		if len(symbolNames) == 0 {
+			fmt.Println("No uncommitted modified symbols found in the graph.")
+			return 0
+		}
+		title = "Uncommitted Changes"
+	} else {
+		symbolNames = []string{strings.Join(args, " ")}
+		title = symbolNames[0]
+	}
+
+	plan := search.Plan(g, symbolNames, title)
+	
+	if jsonMode {
+		return printResults("plan", title, []search.Result{{Kind: "plan", Detail: plan}}, "")
+	}
+	
+	fmt.Print(plan)
+	return 0
+}
+

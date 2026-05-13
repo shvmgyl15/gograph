@@ -202,6 +202,56 @@ func Serve(g *graph.Graph, rebuild func() (*graph.Graph, error)) error {
 		return formatResults(results), nil
 	})
 
+	// Tool: gograph_boundaries
+	boundariesTool := mcp.NewTool("gograph_boundaries",
+		mcp.WithDescription("Verify package architecture constraints against boundaries.json to detect forbidden imports between layers."),
+		mcp.WithString("config", mcp.Description("Optional path to configuration file (defaults to .gograph/boundaries.json)")),
+	)
+	s.AddTool(boundariesTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		
+		configPath := ".gograph/boundaries.json"
+		if args, ok := request.Params.Arguments.(map[string]any); ok {
+			if cp, ok := args["config"].(string); ok && cp != "" {
+				configPath = cp
+			}
+		}
+
+		results, err := search.Boundaries(g, configPath)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		
+		if len(results) == 0 {
+			return mcp.NewToolResultText("No boundary violations found. Architecture is clean!"), nil
+		}
+		return formatResults(results), nil
+	})
+
+	// Tool: gograph_plan
+	planTool := mcp.NewTool("gograph_plan",
+		mcp.WithDescription("Generate an operational change plan for a symbol before editing it. This aggregates callers, tests, and risk metrics (routes, sql, env) into a single actionable report."),
+		mcp.WithString("symbol", mcp.Required(), mcp.Description("The name of the symbol you intend to edit (e.g., 'ValidateToken')")),
+	)
+	s.AddTool(planTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		sym, ok := args["symbol"].(string)
+		if !ok {
+			return mcp.NewToolResultError("symbol must be a string"), nil
+		}
+		
+		planText := search.Plan(g, []string{sym}, sym)
+		return mcp.NewToolResultText(planText), nil
+	})
+
 	// Tool: gograph_routes
 	routesTool := mcp.NewTool("gograph_routes",
 		mcp.WithDescription("Extract all HTTP REST API routes found in the codebase (e.g. GET /api)."),

@@ -11,6 +11,16 @@ It builds a compact graph of packages, symbols, calls, routes, config reads, tes
 
 > **Note on Language Support:** I originally built `gograph` specifically for **Golang** because that is what I needed for my own workflows. It currently only parses and maps Go codebases. However, the architecture is extensible! If you want to add support for other languages (Python, TypeScript, Rust, etc.), **contributions are more than welcome.** Please see the [Contributing Guide](CONTRIBUTING.md) to get started.
 
+## Why not use a Language Server (`gopls`)?
+
+While `gopls` has access to similar AST and type data, connecting an AI coding agent to a Language Server is notoriously difficult and inefficient:
+
+1. **Protocol Mismatch:** AI agents operate inside terminal environments. `gopls` communicates via JSON-RPC over `stdin/stdout`. While you can invoke some `gopls` CLI commands, it usually returns raw file coordinates (`file:line:col`). This forces the agent to burn tokens running `cat` or `sed` to actually read the referenced code.
+2. **LLM-Optimized Output:** `gograph` doesn't just find coordinates; it physically extracts the exact structural slice (the struct body, the interface, the method) and formats it natively in Markdown. The AI reads exactly what it needs in one shot with zero surrounding file noise.
+3. **Graph-Level Diagnostics:** Language servers are built for point-in-time human IDE features (like hover or go-to-definition). `gograph` is built for systemic graph traversal. For example, `gograph trace "parse failed"` performs a reverse-BFS from an error string all the way up the call stack to the HTTP entry point. `gograph impact` calculates the full blast radius of a code change. `gopls` doesn't natively perform graph-traversal diagnostics like this out of the box.
+
+In short: `gopls` is optimized for human IDEs. `gograph` is optimized for terminal-based LLMs trying to save context tokens.
+
 ## Features
 - **Local Only:** Graph building performs no network calls and sends no source code to external APIs. MCP integration is local stdio-based.
 - **Go Focused:** Maps Go project structures, packages, and dependencies using the standard AST.
@@ -112,9 +122,40 @@ gograph schema "users"            # Find structs mapped to a database table/sche
 gograph globals "internal/auth"   # Find pkg-level vars, consts, and functions mutating them
 gograph mocks "AuthService"       # Find structs implementing an interface in test/mock files
 gograph fixtures "internal/auth"  # Find test helper structs and functions in test files
-```
 
-**3. Agent JSON Integration:**
+gograph plan "ValidateToken"      # Generate an operational change plan (callers, tests, risk profile) before editing a symbol
+gograph plan --uncommitted        # Generate a change plan for all currently uncommitted modified symbols
+
+**3. Architecture Boundary Enforcement:**
+You can configure `gograph` to actively enforce clean architecture by defining boundaries. Create a `.gograph/boundaries.json` file in your root directory:
+```json
+{
+  "layers": [
+    {
+      "name": "domain",
+      "packages": ["internal/domain/**"],
+      "may_import": []
+    },
+    {
+      "name": "handler",
+      "packages": ["internal/handler/**"],
+      "may_import": [
+        "internal/service/**",
+        "internal/domain/**"
+      ]
+    }
+  ]
+}
+```
+*Note: Standard library imports are implicitly allowed. Imports within the same layer are also implicitly allowed.*
+
+Run the enforcement check:
+```bash
+gograph boundaries
+```
+*If a violation is found (e.g., `handler` imports `internal/repository` directly), it will exit with code 1 and print the exact file that violated the rule. Extremely useful for CI/CD or Agent `CLAUDE.md` instructions!*
+
+**4. Agent JSON Integration:**
 All search and query commands support the `--json` flag to emit strictly formatted, machine-parseable JSON envelopes.
 
 For specific instructions on how to configure agents to use `gograph`, read the [Claude Code Integration Guide](docs/claude-code-integration.md).
@@ -125,7 +166,7 @@ gograph callers "ValidateToken" --json
 *Returns: `{"schema_version": "1", "command": "callers", "status": "ok", "count": 2, "results": [...]}`*
 
 
-**4. Run as an MCP Server (For AI Agents):**
+**5. Run as an MCP Server (For AI Agents):**
 If you want to give your AI agent native tool execution capabilities, `gograph` has a built-in [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server.
 ```bash
 gograph mcp .

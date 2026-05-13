@@ -62,6 +62,8 @@ gograph hotspot                  # top 10 most-called functions (focus study her
 gograph hotspot --top 20         # expand the hotspot window
 gograph deps "internal/auth"     # direct import dependencies of a package
 gograph deps "internal/auth" --transitive  # full transitive import closure
+gograph plan <symbol>            # generate an operational change plan for a symbol
+gograph plan --uncommitted       # generate a change plan for all uncommitted changes
 gograph changes                  # new/modified/deleted symbols since last build
 gograph trace "parse failed"     # trace an error string backwards to entry points
 gograph mutate "User.Status"     # find functions that mutate a specific struct field
@@ -219,7 +221,34 @@ func ValidateToken(token string) (bool, error) { ... }
 [test] TestValidateToken  (internal/auth/validator_test.go:12)
 ```
 
-### 16. Hotspot ranking
+### 16. Change plan generation (Safe Edits)
+While `context` is used to *understand* code, `gograph plan <symbol>` is used to *safely edit* code. It aggregates multiple primitives (`impact`, `tests`, `routes`, `sql`, `envs`) into a single actionable checklist. 
+
+Instead of an agent making 5 separate tool calls to check if a function touches SQL or breaks an HTTP route, `gograph plan` gives you everything in one shot:
+```
+gograph plan "ValidateToken"
+```
+```
+Change plan for ValidateToken
+
+1. Read first:
+   - internal/auth/validator.go:42 ValidateToken
+   - internal/auth/service.go:88 AuthService.Login
+   - internal/api/login.go:53 HandleLogin
+
+2. Update likely affected tests:
+   - internal/auth/validator_test.go
+   - internal/api/login_test.go
+
+3. Risk:
+   - Public API: yes
+   - Called by HTTP route: POST /login
+   - Reads env: JWT_SECRET
+   - Touches SQL: no
+```
+Agents should **always** run `gograph plan` before editing a symbol to avoid breaking downstream callers or missing test updates. It can also be run for all uncommitted changes using `gograph plan --uncommitted`.
+
+### 17. Hotspot ranking
 `gograph hotspot [--top N]` ranks all functions by how many call sites depend on them (fan-in). The top hotspots are the most load-bearing code in the codebase — the functions an agent must understand before making any structural change.
 
 ```
