@@ -137,7 +137,7 @@ You can add this to your AI client's configuration (like Claude Desktop or VS Co
 To get the absolute best results from your AI coding assistant, you no longer need to copy-paste giant instruction files. Just add this one-liner to your `.cursorrules`, `CLAUDE.md`, or AI system instructions:
 
 > **System Prompt:**
-> Before answering architecture or repository questions, run `gograph capabilities` and follow the instructions it prints.
+> Before answering architecture or repository questions, inspect the available `gograph_*` MCP tools for the current project and use them instead of grep/find. Each project ships its own gograph MCP server; pick the matching one. If using the CLI directly, run `gograph capabilities` first.
 
 ## Example Output
 
