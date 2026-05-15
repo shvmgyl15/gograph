@@ -1,12 +1,15 @@
 package mcp
 
 import (
+	"archive/tar"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -17,16 +20,33 @@ import (
 
 // MCPResponse is the stable structured data payload returned by complex tools.
 type MCPResponse struct {
-	Summary     string            `json:"summary,omitempty"`
-	Source      string            `json:"source,omitempty"`
-	Findings    []search.Result   `json:"findings,omitempty"`
-	Files       []string          `json:"files,omitempty"`
-	Symbols     []string          `json:"symbols,omitempty"`
-	Routes      []string          `json:"routes,omitempty"`
-	Tests       []string          `json:"tests,omitempty"`
-	Risk        map[string]string `json:"risk,omitempty"`
-	Limitations []string          `json:"limitations,omitempty"`
+	Query          string               `json:"query,omitempty"`
+	Summary        string               `json:"summary,omitempty"`
+	Source         string               `json:"source,omitempty"`
+	Node           *search.Result       `json:"node,omitempty"`
+	Callers        []search.Result      `json:"callers,omitempty"`
+	Callees        []search.Result      `json:"callees,omitempty"`
+	Findings       []search.Result      `json:"findings,omitempty"`
+	InspectFirst   []search.Result      `json:"inspect_first,omitempty"`
+	ChangedSymbols []search.Result      `json:"changed_symbols,omitempty"`
+	Definitions    []search.Result      `json:"definitions,omitempty"`
+	Sites          []search.Result      `json:"sites,omitempty"`
+	Paths          []search.TraceResult `json:"paths,omitempty"`
+	Files          []string             `json:"files,omitempty"`
+	Symbols        []string             `json:"symbols,omitempty"`
+	Routes         []string             `json:"routes,omitempty"`
+	Tests          []string             `json:"tests,omitempty"`
+	TestResults    []search.Result      `json:"test_results,omitempty"`
+	SQL            []string             `json:"sql,omitempty"`
+	Env            []string             `json:"env,omitempty"`
+	Errors         []string             `json:"errors,omitempty"`
+	Globals        []string             `json:"globals,omitempty"`
+	Risk           map[string]any       `json:"risk,omitempty"`
+	Limitations    []string             `json:"limitations,omitempty"`
 }
+
+// ExposeToolsForTesting allows tests to access internal tool handlers. Set to a non-nil map before calling NewServer.
+var ExposeToolsForTesting map[string]func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
 
 // NewServer creates and returns the MCP server with all tools registered.
 func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph func(string) (*graph.Graph, error)) *server.MCPServer {
@@ -36,12 +56,74 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		server.WithToolCapabilities(true),
 	)
 
+	addTool := func(tool mcp.Tool, handler func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)) {
+		s.AddTool(tool, handler)
+		if ExposeToolsForTesting != nil {
+			ExposeToolsForTesting[tool.Name] = handler
+		}
+	}
+
+	// Tool: gograph_capabilities
+	capabilitiesTool := mcp.NewTool("gograph_capabilities",
+		mcp.WithDescription("Discover the available gograph MCP tools, their purposes, recommended workflows, and limitations. Call this tool first to understand what gograph can do."),
+	)
+	addTool(capabilitiesTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		resp := map[string]any{
+			"summary": "gograph MCP capabilities",
+			"tools": []map[string]string{
+				{"name": "gograph_capabilities", "purpose": "Discover available tools and workflows."},
+				{"name": "gograph_query", "purpose": "Search the repository for symbols, packages, files, or imports using a keyword term."},
+				{"name": "gograph_focus", "purpose": "Extract the complete definition and embedded docstring of a symbol without its body implementation."},
+				{"name": "gograph_callers", "purpose": "Find what calls a specific function or method."},
+				{"name": "gograph_callees", "purpose": "Find what functions or methods are called from inside the specified function."},
+				{"name": "gograph_implementers", "purpose": "Find all structs that implement the specified interface."},
+				{"name": "gograph_fields", "purpose": "Extract all fields from a specific struct, including their types and struct tags."},
+				{"name": "gograph_source", "purpose": "Extract the exact source code for a specific function, method, struct, or interface."},
+				{"name": "gograph_orphans", "purpose": "Find functions and methods that have 0 explicit incoming calls (potential dead code)."},
+				{"name": "gograph_impact", "purpose": "Traverse the call graph backwards to find all symbols that eventually call the target symbol."},
+				{"name": "gograph_boundaries", "purpose": "Verify package architecture constraints against boundaries.json."},
+				{"name": "gograph_api", "purpose": "Compare the public-facing contract and integration surface drift against a baseline git reference."},
+				{"name": "gograph_routes", "purpose": "Extract all HTTP REST API routes found in the codebase."},
+				{"name": "gograph_context", "purpose": "Bundles node details, callers, callees, tests, and source code into one structured response."},
+				{"name": "gograph_plan", "purpose": "Safe edit planning before code changes. Highlights likely affected tests, routes, env reads, SQL touches, and public API impact."},
+				{"name": "gograph_review", "purpose": "Post-edit or symbol-focused review. Summarizes what changed and its risk profile."},
+				{"name": "gograph_errorflow", "purpose": "Trace likely error paths up to entry points (HTTP routes or CLI commands)."},
+				{"name": "gograph_imports", "purpose": "Find all files that import a specific external package."},
+				{"name": "gograph_sql", "purpose": "Extract database SQL queries found in the codebase."},
+				{"name": "gograph_errors", "purpose": "Extract custom error messages and panics."},
+				{"name": "gograph_embeds", "purpose": "Find what structs embed the given target struct."},
+				{"name": "gograph_public", "purpose": "Show only the exported (public) symbols of a specific package."},
+				{"name": "gograph_constructors", "purpose": "Find factory functions returning the named struct."},
+				{"name": "gograph_schema", "purpose": "Find structs mapped to a database table or schema via struct tags."},
+				{"name": "gograph_globals", "purpose": "Find package-level variables and functions mutating them."},
+				{"name": "gograph_mocks", "purpose": "Find structs implementing an interface, filtered to test or mock files."},
+			},
+			"recommended_workflows": map[string][]string{
+				"before_edit":   {"gograph_context", "gograph_plan"},
+				"after_edit":    {"gograph_review", "gograph_api", "gograph_boundaries"},
+				"error_changes": {"gograph_errorflow", "gograph_review"},
+				"api_changes":   {"gograph_api", "gograph_review"},
+			},
+			"limitations": []string{
+				"gograph is static analysis.",
+				"MCP tools do not execute target repository code.",
+				"MCP tools do not add network access.",
+				"Errorflow uses heuristic static call-graph and AST reference analysis. It does not perform SSA or full data-flow tracking.",
+			},
+		}
+		data, err := json.MarshalIndent(resp, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
 	// Tool: gograph_query
 	queryTool := mcp.NewTool("gograph_query",
 		mcp.WithDescription("Search the Go repository for symbols, packages, files, or imports using a keyword term."),
 		mcp.WithString("term", mcp.Required(), mcp.Description("The keyword to search for (e.g., 'Auth')")),
 	)
-	s.AddTool(queryTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(queryTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -62,7 +144,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithDescription("Extract highly targeted context for a single Go package, including all files, symbols, internal calls, and dependencies associated with it."),
 		mcp.WithString("package", mcp.Required(), mcp.Description("The package path or name to focus on (e.g., 'internal/auth')")),
 	)
-	s.AddTool(focusTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(focusTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -83,7 +165,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithDescription("Find what functions or methods call the specified function. Useful for impact analysis."),
 		mcp.WithString("function", mcp.Required(), mcp.Description("The name of the function being called (e.g., 'ValidateToken')")),
 	)
-	s.AddTool(callersTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(callersTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -104,7 +186,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithDescription("Find what functions or methods are called from inside the specified function. Useful to understand dependencies."),
 		mcp.WithString("function", mcp.Required(), mcp.Description("The name of the calling function (e.g., 'InitServer')")),
 	)
-	s.AddTool(calleesTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(calleesTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -125,7 +207,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithDescription("Find all structs that implement the specified interface. Essential for understanding implicit Go interfaces and dependency injection."),
 		mcp.WithString("interface", mcp.Required(), mcp.Description("The name of the interface (e.g., 'AuthService')")),
 	)
-	s.AddTool(implementersTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(implementersTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -146,7 +228,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithDescription("Extract all fields from a specific struct, including their types and struct tags. Useful for understanding data models."),
 		mcp.WithString("struct", mcp.Required(), mcp.Description("The name of the struct (e.g., 'User')")),
 	)
-	s.AddTool(fieldsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(fieldsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -167,7 +249,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithDescription("Extract the exact source code for a specific function, method, struct, or interface. Extremely efficient for reading implementation logic without reading the entire file."),
 		mcp.WithString("symbol", mcp.Required(), mcp.Description("The name of the symbol (e.g., 'ValidateToken' or 'AuthService')")),
 	)
-	s.AddTool(sourceTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(sourceTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -191,7 +273,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 	orphansTool := mcp.NewTool("gograph_orphans",
 		mcp.WithDescription("Find functions and methods that have 0 explicit incoming calls (potential dead code)."),
 	)
-	s.AddTool(orphansTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(orphansTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -204,7 +286,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithDescription("Traverse the call graph backwards to find all symbols that eventually call the target symbol. Useful for blast radius analysis."),
 		mcp.WithString("symbol", mcp.Required(), mcp.Description("The name of the symbol (e.g., 'ValidateToken')")),
 	)
-	s.AddTool(impactTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(impactTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -225,7 +307,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithDescription("Verify package architecture constraints against boundaries.json to detect forbidden imports between layers."),
 		mcp.WithString("config", mcp.Description("Optional path to configuration file (defaults to .gograph/boundaries.json)")),
 	)
-	s.AddTool(boundariesTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(boundariesTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -242,10 +324,24 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
+		summary := "Boundary violations found."
+		pass := false
 		if len(results) == 0 {
-			return mcp.NewToolResultText("No boundary violations found. Architecture is clean!"), nil
+			summary = "No boundary violations found."
+			pass = true
 		}
-		return formatResults(results), nil
+
+		resp := map[string]any{
+			"summary":  summary,
+			"findings": results,
+			"risk": map[string]any{
+				"pass":            pass,
+				"violation_count": len(results),
+			},
+		}
+
+		b, _ := json.MarshalIndent(resp, "", "  ")
+		return mcp.NewToolResultText(string(b)), nil
 	})
 
 	// Tool: gograph_api
@@ -253,7 +349,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithDescription("Compare the public-facing contract and integration surface of the Go codebase against a baseline git reference. Identifies likely breaking changes to exported functions, structs, interfaces, and routes."),
 		mcp.WithString("since", mcp.Required(), mcp.Description("The baseline git reference (e.g., 'main' or 'HEAD~1') to compare against")),
 	)
-	s.AddTool(apiTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(apiTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -266,6 +362,12 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 			return mcp.NewToolResultError("since must be a string"), nil
 		}
 
+		// Validate sinceRef with a positive allowlist
+		safeGitRef := regexp.MustCompile(`^[A-Za-z0-9._/\-~^]+$`)
+		if sinceRef == "" || strings.HasPrefix(sinceRef, "-") || !safeGitRef.MatchString(sinceRef) {
+			return mcp.NewToolResultError("invalid since value: contains unsafe characters or is empty"), nil
+		}
+
 		// Run a temporary git archive extraction for the baseline
 		tmpDir, err := os.MkdirTemp("", "gograph-baseline-*")
 		if err != nil {
@@ -273,9 +375,53 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		}
 		defer func() { _ = os.RemoveAll(tmpDir) }()
 
-		cmd := exec.Command("bash", "-c", fmt.Sprintf(`git archive %s "**/*.go" "*.go" "go.mod" "go.sum" "go.work" "go.work.sum" | tar -x -C %s`, sinceRef, tmpDir))
-		if err := cmd.Run(); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("git archive failed (invalid ref?): %v", err)), nil
+		// Archive the full ref, letting graph builder ignore non-Go files
+		cmd := exec.Command("git", "archive", "--format=tar", sinceRef)
+		var errBuf strings.Builder
+		cmd.Stderr = &errBuf
+
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("error piping git archive: %v", err)), nil
+		}
+
+		if err := cmd.Start(); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("git archive start failed: %v", err)), nil
+		}
+
+		tr := tar.NewReader(stdout)
+		for {
+			header, err := tr.Next()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				cmd.Process.Kill()
+				cmd.Wait()
+				return mcp.NewToolResultError(fmt.Sprintf("tar read error: %v", err)), nil
+			}
+
+			target := filepath.Join(tmpDir, header.Name)
+			// Check for zip slip
+			if !strings.HasPrefix(target, filepath.Clean(tmpDir)+string(os.PathSeparator)) {
+				continue
+			}
+
+			switch header.Typeflag {
+			case tar.TypeDir:
+				os.MkdirAll(target, os.FileMode(header.Mode))
+			case tar.TypeReg:
+				os.MkdirAll(filepath.Dir(target), 0755)
+				f, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.FileMode(header.Mode))
+				if err == nil {
+					io.Copy(f, tr)
+					f.Close()
+				}
+			}
+		}
+
+		if err := cmd.Wait(); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("git archive failed (invalid ref?): %v, stderr: %s", err, errBuf.String())), nil
 		}
 
 		baselineGraph, err := buildGraph(tmpDir)
@@ -294,7 +440,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 	routesTool := mcp.NewTool("gograph_routes",
 		mcp.WithDescription("Extract all HTTP REST API routes found in the codebase (e.g. GET /api)."),
 	)
-	s.AddTool(routesTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(routesTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -307,7 +453,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithDescription("Compact symbol context. Bundles node details, callers, callees, tests, and source code into one structured response."),
 		mcp.WithString("symbol", mcp.Required(), mcp.Description("The exact name or ID of the symbol to retrieve context for.")),
 	)
-	s.AddTool(contextTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(contextTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -325,10 +471,21 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 			return mcp.NewToolResultText("{}"), nil
 		}
 
+		var node *search.Result
+		if len(result.Node) > 0 {
+			node = &result.Node[0]
+		}
 		resp := MCPResponse{
-			Summary:  "Context for " + symbol,
-			Source:   result.Source,
-			Findings: append(append(append(result.Node, result.Callers...), result.Callees...), result.Tests...),
+			Summary: "Context for " + symbol,
+			Node:    node,
+			Source:  result.Source,
+			Callers: result.Callers,
+			Callees: result.Callees,
+			Risk:    map[string]any{},
+		}
+		resp.TestResults = result.Tests
+		for _, t := range result.Tests {
+			resp.Tests = append(resp.Tests, t.Name)
 		}
 		data, err := json.MarshalIndent(resp, "", "  ")
 		if err != nil {
@@ -343,7 +500,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithString("symbol", mcp.Description("The symbol to plan changes for")),
 		mcp.WithBoolean("uncommitted", mcp.Description("Set to true to plan all uncommitted changes")),
 	)
-	s.AddTool(planTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(planTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -368,15 +525,18 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		}
 
 		planRes := search.Plan(g, symbolNames, title)
-		
+
 		resp := MCPResponse{
-			Summary:  "Change plan for " + planRes.Title,
-			Findings: planRes.ReadFirst,
-			Tests:    planRes.Tests,
-			Routes:   planRes.Routes,
-			Risk: map[string]string{
-				"public_api":  planRes.PublicAPI,
-				"touches_sql": planRes.TouchesSQL,
+			Summary:      "Change plan for " + planRes.Title,
+			InspectFirst: planRes.ReadFirst,
+			Tests:        planRes.Tests,
+			Routes:       planRes.Routes,
+			Env:          planRes.Envs,
+			Risk: map[string]any{
+				"public_api":     planRes.PublicAPI,
+				"touches_sql":    planRes.TouchesSQL,
+				"touches_routes": len(planRes.Routes) > 0,
+				"touches_env":    len(planRes.Envs) > 0,
 			},
 		}
 		data, err := json.MarshalIndent(resp, "", "  ")
@@ -392,7 +552,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithString("symbol", mcp.Description("The symbol to review")),
 		mcp.WithBoolean("uncommitted", mcp.Description("Set to true to review all uncommitted changes")),
 	)
-	s.AddTool(reviewTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(reviewTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -417,15 +577,21 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		}
 
 		revRes := search.Review(g, symbolNames, title)
-		
+
 		resp := MCPResponse{
-			Summary:  "Code Review for " + revRes.Title,
-			Findings: revRes.Changes,
-			Tests:    revRes.Tests,
-			Routes:   revRes.Routes,
-			Risk: map[string]string{
-				"public_api":  revRes.PublicAPI,
-				"touches_sql": revRes.TouchesSQL,
+			Summary:        "Code Review for " + revRes.Title,
+			ChangedSymbols: revRes.Changes,
+			Tests:          revRes.Tests,
+			Routes:         revRes.Routes,
+			Env:            revRes.Envs,
+			Errors:         revRes.Errors,
+			Risk: map[string]any{
+				"public_api":      revRes.PublicAPI,
+				"touches_sql":     revRes.TouchesSQL,
+				"touches_routes":  len(revRes.Routes) > 0,
+				"touches_env":     len(revRes.Envs) > 0,
+				"touches_errors":  len(revRes.Errors) > 0,
+				"touches_globals": false,
 			},
 		}
 		data, err := json.MarshalIndent(resp, "", "  ")
@@ -438,9 +604,10 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 	// Tool: gograph_errorflow
 	errorflowTool := mcp.NewTool("gograph_errorflow",
 		mcp.WithDescription("Trace likely error paths up to entry points (HTTP routes or CLI commands). Use this to find where an error originates and how it is handled. (AST heuristic, NO SSA)"),
-		mcp.WithString("term", mcp.Required(), mcp.Description("The error string or sentinel error name (e.g., 'ErrInvalidToken' or 'invalid token')")),
+		mcp.WithString("term", mcp.Description("The error string or sentinel error name (e.g., 'ErrInvalidToken' or 'invalid token')")),
+		mcp.WithString("query", mcp.Description("The error string or sentinel error name (preferred over term)")),
 	)
-	s.AddTool(errorflowTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(errorflowTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -448,27 +615,27 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		if !ok {
 			return mcp.NewToolResultError("invalid arguments"), nil
 		}
-		term, ok := args["term"].(string)
-		if !ok {
-			return mcp.NewToolResultError("term must be a string"), nil
+
+		var term string
+		if q, ok := args["query"].(string); ok && q != "" {
+			term = q
+		} else if t, ok := args["term"].(string); ok && t != "" {
+			term = t
+		}
+
+		if term == "" {
+			return mcp.NewToolResultError("query or term must be a non-empty string"), nil
 		}
 
 		report := search.ErrorFlow(g, term)
-		
-		var findings []search.Result
-		findings = append(findings, report.DefinitionSites...)
-		findings = append(findings, report.ReturnSites...)
-		
-		// For TraceResults, since MCPResponse.Findings takes search.Result,
-		// we will map them into search.Result for uniform parsing.
-		for _, path := range report.Paths {
-			findings = append(findings, path.Path...)
-		}
-		
+
 		resp := MCPResponse{
-			Summary:  "ErrorFlow Report for " + report.Term,
-			Findings: findings,
-			Tests:    nil, // Will add tests later
+			Query:       report.Term,
+			Summary:     "ErrorFlow Report for " + report.Term,
+			Definitions: report.DefinitionSites,
+			Sites:       report.ReturnSites,
+			Paths:       report.Paths,
+			Risk:        map[string]any{},
 			Limitations: []string{
 				"Errorflow uses heuristic static call-graph and AST reference analysis. It does not perform SSA or full data-flow tracking.",
 			},
@@ -488,7 +655,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithDescription("Find all files that import a specific external package. Useful to trace where third-party libraries are used."),
 		mcp.WithString("package", mcp.Required(), mcp.Description("The name of the package (e.g., 'github.com/redis/go-redis')")),
 	)
-	s.AddTool(importsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(importsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -509,7 +676,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithDescription("Extract database SQL queries found in the codebase. You can optionally filter by term."),
 		mcp.WithString("term", mcp.Description("Optional string to filter the queries")),
 	)
-	s.AddTool(sqlTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(sqlTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -528,7 +695,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithDescription("Extract custom error messages and panics. You can optionally filter by a string."),
 		mcp.WithString("term", mcp.Description("Optional string to filter the errors")),
 	)
-	s.AddTool(errorsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(errorsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -547,7 +714,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithDescription("Find what structs embed the given target struct."),
 		mcp.WithString("struct", mcp.Required(), mcp.Description("The name of the target struct (e.g., 'Mutex')")),
 	)
-	s.AddTool(embedsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(embedsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -568,7 +735,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		mcp.WithDescription("Show only the exported (public) symbols of a specific package."),
 		mcp.WithString("package", mcp.Required(), mcp.Description("The package name (e.g., 'auth')")),
 	)
-	s.AddTool(publicTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(publicTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -584,7 +751,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		return formatResults(results), nil
 	})
 
-	initNewTools(s, g, rebuild)
+	initNewTools(g, rebuild, addTool)
 
 	// Start stdio server
 	return s
@@ -609,13 +776,13 @@ func formatResults(results []search.Result) *mcp.CallToolResult {
 	return mcp.NewToolResultText(sb.String())
 }
 
-func initNewTools(s *server.MCPServer, g *graph.Graph, rebuild func() (*graph.Graph, error)) {
+func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool func(tool mcp.Tool, handler func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error))) {
 	// Tool: gograph_constructors
 	constructorsTool := mcp.NewTool("gograph_constructors",
 		mcp.WithDescription("Find factory functions returning the named struct."),
 		mcp.WithString("struct", mcp.Required(), mcp.Description("The name of the struct (e.g., 'User')")),
 	)
-	s.AddTool(constructorsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(constructorsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -636,7 +803,7 @@ func initNewTools(s *server.MCPServer, g *graph.Graph, rebuild func() (*graph.Gr
 		mcp.WithDescription("Find structs mapped to a database table or schema via struct tags."),
 		mcp.WithString("table", mcp.Required(), mcp.Description("The table or schema name (e.g., 'users')")),
 	)
-	s.AddTool(schemaTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(schemaTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -657,7 +824,7 @@ func initNewTools(s *server.MCPServer, g *graph.Graph, rebuild func() (*graph.Gr
 		mcp.WithDescription("Find package-level variables and functions mutating them."),
 		mcp.WithString("package", mcp.Required(), mcp.Description("The package name (e.g., 'internal/config')")),
 	)
-	s.AddTool(globalsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(globalsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
@@ -678,7 +845,7 @@ func initNewTools(s *server.MCPServer, g *graph.Graph, rebuild func() (*graph.Gr
 		mcp.WithDescription("Find structs implementing an interface, filtered to test or mock files."),
 		mcp.WithString("interface", mcp.Required(), mcp.Description("The name of the interface (e.g., 'AuthService')")),
 	)
-	s.AddTool(mocksTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	addTool(mocksTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}

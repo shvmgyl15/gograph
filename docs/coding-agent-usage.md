@@ -418,16 +418,39 @@ Agents that support the Model Context Protocol (like Claude Desktop, Cursor, and
   }
 }
 ```
-This exposes the entire `gograph_*` tool suite directly to the agent as executable tools, bypassing the need for terminal commands.
+`gograph` exposes a registered MCP tool suite for the highest-value agent workflows directly to the agent as executable tools, bypassing the need for terminal commands.
 
-### Phase 1 MCP Tools (Structured JSON)
+MCP agents should call `gograph_capabilities` first when they need to discover available gograph tools and recommended workflows.
 
-The following core commands now return structured, machine-readable JSON over the MCP transport, sharing the exact same analytical engine as the CLI but mapped to the `MCPResponse` shape:
+### Registered MCP Tools
 
-- **`gograph_context`**: Bundles node details, callers, callees, tests, and source code into one compact response.
-- **`gograph_plan`**: Pre-edit planning. Highlights likely affected tests, routes, env reads, SQL touches, and public API impact for a given symbol or uncommitted changes.
-- **`gograph_review`**: Post-edit review. Summarizes what changed and its risk profile for a given symbol or uncommitted changes.
+The current tool suite includes:
+- **`gograph_capabilities`**: Discover available tools and workflows.
+- **`gograph_query`**
+- **`gograph_focus`**
+- **`gograph_callers`**
+- **`gograph_callees`**
+- **`gograph_implementers`**
+- **`gograph_fields`**
+- **`gograph_source`**
+- **`gograph_orphans`**
+- **`gograph_impact`**
+- **`gograph_boundaries`**: Verifies package architecture constraints. Returns structured output.
+- **`gograph_api`**: Compares public-facing contract and integration surface drift against a baseline git reference.
+- **`gograph_routes`**
+- **`gograph_context`**: Bundles node details, callers, callees, tests, and source code into one compact structured response.
+- **`gograph_plan`**: Pre-edit planning. Highlights likely affected tests, routes, env reads, SQL touches, and public API impact in a structured JSON payload.
+- **`gograph_review`**: Post-edit review. Summarizes what changed and its risk profile in a structured JSON payload.
 - **`gograph_errorflow`**: Traces likely error paths up to entry points (HTTP routes or CLI commands). (*Limitation: Uses heuristic static call-graph and AST reference analysis, not SSA data-flow tracking.*)
+- **`gograph_imports`**
+- **`gograph_sql`**
+- **`gograph_errors`**
+- **`gograph_embeds`**
+- **`gograph_public`**
+- **`gograph_constructors`**
+- **`gograph_schema`**
+- **`gograph_globals`**
+- **`gograph_mocks`**
 
 ## Recommended project setup
 
