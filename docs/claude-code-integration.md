@@ -73,6 +73,8 @@ Here is how Claude Code behaves before and after `gograph`:
 2. Claude: *Sees exactly the 3 downstream HTTP handlers that will be affected by changing the token validation signature.*
 3. Claude: `gograph source "ValidateToken"`
 4. Claude: *Reads the function, plans the edit, and safely applies it.*
+5. Claude: `gograph check --uncommitted`
+6. Claude: *Verifies that the changes didn't break architectural boundaries, test requirements, or introduce too much complexity.*
 
 ## 4. MCP Integration (Optional)
 

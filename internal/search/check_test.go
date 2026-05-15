@@ -1,0 +1,157 @@
+package search
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/ozgurcd/gograph/internal/graph"
+)
+
+func TestCheckConfigDefaults(t *testing.T) {
+	config := &CheckConfig{
+		Checks: map[string]any{
+			"max_arity": map[string]any{"level": "warn", "value": 6.0},
+		},
+	}
+	p := &CheckParams{
+		CurrentGraph: &graph.Graph{},
+		Config:       config,
+	}
+	report, err := RunChecks(p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if report.Status != "passed" {
+		t.Errorf("expected passed, got %s", report.Status)
+	}
+}
+
+func TestCheckConfigUnknown(t *testing.T) {
+	config := &CheckConfig{
+		Checks: map[string]any{
+			"unknown_check": "warn",
+		},
+	}
+	p := &CheckParams{
+		CurrentGraph: &graph.Graph{},
+		Config:       config,
+	}
+	_, err := RunChecks(p)
+	if err == nil {
+		t.Fatalf("expected error for unknown check, got nil")
+	}
+}
+
+func TestCheckMaxArity(t *testing.T) {
+	g := &graph.Graph{
+		Symbols: []graph.SymbolNode{
+			{Name: "FuncOk", Kind: graph.KindFunction, Signature: "func(a, b int)"},
+			{Name: "FuncBad", Kind: graph.KindFunction, Signature: "func(a, b, c, d int)", File: "test.go", Line: 10},
+		},
+	}
+	config := &CheckConfig{
+		Checks: map[string]any{
+			"max_arity": map[string]any{"level": "error", "value": 3.0},
+		},
+	}
+	p := &CheckParams{CurrentGraph: g, Config: config}
+	report, _ := RunChecks(p)
+
+	if report.Summary.Errors != 1 {
+		t.Errorf("expected 1 error, got %d", report.Summary.Errors)
+	}
+	if len(report.Findings) != 1 || report.Findings[0].Symbol != "FuncBad" {
+		t.Errorf("expected FuncBad to be reported, got %v", report.Findings)
+	}
+	if report.Status != "failed" {
+		t.Errorf("expected failed status, got %s", report.Status)
+	}
+}
+
+func TestCheckJSONShape(t *testing.T) {
+	g := &graph.Graph{}
+	config := &CheckConfig{
+		Checks: map[string]any{
+			"boundaries": "warn",
+		},
+		BoundariesConfig: "not_exist.json",
+	}
+	p := &CheckParams{CurrentGraph: g, Config: config}
+	report, _ := RunChecks(p)
+
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("failed to marshal report: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatalf("failed to unmarshal JSON: %v", err)
+	}
+
+	for _, k := range []string{"status", "summary", "findings", "skipped", "limitations"} {
+		if _, ok := out[k]; !ok {
+			t.Errorf("JSON output missing key %s", k)
+		}
+	}
+}
+
+func TestCheckBaselineSkipped(t *testing.T) {
+	g := &graph.Graph{}
+	config := &CheckConfig{
+		Checks: map[string]any{
+			"api_drift":   "error",
+			"new_globals": "warn",
+		},
+	}
+	p := &CheckParams{CurrentGraph: g, Config: config}
+	report, _ := RunChecks(p)
+
+	if report.Summary.Skipped != 2 {
+		t.Errorf("expected 2 skipped checks, got %d", report.Summary.Skipped)
+	}
+	for _, skip := range report.Skipped {
+		if skip.Check != "api_drift" && skip.Check != "new_globals" {
+			t.Errorf("unexpected skipped check: %s", skip.Check)
+		}
+	}
+}
+
+func TestCheckBoundariesViolation(t *testing.T) {
+	// create temporary boundaries config
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "boundaries.json")
+	configData := `{
+		"layers": [
+			{"name": "Domain", "packages": ["domain/**"], "may_import": []}
+		]
+	}`
+	os.WriteFile(configPath, []byte(configData), 0644)
+
+	g := &graph.Graph{
+		Packages: []graph.PackageNode{
+			{ID: "domain/user", Name: "user"},
+			{ID: "infra/db", Name: "db"},
+		},
+		Imports: []graph.ImportEdge{
+			{FromFile: "domain/user/user.go", ImportPath: "github.com/example/infra/db"},
+		},
+	}
+
+	config := &CheckConfig{
+		Checks: map[string]any{
+			"boundaries": "error",
+		},
+		BoundariesConfig: configPath,
+	}
+	p := &CheckParams{CurrentGraph: g, Config: config}
+	report, _ := RunChecks(p)
+
+	if report.Summary.Errors != 1 {
+		t.Errorf("expected 1 error, got %d", report.Summary.Errors)
+	}
+	if len(report.Findings) != 1 || report.Findings[0].Check != "boundaries" {
+		t.Errorf("expected boundaries finding")
+	}
+}

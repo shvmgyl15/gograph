@@ -159,6 +159,8 @@ func Run(args []string) int {
 		return runReview(args[1:])
 	case "api", "contract":
 		return runAPI(args[1:])
+	case "check":
+		return runCheck(args[1:])
 	case "help", "--help", "-h":
 		printHelp()
 		return 0
@@ -236,7 +238,8 @@ review --uncommitted : generate a post-edit final review report for all uncommit
 api --since <ref>    : identify breaking API and contract changes since a git reference
 schema <table>       : structs mapped to DB table via tags
 skeleton             : output the whole repository's API signatures (function bodies stripped)
-trace <err_str> [--no-tests]: trace an error backwards from entry points to origin`)
+trace <err_str> [--no-tests]: trace an error backwards from entry points to origin
+check [--since ref]  : run static policy checks (boundaries, api_drift, test requirements)`)
 	return 0
 }
 
@@ -813,6 +816,9 @@ INTERFACES & TYPES
   fixtures <pkg>             Find test helper structs and functions in test files.
 
 CODE QUALITY
+  check [--config]           Run static policy checks using .gograph/checks.json.
+  check --uncommitted        Run checks, including uncommitted code.
+  check --since <ref>        Run checks, including API drift against a baseline.
   boundaries [--config]      Verify package architecture constraints using boundaries.json.
   boundaries --create        Auto-generate a baseline boundaries.json from the current repo.
   complexity [symbol]        Cyclomatic complexity per function, highest first.

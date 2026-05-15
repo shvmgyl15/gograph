@@ -106,8 +106,12 @@ gograph source "ValidateToken"    # Extract the source code for a specific symbo
 gograph sql                       # Extract database SQL queries from the AST
 gograph stale                     # Check if graph.json is out of date vs source files
 gograph tests "ValidateToken"     # Find which test functions exercise a named symbol
+# --- STATIC GUARDS ---
+gograph check                     # Run static policy checks using .gograph/checks.json
+gograph check --uncommitted       # Run checks, including uncommitted code
+gograph check --since master      # Run checks, including API drift against master
 # --- TOKEN SAVERS ---
-gograph api --since main          # Identify breaking API and contract changes since a git reference
+gograph api --since master        # Identify breaking API and contract changes since a git reference
 gograph arity --min 5             # Find functions with many arguments (long parameter list smell)
 gograph changes                   # New/modified/deleted symbols since last build
 gograph constructors "User"       # Find factory functions returning the named struct

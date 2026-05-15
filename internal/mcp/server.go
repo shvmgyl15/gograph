@@ -50,9 +50,10 @@ var ExposeToolsForTesting map[string]func(context.Context, mcp.CallToolRequest) 
 
 // NewServer creates and returns the MCP server with all tools registered.
 func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph func(string) (*graph.Graph, error)) *server.MCPServer {
+	// TODO: Centralize version source with internal/cli.Version to avoid duplication.
 	s := server.NewMCPServer(
 		"gograph",
-		"1.1.0",
+		"1.4.44",
 		server.WithToolCapabilities(true),
 	)
 
@@ -73,7 +74,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 			"tools": []map[string]string{
 				{"name": "gograph_capabilities", "purpose": "Discover available tools and workflows."},
 				{"name": "gograph_query", "purpose": "Search the repository for symbols, packages, files, or imports using a keyword term."},
-				{"name": "gograph_focus", "purpose": "Extract the complete definition and embedded docstring of a symbol without its body implementation."},
+				{"name": "gograph_focus", "purpose": "Extract targeted context for a Go package, including files, symbols, internal calls, and dependencies.", "when_to_use": "Use when an agent needs package-level orientation before editing or reviewing package-scoped changes."},
 				{"name": "gograph_callers", "purpose": "Find what calls a specific function or method."},
 				{"name": "gograph_callees", "purpose": "Find what functions or methods are called from inside the specified function."},
 				{"name": "gograph_implementers", "purpose": "Find all structs that implement the specified interface."},

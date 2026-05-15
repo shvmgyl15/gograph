@@ -80,6 +80,36 @@ gograph mcp <path>              # runs an MCP server over stdio
 
 ## Concrete agent workflows
 
+### Recommended agent workflow:
+- Before editing: `gograph plan <symbol>` / `gograph context <symbol>`
+- After editing: `gograph review --uncommitted`
+- Before done: `gograph check --uncommitted`
+- If API-facing changes exist: `gograph check --since master`
+*(Note: The baseline ref must exist locally.)*
+
+### Config Example for .gograph/checks.json:
+```json
+{
+  "checks": {
+    "boundaries": "error",
+    "api_drift": "warn",
+    "require_tests_for_changed_routes": "error",
+    "require_tests_for_changed_exported_symbols": "warn",
+    "new_globals": "warn",
+    "max_arity": {
+      "level": "warn",
+      "value": 6
+    },
+    "max_complexity": {
+      "level": "warn",
+      "value": 20
+    }
+  },
+  "boundaries_config": ".gograph/boundaries.json",
+  "baseline": "master"
+}
+```
+
 ### 1. Onboarding to an unfamiliar repo
 Instead of `ls -R` + reading 10 random files, the agent reads `.gograph/GRAPH_REPORT.md` and immediately knows: packages, entry points, hottest files, hottest symbols, what imports what.
 

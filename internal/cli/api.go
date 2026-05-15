@@ -1,27 +1,20 @@
 package cli
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
-	"github.com/ozgurcd/gograph/internal/graph"
 	"github.com/ozgurcd/gograph/internal/search"
 )
 
 func runAPI(args []string) int {
 	var baselineRef string
-	var force bool
 
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--since" && i+1 < len(args) {
 			baselineRef = args[i+1]
 			i++
-		} else if args[i] == "--force" || args[i] == "-y" {
-			force = true
 		}
 	}
 
@@ -42,66 +35,13 @@ func runAPI(args []string) int {
 		return 1
 	}
 
-	var baselineGraph *graph.Graph
-
-	if strings.HasSuffix(baselineRef, ".json") {
-		data, err := os.ReadFile(baselineRef)
-		if err != nil {
-			if jsonMode {
-				return PrintJSON(errEnvelope("api", err.Error()))
-			}
-			fmt.Fprintf(os.Stderr, "error loading baseline graph %s: %v\n", baselineRef, err)
-			return 1
+	baselineGraph, err := BuildBaselineGraphFromGitRef(baselineRef, BuildGraph)
+	if err != nil {
+		if jsonMode {
+			return PrintJSON(errEnvelope("api", err.Error()))
 		}
-		var g graph.Graph
-		if err := json.Unmarshal(data, &g); err != nil {
-			if jsonMode {
-				return PrintJSON(errEnvelope("api", err.Error()))
-			}
-			fmt.Fprintf(os.Stderr, "error parsing baseline graph %s: %v\n", baselineRef, err)
-			return 1
-		}
-		baselineGraph = &g
-	} else {
-		if !force && !jsonMode {
-			fmt.Printf("⚠️  WARNING: To compare contracts, gograph must copy the repository state at '%s' (excluding .git/ and non-source files) into a temporary directory for baseline analysis. The directory will be deleted immediately after.\nProceed? [y/N]: ", baselineRef)
-			reader := bufio.NewReader(os.Stdin)
-			text, _ := reader.ReadString('\n')
-			text = strings.TrimSpace(strings.ToLower(text))
-			if text != "y" && text != "yes" {
-				fmt.Println("Aborted.")
-				return 0
-			}
-		}
-
-		tmpDir, err := os.MkdirTemp("", "gograph-baseline-*")
-		if err != nil {
-			if jsonMode {
-				return PrintJSON(errEnvelope("api", err.Error()))
-			}
-			fmt.Fprintln(os.Stderr, "error creating temp dir:", err)
-			return 1
-		}
-		defer func() { _ = os.RemoveAll(tmpDir) }()
-
-		cmd := exec.Command("bash", "-c", fmt.Sprintf(`set -o pipefail; git archive %s "**/*.go" "*.go" "go.mod" "go.sum" "go.work" "go.work.sum" | tar -x -C %s`, baselineRef, tmpDir))
-		if err := cmd.Run(); err != nil {
-			// If git archive fails (e.g., bad ref or not a git repo), we fail gracefully.
-			if jsonMode {
-				return PrintJSON(errEnvelope("api", fmt.Sprintf("git archive failed: %v", err)))
-			}
-			fmt.Fprintf(os.Stderr, "error extracting baseline via git archive: %v\n", err)
-			return 1
-		}
-
-		baselineGraph, err = BuildGraph(tmpDir)
-		if err != nil {
-			if jsonMode {
-				return PrintJSON(errEnvelope("api", err.Error()))
-			}
-			fmt.Fprintf(os.Stderr, "error building baseline graph: %v\n", err)
-			return 1
-		}
+		fmt.Fprintf(os.Stderr, "error building baseline graph: %v\n", err)
+		return 1
 	}
 
 	res := search.APIDrift(baselineGraph, currentGraph, baselineRef)

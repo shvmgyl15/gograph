@@ -114,6 +114,7 @@ func TestAllCommandsRegistered(t *testing.T) {
 		"plan",
 		"review",
 		"boundaries",
+		"check",
 		"--json",
 		"--files-only",
 		// aliases
