@@ -75,7 +75,40 @@ gograph mocks <interface>        # find structs implementing an interface in tes
 gograph fixtures <pkg>           # find test helper structs and functions in test files
 gograph capabilities             # print token-optimized AI agent cheat sheet
 gograph mcp <path>               # runs an MCP server over stdio
-gograph add-claude-plugin        # automatically install gograph as a Claude MCP plugin
+gograph add-claude-plugin        # install MCP server + CLAUDE.md rules + PreToolUse hook (Claude Desktop & Claude Code)
+gograph hook-guard               # PreToolUse hook binary — reads tool call JSON from stdin, blocks Go symbol greps (invoked automatically by Claude Code)
+```
+
+## Claude Code / Claude Desktop Integration
+
+Running `gograph add-claude-plugin` performs three installation steps in one command:
+
+| Step | What it does | Where |
+|---|---|---|
+| **MCP server** | Registers gograph so Claude has native tool access | `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) |
+| **CLAUDE.md rules** | Injects steering instructions Claude reads at session start | `~/.claude/CLAUDE.md` |
+| **PreToolUse hook** | Intercepts `grep`/`rg` on Go symbols and redirects to gograph | `~/.claude/hooks/gograph-guard.sh` + `~/.claude/settings.json` |
+
+### How the hook works
+
+The hook (`gograph hook-guard`) is invoked automatically by Claude Code before every `Bash` tool call. It:
+
+1. Reads the tool call JSON from stdin.
+2. Checks if the command is `grep` or `rg`.
+3. If targeting `.go` files and the search pattern looks like a Go identifier (PascalCase/camelCase, 3+ chars) → **blocks** with exit code `2` and tells Claude which `gograph` tool to use instead.
+4. Otherwise → **allows** with exit code `0`.
+
+**Allowed through (not blocked):**
+- Searches explicitly targeting non-Go files (`*.yaml`, `*.md`, `*.sql`, etc.)
+- Comment/doc searches (TODO, FIXME, HACK, etc.)
+- Searches in `docs/`, `.github/`, `testdata/`, `migrations/`
+- Patterns that don't look like Go identifiers (short strings, regex with special chars)
+
+**Blocked and redirected:**
+```bash
+grep -r "ValidateToken" .        # → gograph_query "ValidateToken"
+rg "UserService" --include=*.go  # → gograph_context "UserService"
+grep -rn "runCheck" .            # → gograph_callers "runCheck"
 ```
 
 ## Concrete agent workflows

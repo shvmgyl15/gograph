@@ -182,20 +182,31 @@ To install the plugin automatically on macOS, Windows, or Linux, run:
 gograph add-claude-plugin
 ```
 
-For Claude Code (CLI) users, you can also run:
+This single command does three things:
+1. **Registers the MCP server** in `claude_desktop_config.json` (Claude Desktop) so `gograph` tools are available to Claude natively.
+2. **Injects steering rules** into `~/.claude/CLAUDE.md` — Claude reads this automatically and knows to use `gograph_query` instead of `grep` for Go symbol searches.
+3. **Installs a smart `PreToolUse` hook** at `~/.claude/hooks/gograph-guard.sh` — this intercepts `grep`/`rg` calls targeting Go symbols and redirects Claude to the appropriate `gograph` MCP tool, saving tokens and improving precision.
+
+The hook is **smart**: it only blocks grep when the search pattern looks like a Go identifier (PascalCase/camelCase, 3+ chars). Legitimate raw-text searches in YAML, Markdown, SQL, or comment files are allowed through unchanged.
+
+For Claude Code (CLI) users, also run:
 ```bash
 claude mcp add gograph -- gograph mcp .
 ```
 
-You can also run it manually over stdio:
+You can also run the MCP server manually over stdio:
 ```bash
 gograph mcp .
 ```
-You can add this to your AI client's configuration (like Claude Desktop or VS Code extensions like Cline) so the AI can run these graph queries autonomously!
 
 ## 🤖 Integrating with AI Agents (Cursor, Claude Code, Copilot)
 
-To get the absolute best results from your AI coding assistant, you no longer need to copy-paste giant instruction files. Just add this one-liner to your `.cursorrules`, `CLAUDE.md`, or AI system instructions:
+To get the best results from your AI coding assistant, run `gograph add-claude-plugin`. It automatically configures everything:
+- MCP server registration for native tool access
+- `CLAUDE.md` rules that steer Claude to use `gograph` instead of `grep`
+- A `PreToolUse` hook that enforces Go symbol lookups go through `gograph`
+
+If you prefer manual setup, add this to your `.cursorrules`, `CLAUDE.md`, or AI system instructions:
 
 > **System Prompt:**
 > Before answering architecture or repository questions, inspect the available `gograph_*` MCP tools for the current project and use them instead of grep/find. Each project ships its own gograph MCP server; pick the matching one. If using the CLI directly, run `gograph capabilities` first.

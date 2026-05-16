@@ -116,6 +116,7 @@ func TestAllCommandsRegistered(t *testing.T) {
 		"boundaries",
 		"check",
 		"add-claude-plugin",
+		"hook-guard",
 		"--json",
 		"--files-only",
 		// aliases

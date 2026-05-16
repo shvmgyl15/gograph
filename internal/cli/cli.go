@@ -167,6 +167,8 @@ func Run(args []string) int {
 			return 1
 		}
 		return 0
+	case "hook-guard":
+		return runHookGuard()
 	case "help", "--help", "-h":
 		printHelp()
 		return 0
@@ -247,7 +249,8 @@ skeleton             : output the whole repository's API signatures (function bo
 trace <err_str> [--no-tests]: trace an error backwards from entry points to origin
 check [--since ref]  : run static policy checks (boundaries, api_drift, test requirements)
 mcp [path]           : start a Model Context Protocol server over stdio
-add-claude-plugin    : automatically install gograph as a Claude Desktop/Code MCP plugin`)
+add-claude-plugin    : install gograph as a Claude Desktop/Code MCP plugin (also injects CLAUDE.md rules and PreToolUse hook)
+hook-guard           : PreToolUse hook — intercepts grep on Go symbols and redirects to gograph (invoked by Claude Code automatically)`)
 	return 0
 }
 
@@ -870,7 +873,13 @@ AGENT INTEGRATION
                              first so the agent knows how to use gograph.
   mcp [path]                 Start a Model Context Protocol server over stdio.
                              Exposes graph queries as native tools for AI clients.
-  add-claude-plugin          Automatically install gograph as a Claude MCP plugin.
+  add-claude-plugin          Install gograph as a Claude MCP plugin. Also injects
+                             CLAUDE.md steering rules and a smart PreToolUse hook
+                             that redirects Go symbol greps to gograph tools.
+  hook-guard                 PreToolUse hook invoked by Claude Code. Reads a JSON
+                             tool call from stdin; blocks grep on Go symbols and
+                             suggests the equivalent gograph command. Exit 0 = allow,
+                             exit 2 = block. Not intended for direct human use.
 
 OTHER
   version, -v                Print version.

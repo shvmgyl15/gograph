@@ -80,24 +80,46 @@ Here is how Claude Code behaves before and after `gograph`:
 
 Instead of passing CLI instructions via `CLAUDE.md`, you can give Claude native superpowers by installing `gograph` as a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) plugin. This exposes all of `gograph`'s capabilities as native LLM tools (e.g., `mcp_gograph_query`, `mcp_gograph_impact`), allowing the agent to invoke them automatically.
 
-### Claude Desktop Setup
-We provide a cross-platform installer that automatically locates your `claude_desktop_config.json` and injects the `gograph` plugin. Run this once:
+### Claude Desktop + Claude Code: One-Command Setup
 
 ```bash
 gograph add-claude-plugin
 ```
-*Restart Claude Desktop for the plugin to take effect.*
 
-### Claude Code (CLI) Setup
-Because Claude Code isolates tools per-project, you must explicitly add `gograph` to the repository you want it to analyze. 
+This single command performs **three installation steps**:
 
-Navigate to your Go project directory and run:
+| Step | What is installed | Location |
+|---|---|---|
+| **MCP server** | Registers gograph in `claude_desktop_config.json` | macOS: `~/Library/Application Support/Claude/` |
+| **CLAUDE.md rules** | Injects steering rules Claude reads at every session start | `~/.claude/CLAUDE.md` |
+| **PreToolUse hook** | Smart hook that intercepts `grep`/`rg` on Go symbols | `~/.claude/hooks/gograph-guard.sh` + `~/.claude/settings.json` |
+
+*Restart Claude Desktop / Claude Code for all changes to take effect.*
+
+#### What the PreToolUse hook does
+
+The hook (`gograph hook-guard`) runs automatically before every `Bash` tool call Claude makes. When Claude tries to `grep` for a Go symbol, the hook:
+
+1. Detects it is a Go symbol search (pattern matches a valid Go identifier: `[A-Za-z_][a-zA-Z0-9_]{2,}`)
+2. Blocks the call (exit code `2`) and outputs which `gograph` tool to use instead
+3. Claude immediately retries using the correct `gograph_query` / `gograph_context` / etc. call
+
+**The hook is smart — it only intercepts symbol searches.** These pass through unchanged:
+- Searches in non-Go files (`*.yaml`, `*.md`, `*.sql`, `*.sh`)
+- Comment/doc searches (TODO, FIXME, HACK, DEPRECATED)
+- Searches in `docs/`, `.github/`, `testdata/`, `migrations/`
+- Short patterns or patterns with regex special characters
+
+### Claude Code (CLI) — Per-Project Registration
+
+Because Claude Code isolates tools per-project, you must explicitly add `gograph` to each repository:
 
 ```bash
 claude mcp add gograph -- gograph mcp .
 ```
 
 **How it works:**
-- Claude Code registers the plugin centrally in your home directory (`~/.claude.json`), but **maps it directly to your current project directory**. 
+- Claude Code registers the plugin centrally in your home directory (`~/.claude.json`), but **maps it directly to your current project directory**.
 - The `.` in `gograph mcp .` tells the server to index whatever specific folder Claude Code is currently operating in.
 - **You must run this command once for each Go project repository** you wish to use it in. This prevents your agent from accidentally querying index databases from other projects!
+
