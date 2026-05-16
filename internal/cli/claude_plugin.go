@@ -101,9 +101,24 @@ func installMCPServer(home string) error {
 	if !ok {
 		return fmt.Errorf("mcpServers is not a JSON object")
 	}
+	// Resolve the project path absolutely so Claude Desktop can find the graph
+	// regardless of the working directory it uses when starting the MCP server.
+	projectPath, err := os.Getwd()
+	if err != nil {
+		projectPath = "."
+	}
+	if absPath, err2 := filepath.Abs(projectPath); err2 == nil {
+		projectPath = absPath
+	}
+
+	// Warn if graph has not been built yet
+	if _, err := os.Stat(filepath.Join(projectPath, ".gograph", "graph.json")); os.IsNotExist(err) {
+		fmt.Printf("⚠️  No graph found at %s — run 'gograph build .' in your project first.\n", projectPath)
+	}
+
 	mcpServers["gograph"] = map[string]interface{}{
 		"command": gographPath,
-		"args":    []string{"mcp", "."},
+		"args":    []string{"mcp", projectPath},
 	}
 	out, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {

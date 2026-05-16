@@ -612,8 +612,14 @@ func runMCP(args []string) int {
 
 	g, err := loadGraph(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to load graph for MCP server: %v\n", err)
-		return 1
+		// Graph does not exist yet — build it automatically so Claude Desktop
+		// works without requiring a manual "gograph build ." step first.
+		fmt.Fprintf(os.Stderr, "graph not found, building automatically for %s...\n", absRoot)
+		g, err = BuildGraph(absRoot)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to auto-build graph: %v\n", err)
+			return 1
+		}
 	}
 
 	rebuild := func() (*graph.Graph, error) {
