@@ -76,12 +76,28 @@ Here is how Claude Code behaves before and after `gograph`:
 5. Claude: `gograph check --uncommitted`
 6. Claude: *Verifies that the changes didn't break architectural boundaries, test requirements, or introduce too much complexity.*
 
-## 4. MCP Integration (Optional)
+## 4. MCP Integration (Native Plugins)
 
-If you are using Claude Code in an environment that supports the Model Context Protocol (MCP), you can run Gograph directly as an MCP server over `stdio`:
+Instead of passing CLI instructions via `CLAUDE.md`, you can give Claude native superpowers by installing `gograph` as a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) plugin. This exposes all of `gograph`'s capabilities as native LLM tools (e.g., `mcp_gograph_query`, `mcp_gograph_impact`), allowing the agent to invoke them automatically.
+
+### Claude Desktop Setup
+We provide a cross-platform installer that automatically locates your `claude_desktop_config.json` and injects the `gograph` plugin. Run this once:
 
 ```bash
-gograph mcp .
+gograph add-claude-plugin
+```
+*Restart Claude Desktop for the plugin to take effect.*
+
+### Claude Code (CLI) Setup
+Because Claude Code isolates tools per-project, you must explicitly add `gograph` to the repository you want it to analyze. 
+
+Navigate to your Go project directory and run:
+
+```bash
+claude mcp add gograph -- gograph mcp .
 ```
 
-This exposes all of `gograph`'s capabilities as native LLM tools (e.g., `mcp_gograph_query`, `mcp_gograph_source`), allowing the agent to invoke them automatically without needing CLI prompt instructions.
+**How it works:**
+- Claude Code registers the plugin centrally in your home directory (`~/.claude.json`), but **maps it directly to your current project directory**. 
+- The `.` in `gograph mcp .` tells the server to index whatever specific folder Claude Code is currently operating in.
+- **You must run this command once for each Go project repository** you wish to use it in. This prevents your agent from accidentally querying index databases from other projects!

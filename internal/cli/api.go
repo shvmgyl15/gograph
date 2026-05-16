@@ -22,7 +22,7 @@ func runAPI(args []string) int {
 		if jsonMode {
 			return PrintJSON(errEnvelope("api", "missing --since flag. Usage: gograph api --since <ref>"))
 		}
-		fmt.Fprintln(os.Stderr, "usage: gograph api --since <git-ref|file.json> [--json] [--force]")
+		fmt.Fprintln(os.Stderr, "usage: gograph api --since <git-ref|file.json> [--json]")
 		return 1
 	}
 

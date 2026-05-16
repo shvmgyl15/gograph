@@ -37,11 +37,11 @@ gograph fields <struct>         # extract fields and types of a struct
 gograph source <symbol>         # extract exact source code of a symbol (USE THIS instead of grep to read function bodies, mock stubs, or full interface definitions)
 gograph impact <symbol>         # find downstream callers (blast radius)
 gograph impact --uncommitted    # find blast radius of all uncommitted code changes
-gograph orphans                 # find dead code
+gograph orphans                 # functions with 0 explicit incoming calls (potential dead code)
 gograph routes                  # extract all HTTP REST API routes
 gograph imports <pkg>           # trace external/internal package usage
 gograph sql                     # map raw SQL queries to their execution functions
-gograph errors                  # trace a runtime panic or error log to its source line
+gograph errors                  # custom error variables and panics mapped to their source
 gograph embeds <struct>         # find which structs embed a target struct
 gograph public <pkg>            # list only the exported API surface of a package
 gograph envs [term]             # list every environment variable read in the codebase
@@ -49,7 +49,6 @@ gograph concurrency [term]      # map goroutines, channels, mutexes, waitgroups,
 gograph tests [symbol]          # find which test functions exercise a named symbol
 gograph path <from> <to>        # shortest call chain between two symbols (BFS traversal)
 gograph stale                   # check if graph.json is out of date vs source files
-gograph orphans                 # truly unreachable symbols (reachability from entry points)
 gograph godobj                  # find god-object struct candidates (default thresholds)
 gograph godobj --methods 10 --fields 12 --calls 30 --top 5  # custom thresholds
 gograph complexity              # cyclomatic complexity for all functions, highest first
@@ -75,7 +74,8 @@ gograph globals <pkg>            # find pkg-level vars, consts, and functions mu
 gograph mocks <interface>        # find structs implementing an interface in test or mock files
 gograph fixtures <pkg>           # find test helper structs and functions in test files
 gograph capabilities             # print token-optimized AI agent cheat sheet
-gograph mcp <path>              # runs an MCP server over stdio
+gograph mcp <path>               # runs an MCP server over stdio
+gograph add-claude-plugin        # automatically install gograph as a Claude MCP plugin
 ```
 
 ## Concrete agent workflows
@@ -84,7 +84,7 @@ gograph mcp <path>              # runs an MCP server over stdio
 - Before editing: `gograph plan <symbol>` / `gograph context <symbol>`
 - After editing: `gograph review --uncommitted`
 - Before done: `gograph check --uncommitted`
-- If API-facing changes exist: `gograph check --since master`
+- If API-facing changes exist: `gograph check --since main` (or `master`)
 *(Note: The baseline ref must exist locally.)*
 
 ### Config Example for .gograph/checks.json:
@@ -109,6 +109,7 @@ gograph mcp <path>              # runs an MCP server over stdio
   "baseline": "master"
 }
 ```
+*(Note: The `"baseline"` property defines the Git branch (e.g., `"main"`, `"master"`, or a release tag like `"v1.0"`) that `gograph check` compares against when calculating `api_drift`. If your repository uses `main`, update this value accordingly!)*
 
 ### 1. Onboarding to an unfamiliar repo
 Instead of `ls -R` + reading 10 random files, the agent reads `.gograph/GRAPH_REPORT.md` and immediately knows: packages, entry points, hottest files, hottest symbols, what imports what.

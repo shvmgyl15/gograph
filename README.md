@@ -109,9 +109,10 @@ gograph tests "ValidateToken"     # Find which test functions exercise a named s
 # --- STATIC GUARDS ---
 gograph check                     # Run static policy checks using .gograph/checks.json
 gograph check --uncommitted       # Run checks, including uncommitted code
-gograph check --since master      # Run checks, including API drift against master
+gograph check --since main        # Run checks, including API drift against main
+gograph boundaries                # Verify package architecture constraints against boundaries.json
 # --- TOKEN SAVERS ---
-gograph api --since master        # Identify breaking API and contract changes since a git reference
+gograph api --since main          # Identify breaking API and contract changes since a git reference
 gograph arity --min 5             # Find functions with many arguments (long parameter list smell)
 gograph changes                   # New/modified/deleted symbols since last build
 gograph constructors "User"       # Find factory functions returning the named struct
@@ -175,6 +176,18 @@ gograph callers "ValidateToken" --json
 
 **5. Run as an MCP Server (For AI Agents):**
 If you want to give your AI agent native tool execution capabilities, `gograph` has a built-in [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server.
+
+To install the plugin automatically on macOS, Windows, or Linux, run:
+```bash
+gograph add-claude-plugin
+```
+
+For Claude Code (CLI) users, you can also run:
+```bash
+claude mcp add gograph -- gograph mcp .
+```
+
+You can also run it manually over stdio:
 ```bash
 gograph mcp .
 ```

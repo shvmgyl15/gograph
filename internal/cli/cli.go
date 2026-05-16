@@ -161,6 +161,12 @@ func Run(args []string) int {
 		return runAPI(args[1:])
 	case "check":
 		return runCheck(args[1:])
+	case "add-claude-plugin":
+		if err := installPlugin(); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to install plugin: %v\n", err)
+			return 1
+		}
+		return 0
 	case "help", "--help", "-h":
 		printHelp()
 		return 0
@@ -209,7 +215,7 @@ implementers <iface> : structs implementing iface
 imports <pkg>        : trace external/internal usage
 interfaces <struct>  : duck-type interface check
 node <sym>           : AST info of sym
-orphans              : reachability-based dead code analysis
+orphans              : functions with 0 explicit incoming calls (potential dead code)
 path <from> <to>     : shortest call chain between two symbols (BFS)
 public <pkg>         : exported API of pkg
 query <str>          : search symbols/files/pkgs
@@ -239,7 +245,9 @@ api --since <ref>    : identify breaking API and contract changes since a git re
 schema <table>       : structs mapped to DB table via tags
 skeleton             : output the whole repository's API signatures (function bodies stripped)
 trace <err_str> [--no-tests]: trace an error backwards from entry points to origin
-check [--since ref]  : run static policy checks (boundaries, api_drift, test requirements)`)
+check [--since ref]  : run static policy checks (boundaries, api_drift, test requirements)
+mcp [path]           : start a Model Context Protocol server over stdio
+add-claude-plugin    : automatically install gograph as a Claude Desktop/Code MCP plugin`)
 	return 0
 }
 
@@ -803,8 +811,8 @@ CALL GRAPH
                              uncommitted code lines using git diff.
   path <from> <to>           Shortest call chain between two symbols (BFS).
   trace <err_str>            Find the origin of an error and trace backwards to entry points.
-  orphans                    Functions unreachable from any entry point
-                             (reachability analysis — stricter than 0-incoming).
+  orphans                    Functions with 0 explicit incoming calls in the call graph.
+                             Useful for spotting potentially unused code.
 
 INTERFACES & TYPES
   implementers <interface>   Structs that implement the named interface (duck-typing).
@@ -847,7 +855,6 @@ CODE QUALITY
   review --uncommitted       Generate a post-edit final review report for all uncommitted changes.
   api --since <ref>          Identify breaking API and contract changes since a git reference (e.g. main).
                              Run 'gograph build . --precise' before this for best results.
-                             Use --force to bypass interactive prompt.
 
 EXTRACTION
   routes                     All HTTP REST API routes and their handler functions.
@@ -863,6 +870,7 @@ AGENT INTEGRATION
                              first so the agent knows how to use gograph.
   mcp [path]                 Start a Model Context Protocol server over stdio.
                              Exposes graph queries as native tools for AI clients.
+  add-claude-plugin          Automatically install gograph as a Claude MCP plugin.
 
 OTHER
   version, -v                Print version.
