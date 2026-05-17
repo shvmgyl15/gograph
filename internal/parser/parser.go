@@ -4,9 +4,11 @@
 package parser
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
 	"go/parser"
+	"go/printer"
 	"go/token"
 	"strings"
 
@@ -98,15 +100,31 @@ func ParseFile(fset *token.FileSet, path, relPath string) (*FileResult, error) {
 			if lit, ok := call.Args[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
 				path := strings.Trim(lit.Value, "\"")
 				handler := ""
+				inlineBody := ""
 				if len(call.Args) >= 2 {
-					handler = typeString(call.Args[1])
+					switch h := call.Args[1].(type) {
+					case *ast.FuncLit:
+						// Inline anonymous function — not a named symbol.
+						// Record a descriptive label so callers know it is a closure
+						// and can navigate to the exact line in the source file.
+						handler = fmt.Sprintf("<inline handler at line %d>", fset.Position(h.Pos()).Line)
+						// Render the full function literal source via go/printer so it
+						// can be served from graph.json without re-reading the source file.
+						var buf bytes.Buffer
+						if err := printer.Fprint(&buf, fset, h); err == nil {
+							inlineBody = buf.String()
+						}
+					default:
+						handler = typeString(call.Args[1])
+					}
 				}
 				result.Routes = append(result.Routes, graph.HTTPRoute{
-					Method:  method,
-					Path:    path,
-					Handler: handler,
-					File:    relPath,
-					Line:    fset.Position(call.Pos()).Line,
+					Method:     method,
+					Path:       path,
+					Handler:    handler,
+					InlineBody: inlineBody,
+					File:       relPath,
+					Line:       fset.Position(call.Pos()).Line,
 				})
 			}
 		}

@@ -85,11 +85,15 @@ type Dependency struct {
 
 // HTTPRoute represents an HTTP REST endpoint found in the AST.
 type HTTPRoute struct {
-	Method  string `json:"method"`
-	Path    string `json:"path"`
-	Handler string `json:"handler"`
-	File    string `json:"file"`
-	Line    int    `json:"line"`
+	Method     string `json:"method"`
+	Path       string `json:"path"`
+	Handler    string `json:"handler"`
+	// InlineBody holds the rendered source of an anonymous handler function.
+	// Populated only when the handler is a *ast.FuncLit (closure), empty otherwise.
+	// Captured at build time via go/printer — no file I/O needed at query time.
+	InlineBody string `json:"inline_body,omitempty"`
+	File       string `json:"file"`
+	Line       int    `json:"line"`
 }
 
 // PackageNode represents a Go package found in the repository.

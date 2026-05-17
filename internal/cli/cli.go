@@ -1882,9 +1882,13 @@ func runEndpoint(args []string) int {
 	depth := 5
 	query := args[0]
 	jsonMode := false
+	includeTests := true
 	for i, a := range args {
 		if a == "--json" {
 			jsonMode = true
+		}
+		if a == "--no-tests" {
+			includeTests = false
 		}
 		if a == "--depth" && i+1 < len(args) {
 			if n, err := strconv.Atoi(args[i+1]); err == nil {
@@ -1899,7 +1903,7 @@ func runEndpoint(args []string) int {
 		return 1
 	}
 
-	slices := search.Endpoint(g, query, depth)
+	slices := search.Endpoint(g, query, depth, includeTests)
 	if len(slices) == 0 {
 		if jsonMode {
 			return PrintJSON(errEnvelope("endpoint", "no matching HTTP routes found for: "+query+
@@ -1925,7 +1929,35 @@ func runEndpoint(args []string) int {
 
 	for _, s := range slices {
 		fmt.Printf("ROUTE    %s\n", s.Route)
-		fmt.Printf("HANDLER  %s  (%s:%d)\n\n", s.Handler, s.HandlerFile, s.HandlerLine)
+		fmt.Printf("HANDLER  %s  (%s:%d)\n", s.Handler, s.HandlerFile, s.HandlerLine)
+
+		if s.IsInline {
+			fmt.Println()
+			if s.InlineBody != "" {
+				fmt.Println("HANDLER SOURCE (inline closure)")
+				fmt.Println()
+				// Indent each line for readability
+				for _, line := range strings.Split(s.InlineBody, "\n") {
+					fmt.Printf("  %s\n", line)
+				}
+				fmt.Println()
+			} else {
+				// InlineBody is empty only if the graph was built before this feature.
+				// Direct the user to rebuild.
+				fmt.Println("NOTE: Handler is an inline closure (anonymous function).")
+				fmt.Printf("      Source not available — run 'gograph build .' to capture it.\n")
+				fmt.Printf("      Navigate manually: %s  line %d\n", s.HandlerFile, s.HandlerLine)
+				fmt.Println()
+			}
+			fmt.Println("LIMITATIONS")
+			for _, l := range s.Limitations {
+				fmt.Printf("  ⚠  %s\n", l)
+			}
+			fmt.Println()
+			continue
+		}
+
+		fmt.Println()
 
 		if len(s.CallChain) > 0 {
 			fmt.Println("CALL CHAIN")

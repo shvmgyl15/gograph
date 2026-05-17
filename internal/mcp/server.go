@@ -365,7 +365,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		if d, ok := args["depth"].(float64); ok && d > 0 {
 			depth = int(d)
 		}
-		slices := search.Endpoint(g, query, depth)
+		slices := search.Endpoint(g, query, depth, false)
 		if len(slices) == 0 {
 			b, _ := json.MarshalIndent(map[string]any{
 				"query":   query,

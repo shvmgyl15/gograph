@@ -8,14 +8,18 @@ import (
 
 // EndpointSlice is the full vertical slice for one HTTP endpoint.
 type EndpointSlice struct {
-	Route       string       `json:"route"`
-	Handler     string       `json:"handler"`
-	HandlerFile string       `json:"handler_file"`
-	HandlerLine int          `json:"handler_line"`
-	CallChain   []ChainStep  `json:"call_chain"`
-	SQL         []SQLStep    `json:"sql,omitempty"`
-	EnvReads    []string     `json:"env_reads,omitempty"`
-	Limitations []string     `json:"limitations"`
+	Route        string      `json:"route"`
+	Handler      string      `json:"handler"`
+	HandlerFile  string      `json:"handler_file"`
+	HandlerLine  int         `json:"handler_line"`
+	IsInline     bool        `json:"is_inline,omitempty"`
+	// InlineBody contains the rendered source of the anonymous handler function.
+	// Non-empty only when IsInline is true and the body was captured at build time.
+	InlineBody   string      `json:"inline_body,omitempty"`
+	CallChain    []ChainStep `json:"call_chain"`
+	SQL          []SQLStep   `json:"sql,omitempty"`
+	EnvReads     []string    `json:"env_reads,omitempty"`
+	Limitations  []string    `json:"limitations"`
 }
 
 // ChainStep is one symbol in the downstream call chain.
@@ -44,6 +48,9 @@ const endpointMaxDepth = 5
 //   - A path fragment:        "/users"  (matches all methods containing that path)
 //   - A handler symbol name:  "CreateUser"
 //
+// includeTests controls whether routes registered in *_test.go files are included.
+// Pass false (the default for the CLI) to suppress test-file routes.
+//
 // # Route Resolution Limitation — Read Before Using
 //
 // gograph resolves routes by reading the literal string passed as the first
@@ -63,6 +70,16 @@ const endpointMaxDepth = 5
 // that string never appears as a literal in the AST. The assembled path exists
 // only at runtime.
 //
+// # Anonymous (Inline) Handlers
+//
+// When a route is registered with an inline closure instead of a named function:
+//
+//	router.POST("/users/bulk", func(c *gin.Context) { ... })
+//
+// The handler field is recorded as "<inline handler at line N>" and IsInline is true.
+// gograph cannot trace the call chain of an inline handler because it has no
+// symbol name in the graph. Navigate to HandlerFile:HandlerLine to read it directly.
+//
 // # Recommended Usage
 //
 // When route-grouping is used (Gin, Echo, Chi, fiber groups), always prefer
@@ -72,7 +89,7 @@ const endpointMaxDepth = 5
 //	gograph endpoint "/api/users"   // only works if path is a flat literal
 //
 // Returns all matching slices (one per matched route, usually one).
-func Endpoint(g *graph.Graph, query string, depth int) []EndpointSlice {
+func Endpoint(g *graph.Graph, query string, depth int, includeTests bool) []EndpointSlice {
 	if depth <= 0 {
 		depth = endpointMaxDepth
 	}
@@ -83,7 +100,7 @@ func Endpoint(g *graph.Graph, query string, depth int) []EndpointSlice {
 	}
 
 	// Find matching routes.
-	matched := matchRoutes(g, query)
+	matched := matchRoutes(g, query, includeTests)
 	if len(matched) == 0 {
 		return nil
 	}
@@ -128,11 +145,16 @@ func Endpoint(g *graph.Graph, query string, depth int) []EndpointSlice {
 	return slices
 }
 
+
 // matchRoutes finds HTTPRoute entries matching the query string.
-func matchRoutes(g *graph.Graph, query string) []graph.HTTPRoute {
+// If includeTests is false, routes registered in *_test.go files are excluded.
+func matchRoutes(g *graph.Graph, query string, includeTests bool) []graph.HTTPRoute {
 	q := strings.ToLower(strings.TrimSpace(query))
 	var out []graph.HTTPRoute
 	for _, r := range g.Routes {
+		if !includeTests && isTestFile(r.File) {
+			continue
+		}
 		routeStr := strings.ToLower(r.Method + " " + r.Path)
 		handlerStr := strings.ToLower(r.Handler)
 		if strings.Contains(routeStr, q) || strings.Contains(handlerStr, q) {
@@ -140,6 +162,12 @@ func matchRoutes(g *graph.Graph, query string) []graph.HTTPRoute {
 		}
 	}
 	return out
+}
+
+// isInlineHandler reports whether the handler string is an inline closure label
+// (produced by the parser when it encounters a *ast.FuncLit argument).
+func isInlineHandler(handler string) bool {
+	return strings.HasPrefix(handler, "<inline handler")
 }
 
 // buildSlice assembles the EndpointSlice for a single matched route.
@@ -152,12 +180,24 @@ func buildSlice(
 	maxDepth int,
 	limitations []string,
 ) EndpointSlice {
+	inline := isInlineHandler(route.Handler)
 	slice := EndpointSlice{
 		Route:       route.Method + " " + route.Path,
 		Handler:     route.Handler,
 		HandlerFile: route.File,
 		HandlerLine: route.Line,
+		IsInline:    inline,
+		InlineBody:  route.InlineBody,
 		Limitations: limitations,
+	}
+
+	// Inline handlers have no symbol name — call chain traversal is not possible.
+	if inline {
+		slice.Limitations = append([]string{
+			"Handler is an inline closure — no symbol name in the graph. " +
+				"Read the source directly at " + route.File + ":" + itoa(route.Line) + ".",
+		}, slice.Limitations...)
+		return slice
 	}
 
 	// BFS through the call chain.
@@ -245,4 +285,24 @@ func buildSlice(
 	}
 
 	return slice
+}
+
+// itoa is a zero-import integer-to-string helper.
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	buf := make([]byte, 0, 10)
+	for n > 0 {
+		buf = append([]byte{byte('0' + n%10)}, buf...)
+		n /= 10
+	}
+	if neg {
+		buf = append([]byte{'-'}, buf...)
+	}
+	return string(buf)
 }

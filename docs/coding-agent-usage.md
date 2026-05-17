@@ -480,6 +480,41 @@ gograph routes
 gograph endpoint "CreateUser"
 ```
 
+---
+
+#### 📦 Inline (Anonymous) Handler Source
+
+When a route is registered with an anonymous closure:
+
+```go
+router.POST("/users/bulk", func(c *gin.Context) {
+    // logic here
+})
+```
+
+gograph records this as `<inline handler at line N>` and **captures the full function source** at build time using `go/printer`. The source is stored in `graph.json` as `inline_body` on the route entry — no file I/O is needed at query time.
+
+The `endpoint` command displays it directly:
+
+```
+ROUTE    POST /users/bulk
+HANDLER  <inline handler at line 578>  (internal/api/router.go:578)
+
+HANDLER SOURCE (inline closure)
+
+  func(c *gin.Context) {
+      ids := c.QueryArray("id")
+      // ...
+  }
+
+LIMITATIONS
+  ⚠  Handler is an inline closure — no symbol name in the graph. ...
+  ⚠  Call chain uses heuristic AST call-graph, not SSA data-flow.
+```
+
+**Important:** `inline_body` is captured during `gograph build`. If you see `Source not available`, run `gograph build .` to rebuild the graph with this feature.
+
+The call chain is **not traceable** for inline handlers because they have no symbol name in the graph. The source display is the substitute.
 
 
 ### 17. Dependency trees
