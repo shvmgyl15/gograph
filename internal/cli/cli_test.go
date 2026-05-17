@@ -114,6 +114,7 @@ func TestAllCommandsRegistered(t *testing.T) {
 		"plan",
 		"review",
 		"boundaries",
+		"endpoint",
 		"check",
 		"add-claude-plugin",
 		"hook-guard",

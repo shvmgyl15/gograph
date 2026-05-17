@@ -153,6 +153,8 @@ func Run(args []string) int {
 		return runFixtures(args[1:])
 	case "boundaries":
 		return runBoundaries(args[1:])
+	case "endpoint":
+		return runEndpoint(args[1:])
 	case "plan":
 		return runPlan(args[1:])
 	case "review":
@@ -237,6 +239,9 @@ deps <pkg> [--transitive] : import dependency tree of a package
 fixtures <pkg>       : test helper structs and functions in test files
 globals <pkg>        : pkg-level vars, consts, and mutators
 hotspot [--top N]    : rank functions by incoming calls (study these first)
+endpoint <route>     : full vertical slice for an HTTP endpoint — route, handler, call chain, SQL, env reads
+                       LIMITATION: route patterns only resolve flat literals. If using Gin/Echo/Chi groups,
+                       search by handler symbol name: gograph endpoint "HandlerName"
 mocks <iface>        : structs implementing iface in test files
 mutate <field>       : find functions that mutate a specific struct field
 plan <sym>           : generate an operational change plan (read-first, tests, risk profile)
@@ -848,6 +853,21 @@ CODE QUALITY
   hotspot [--top N]          Rank functions by incoming call count (fan-in).
                              Shows the most-depended-on code to study first.
                              Default: --top 10
+  endpoint <route>           Full vertical slice for one HTTP endpoint.
+                             Composes: route resolution + handler symbol +
+                             full callee chain (BFS, default depth 5) + SQL
+                             emitted + env vars read. [--depth N] [--json]
+                             Input: route pattern ("POST /api/users"), path
+                             fragment ("/users"), or handler symbol name.
+                             ROUTE-GROUPING LIMITATION: gograph reads route
+                             paths from AST literals only. Grouped routers
+                             (Gin Group, Echo Group, Chi) concatenate paths
+                             at runtime — the prefix is not a literal and is
+                             NOT recorded. Searching "POST /api/v1/users"
+                             fails in a grouped codebase.
+                             WORKAROUND: always prefer handler symbol name:
+                               gograph endpoint "CreateUser"  (always works)
+                             To find handler names: gograph routes
   deps <pkg> [--transitive]  Direct import dependencies of a package.
                              Add --transitive for the full closure (BFS).
   changes                    Symbols modified/added/deleted since last 'build'.
@@ -1839,6 +1859,113 @@ func runBoundaries(args []string) int {
 		return 1
 	}
 	return code
+}
+
+func runEndpoint(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: gograph endpoint <route-pattern|handler-symbol> [--depth N] [--json]")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Examples:")
+		fmt.Fprintln(os.Stderr, `  gograph endpoint "POST /api/users"   # route pattern (flat routers only)`)
+		fmt.Fprintln(os.Stderr, `  gograph endpoint "/users"             # path fragment`)
+		fmt.Fprintln(os.Stderr, `  gograph endpoint "CreateUser"         # handler symbol (works with ALL routing styles)`)
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "ROUTE-GROUPING LIMITATION:")
+		fmt.Fprintln(os.Stderr, "  Route patterns are resolved from literal strings in the AST.")
+		fmt.Fprintln(os.Stderr, "  Grouped routes (Gin Group(), Echo Group(), Chi Route()) lose their")
+		fmt.Fprintln(os.Stderr, "  prefix — the assembled path is never a literal in the source.")
+		fmt.Fprintln(os.Stderr, "  Example: v1.Group(\"/api\") + users.POST(\"/\", H) is recorded as POST /")
+		fmt.Fprintln(os.Stderr, "  In these codebases, ALWAYS search by handler symbol name, not route.")
+		return 1
+	}
+
+	depth := 5
+	query := args[0]
+	jsonMode := false
+	for i, a := range args {
+		if a == "--json" {
+			jsonMode = true
+		}
+		if a == "--depth" && i+1 < len(args) {
+			if n, err := strconv.Atoi(args[i+1]); err == nil {
+				depth = n
+			}
+		}
+	}
+
+	g, err := loadGraph(".")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load graph: %v\n", err)
+		return 1
+	}
+
+	slices := search.Endpoint(g, query, depth)
+	if len(slices) == 0 {
+		if jsonMode {
+			return PrintJSON(errEnvelope("endpoint", "no matching HTTP routes found for: "+query+
+				" — if using Gin/Echo/Chi groups, search by handler symbol name instead (route literals lose their prefix in grouped routers)"))
+		}
+		fmt.Printf("No matching HTTP routes found for %q\n\n", query)
+		fmt.Println("Possible reasons:")
+		fmt.Println("  1. The route does not exist — run 'gograph routes' to see all registered routes.")
+		fmt.Println("  2. The codebase uses grouped routing (Gin Group(), Echo Group(), Chi Route()).")
+		fmt.Println("     Grouped routes lose their prefix in the AST — only the leaf path is recorded.")
+		fmt.Println("     Example: router.Group(\"/api/v1\") + g.POST(\"/users\", H) is stored as POST /users")
+		fmt.Println("")
+		fmt.Println("Fix: search by handler symbol name instead of route pattern:")
+		fmt.Printf("  gograph endpoint \"<HandlerFunctionName>\"\n")
+		fmt.Println("")
+		fmt.Println("To find the handler name for a route, run: gograph routes")
+		return 1
+	}
+
+	if jsonMode {
+		return PrintJSON(okEnvelope("endpoint", query, slices, len(slices)))
+	}
+
+	for _, s := range slices {
+		fmt.Printf("ROUTE    %s\n", s.Route)
+		fmt.Printf("HANDLER  %s  (%s:%d)\n\n", s.Handler, s.HandlerFile, s.HandlerLine)
+
+		if len(s.CallChain) > 0 {
+			fmt.Println("CALL CHAIN")
+			for _, step := range s.CallChain {
+				location := ""
+				if step.File != "" {
+					location = fmt.Sprintf("  (%s:%d)", step.File, step.Line)
+				}
+				calleeStr := ""
+				if len(step.Callees) > 0 {
+					calleeStr = "  → " + strings.Join(step.Callees, ", ")
+				}
+				fmt.Printf("  %d  %-40s%s%s\n", step.Depth, step.Symbol, calleeStr, location)
+			}
+			fmt.Println()
+		}
+
+		if len(s.SQL) > 0 {
+			fmt.Println("SQL")
+			for _, sq := range s.SQL {
+				fmt.Printf("  [%s:%d] %s\n", sq.File, sq.Line, sq.Query)
+			}
+			fmt.Println()
+		}
+
+		if len(s.EnvReads) > 0 {
+			fmt.Println("ENV READS")
+			for _, e := range s.EnvReads {
+				fmt.Printf("  %s\n", e)
+			}
+			fmt.Println()
+		}
+
+		fmt.Println("LIMITATIONS")
+		for _, l := range s.Limitations {
+			fmt.Printf("  ⚠  %s\n", l)
+		}
+		fmt.Println()
+	}
+	return 0
 }
 
 // runPlan generates an operational change plan for one or more symbols or for uncommitted changes.

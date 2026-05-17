@@ -102,6 +102,8 @@ gograph path "CreateUser" "sql"   # Shortest call chain between two symbols
 gograph public "internal/auth"    # Filter graph to only show exported public symbols
 gograph query "Auth"              # Search for symbols, files, or packages
 gograph routes                    # Extract all HTTP REST API routes (e.g. GET /api)
+gograph endpoint "CreateUser"     # Full vertical slice: handler → call chain → SQL → env reads (PREFERRED: use handler name)
+gograph endpoint "POST /api/users" # Same but via route pattern (ONLY works for flat routers — fails with Gin/Echo/Chi groups)
 gograph source "ValidateToken"    # Extract the source code for a specific symbol
 gograph sql                       # Extract database SQL queries from the AST
 gograph stale                     # Check if graph.json is out of date vs source files
@@ -133,6 +135,10 @@ gograph schema "users"            # Find structs mapped to a database table/sche
 gograph skeleton                  # Output the whole repository's API signatures (bodies stripped)
 gograph trace "parse failed"      # Trace an error string backwards to entry points
 gograph errorflow "invalid token" # Trace an error's path from definition up to HTTP handlers (heuristic, NO SSA)
+# endpoint: full vertical slice for one HTTP endpoint. IMPORTANT: route patterns only work with flat routers.
+# With Gin/Echo/Chi Group() routing, the prefix is lost in the AST. Use handler symbol name instead.
+gograph endpoint "CreateUser"     # RECOMMENDED: always works regardless of routing style [--depth N] [--json]
+gograph endpoint "POST /api/users" # route pattern: only works if path is a flat string literal (no Group() prefix)
 
 **3. Architecture Boundary Enforcement:**
 You can configure `gograph` to actively enforce clean architecture by defining boundaries. Create a `.gograph/boundaries.json` file in your root directory:

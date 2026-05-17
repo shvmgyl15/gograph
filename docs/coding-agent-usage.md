@@ -73,6 +73,7 @@ gograph schema <table>           # find structs mapped to a database table or sc
 gograph globals <pkg>            # find pkg-level vars, consts, and functions mutating them
 gograph mocks <interface>        # find structs implementing an interface in test or mock files
 gograph fixtures <pkg>           # find test helper structs and functions in test files
+gograph endpoint <route>         # full vertical slice for one HTTP endpoint: handler, call chain, SQL, env reads [--depth N] [--json]
 gograph capabilities             # print token-optimized AI agent cheat sheet
 gograph mcp <path>               # runs an MCP server over stdio
 gograph add-claude-plugin        # install MCP server + CLAUDE.md rules + PreToolUse hook (Claude Desktop & Claude Code)
@@ -384,7 +385,105 @@ Hotspot Functions (top 5, sorted by incoming calls):
 ```
 An agent onboarding to a new repo should always run `hotspot` before reading any files, to know where to focus.
 
+### 20. HTTP Endpoint Vertical Slice
+`gograph endpoint <route>` answers the question every developer asks when entering a new codebase or reviewing a PR: **"what actually happens when this endpoint is called?"**
+
+It composes in one command:
+1. **Route resolution** — finds the `HTTPRoute` whose method+path matches the query
+2. **Handler symbol** — locates the handler function in the symbol graph
+3. **Full callee chain** — BFS downstream through call edges (default depth: 5 hops)
+4. **SQL emitted** — all SQL queries touched by any symbol in the chain
+5. **Env reads** — all environment variables read within the chain
+
+**Input formats accepted:**
+```bash
+gograph endpoint "POST /api/users"   # exact method + path
+gograph endpoint "/users"            # path fragment (matches all methods)
+gograph endpoint "CreateUser"        # handler symbol name directly (RECOMMENDED — see below)
+```
+
+**Example output:**
+```
+ROUTE    POST /api/users
+HANDLER  CreateUser  (internal/api/users.go:42)
+
+CALL CHAIN
+  1  CreateUser          → ValidateUserInput, hashPassword, userRepo.Save
+  2  ValidateUserInput   → validateEmail, validatePassword
+  3  userRepo.Save       → db.ExecContext
+
+SQL
+  [internal/repo/user.go:87] INSERT INTO users (email, password_hash) VALUES ($1, $2)
+
+ENV READS
+  DATABASE_URL
+
+LIMITATIONS
+  ⚠  Call chain uses heuristic AST call-graph, not SSA data-flow.
+  ⚠  Calls through interfaces or dynamic dispatch may not appear.
+```
+
+**Flags:**
+- `--depth N` — BFS depth for call chain (default: 5)
+- `--json` — machine-readable JSON output
+
+---
+
+#### ⚠️ Critical Limitation: Route-Grouping (Gin, Echo, Chi, Fiber)
+
+**This limitation affects the majority of production Go HTTP services.**
+
+gograph resolves HTTP routes by reading the **literal string** passed as the first argument to router registration calls (`.GET()`, `.POST()`, `.PUT()`, etc.). It does **not** track variable assignments or chain `.Group()` calls.
+
+**Flat routing (works correctly):**
+```go
+router.POST("/api/users", CreateUser)   // recorded: POST /api/users ✅
+router.GET("/api/users/:id", GetUser)   // recorded: GET /api/users/:id ✅
+```
+
+**Grouped routing (prefix is lost):**
+```go
+v1 := router.Group("/api/v1")           // variable — not recorded
+users := v1.Group("/users")             // chained variable — not recorded
+users.POST("/", CreateUser)             // recorded: POST /  ❌ (prefix lost)
+users.GET("/:id", GetUser)              // recorded: GET /:id  ❌ (prefix lost)
+```
+
+In a codebase that uses `Group()`, searching `gograph endpoint "POST /api/v1/users"` **returns no results** because that string never appears as a literal in the AST. The assembled path only exists at runtime.
+
+**This affects:** Gin (`router.Group`), Echo (`e.Group`), Chi (`r.Route`), Fiber (`app.Group`), and any framework using route group composition.
+
+#### ✅ Recommended Usage Pattern
+
+**Always prefer handler symbol name over route pattern.** The handler name is always a literal identifier in the AST, regardless of how routing is organized:
+
+```bash
+# PREFERRED — works with ALL routing styles (flat, grouped, nested)
+gograph endpoint "CreateUser"
+gograph endpoint "GetUserByID"
+gograph endpoint "DeleteOrder"
+
+# CONDITIONAL — only works if the path is a flat literal (no Group() prefix)
+gograph endpoint "POST /api/users"
+gograph endpoint "/api/users"
+```
+
+**Workflow for grouped routers:**
+```bash
+# Step 1: find all registered routes and their handler names
+gograph routes
+
+# Step 2: note the handler name for the route you care about
+# Output: POST /  → handler: CreateUser
+
+# Step 3: query by handler name
+gograph endpoint "CreateUser"
+```
+
+
+
 ### 17. Dependency trees
+
 `gograph deps <package>` shows the direct import dependencies of a package. Adding `--transitive` expands this to the full import closure via BFS.
 
 ```

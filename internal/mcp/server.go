@@ -83,6 +83,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 				{"name": "gograph_orphans", "purpose": "Find functions and methods that have 0 explicit incoming calls (potential dead code)."},
 				{"name": "gograph_impact", "purpose": "Traverse the call graph backwards to find all symbols that eventually call the target symbol."},
 				{"name": "gograph_boundaries", "purpose": "Verify package architecture constraints against boundaries.json."},
+				{"name": "gograph_endpoint", "purpose": "Full vertical slice for one HTTP endpoint: route, handler, downstream call chain (BFS), SQL emitted, env reads."},
 				{"name": "gograph_api", "purpose": "Compare the public-facing contract and integration surface drift against a baseline git reference."},
 				{"name": "gograph_routes", "purpose": "Extract all HTTP REST API routes found in the codebase."},
 				{"name": "gograph_context", "purpose": "Bundles node details, callers, callees, tests, and source code into one structured response."},
@@ -345,7 +346,45 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		return mcp.NewToolResultText(string(b)), nil
 	})
 
+	// Tool: gograph_endpoint
+	endpointTool := mcp.NewTool("gograph_endpoint",
+		mcp.WithDescription("Full vertical slice for one HTTP endpoint. Resolves a route pattern or handler symbol to its handler, then traces the downstream call chain (BFS, default depth 5), collects SQL queries emitted, and env vars read. Heuristic AST call-graph — calls through interfaces may not appear."),
+		mcp.WithString("query", mcp.Required(), mcp.Description(`Route pattern ("POST /api/users"), path fragment ("/users"), or handler symbol name ("CreateUser")`)),
+		mcp.WithNumber("depth", mcp.Description("BFS depth for call chain traversal (default: 5)")),
+	)
+	addTool(endpointTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, _ := request.Params.Arguments.(map[string]any)
+		query, _ := args["query"].(string)
+		if query == "" {
+			return mcp.NewToolResultError("query is required"), nil
+		}
+		depth := 5
+		if d, ok := args["depth"].(float64); ok && d > 0 {
+			depth = int(d)
+		}
+		slices := search.Endpoint(g, query, depth)
+		if len(slices) == 0 {
+			b, _ := json.MarshalIndent(map[string]any{
+				"query":   query,
+				"found":   false,
+				"message": "No matching HTTP routes found. Run gograph_routes to see available routes.",
+			}, "", "  ")
+			return mcp.NewToolResultText(string(b)), nil
+		}
+		b, _ := json.MarshalIndent(map[string]any{
+			"query":  query,
+			"found":  true,
+			"count":  len(slices),
+			"slices": slices,
+		}, "", "  ")
+		return mcp.NewToolResultText(string(b)), nil
+	})
+
 	// Tool: gograph_api
+
 	apiTool := mcp.NewTool("gograph_api",
 		mcp.WithDescription("Compare the public-facing contract and integration surface of the Go codebase against a baseline git reference. Identifies likely breaking changes to exported functions, structs, interfaces, and routes."),
 		mcp.WithString("since", mcp.Required(), mcp.Description("The baseline git reference (e.g., 'main' or 'HEAD~1') to compare against")),
