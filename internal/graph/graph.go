@@ -25,6 +25,13 @@ type Graph struct {
 	TestEdges     []TestEdge       `json:"test_edges,omitempty"`
 	Implements    []ImplementsEdge `json:"implements,omitempty"`
 	Mutations     []MutationEdge   `json:"mutations,omitempty"`
+	Baseline      *GraphBaseline   `json:"baseline,omitempty"`
+}
+
+// GraphBaseline stores metrics from the previous build for gate comparisons.
+type GraphBaseline struct {
+	OrphanCount   int `json:"orphan_count"`
+	CouplingEdges int `json:"coupling_edges"`
 }
 
 // MutationEdge represents an assignment to a struct field.

@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/mark3labs/mcp-go v0.52.0
 	golang.org/x/tools v0.45.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

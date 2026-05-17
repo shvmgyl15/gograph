@@ -79,6 +79,13 @@ gograph capabilities             # print token-optimized AI agent cheat sheet
 gograph mcp <path>               # runs an MCP server over stdio
 gograph add-claude-plugin        # install MCP server + CLAUDE.md rules + PreToolUse hook (Claude Desktop & Claude Code)
 gograph hook-guard               # PreToolUse hook binary — reads tool call JSON from stdin, blocks Go symbol greps (invoked automatically by Claude Code)
+# --- CI ENFORCEMENT ---
+gograph gate                     # fail CI if any .gograph.yml threshold is violated (complexity, instability, orphans, coupling)
+# --- SNAPSHOTS ---
+gograph snapshot save <name>     # capture current architectural metrics under a label
+gograph snapshot diff <name>     # compare current graph against a saved snapshot (shows improved / WORSE per metric)
+gograph snapshot list            # list all saved snapshots
+gograph snapshot drop <name>     # delete a named snapshot
 ```
 
 ## Claude Code / Claude Desktop Integration

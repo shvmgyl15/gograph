@@ -165,6 +165,10 @@ func Run(args []string) int {
 		return runAPI(args[1:])
 	case "check":
 		return runCheck(args[1:])
+	case "gate":
+		return runGate()
+	case "snapshot":
+		return runSnapshot(args[1:])
 	case "add-claude-plugin":
 		if err := installPlugin(); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to install plugin: %v\n", err)
@@ -258,6 +262,8 @@ schema <table>       : structs mapped to DB table via tags
 skeleton             : output the whole repository's API signatures (function bodies stripped)
 trace <err_str> [--no-tests]: trace an error backwards from entry points to origin
 check [--since ref]  : run static policy checks (boundaries, api_drift, test requirements)
+gate                 : run CI/CD enforcement checks against .gograph.yml thresholds
+snapshot <subcmd>    : capture and diff architectural metrics (save, diff, list, drop)
 mcp [path]           : start a Model Context Protocol server over stdio
 add-claude-plugin    : install gograph as a Claude Desktop/Code MCP plugin (also injects CLAUDE.md rules and PreToolUse hook)
 hook-guard           : PreToolUse hook — intercepts grep on Go symbols and redirects to gograph (invoked by Claude Code automatically)`)
@@ -287,11 +293,20 @@ func runBuild(args []string) int {
 
 	fmt.Printf("gograph build: scanning %s\n", absRoot)
 
+	var baseline *graph.GraphBaseline
+	if oldG, err := loadGraph(absRoot); err == nil {
+		baseline = &graph.GraphBaseline{
+			OrphanCount:   len(search.Orphans(oldG)),
+			CouplingEdges: len(oldG.Imports),
+		}
+	}
+
 	g, err := BuildGraph(absRoot)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error building graph: %v\n", err)
 		return 1
 	}
+	g.Baseline = baseline
 
 	if preciseMode {
 		fmt.Println("  running type-checked precision analysis (this may take a moment)...")
@@ -846,6 +861,10 @@ CODE QUALITY
   check [--config]           Run static policy checks using .gograph/checks.json.
   check --uncommitted        Run checks, including uncommitted code.
   check --since <ref>        Run checks, including API drift against a baseline.
+  gate                       Run CI/CD enforcement checks against .gograph.yml thresholds.
+                             Reads graph.json and fails if thresholds are violated.
+  snapshot <subcmd>          Capture and diff architectural metrics (save, diff, list, drop).
+                             Subcommands: save <name>, diff <name>, list, drop <name>.
   boundaries [--config]      Verify package architecture constraints using boundaries.json.
   boundaries --create        Auto-generate a baseline boundaries.json from the current repo.
   complexity [symbol]        Cyclomatic complexity per function, highest first.
