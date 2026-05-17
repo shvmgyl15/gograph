@@ -114,6 +114,13 @@ func ParseFile(fset *token.FileSet, path, relPath string) (*FileResult, error) {
 						if err := printer.Fprint(&buf, fset, h); err == nil {
 							inlineBody = buf.String()
 						}
+					case *ast.CallExpr:
+						// Factory / curried handler pattern, e.g.:
+						//   router.POST("/path", HandleBulkCreateUsers(jobSvc, auditSvc))
+						// The argument is a call expression whose result is a HandlerFunc.
+						// typeString returns "_" for CallExpr — instead extract the
+						// function name being called so the symbol is traceable.
+						handler = calleeString(h)
 					default:
 						handler = typeString(call.Args[1])
 					}

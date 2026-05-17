@@ -857,6 +857,7 @@ CODE QUALITY
                              Composes: route resolution + handler symbol +
                              full callee chain (BFS, default depth 5) + SQL
                              emitted + env vars read. [--depth N] [--json]
+                             [--include-tests]
                              Input: route pattern ("POST /api/users"), path
                              fragment ("/users"), or handler symbol name.
                              ROUTE-GROUPING LIMITATION: gograph reads route
@@ -1863,32 +1864,30 @@ func runBoundaries(args []string) int {
 
 func runEndpoint(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: gograph endpoint <route-pattern|handler-symbol> [--depth N] [--json]")
+		fmt.Fprintln(os.Stderr, "Usage: gograph endpoint <route-pattern|handler-symbol> [--depth N] [--json] [--include-tests]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Examples:")
 		fmt.Fprintln(os.Stderr, `  gograph endpoint "POST /api/users"   # route pattern (flat routers only)`)
 		fmt.Fprintln(os.Stderr, `  gograph endpoint "/users"             # path fragment`)
 		fmt.Fprintln(os.Stderr, `  gograph endpoint "CreateUser"         # handler symbol (works with ALL routing styles)`)
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "ROUTE-GROUPING LIMITATION:")
-		fmt.Fprintln(os.Stderr, "  Route patterns are resolved from literal strings in the AST.")
-		fmt.Fprintln(os.Stderr, "  Grouped routes (Gin Group(), Echo Group(), Chi Route()) lose their")
-		fmt.Fprintln(os.Stderr, "  prefix — the assembled path is never a literal in the source.")
-		fmt.Fprintln(os.Stderr, "  Example: v1.Group(\"/api\") + users.POST(\"/\", H) is recorded as POST /")
-		fmt.Fprintln(os.Stderr, "  In these codebases, ALWAYS search by handler symbol name, not route.")
+		fmt.Fprintln(os.Stderr, "Flags:")
+		fmt.Fprintln(os.Stderr, "  --depth N         BFS depth for call chain (default: 5)")
+		fmt.Fprintln(os.Stderr, "  --include-tests   include routes registered in *_test.go files (excluded by default)")
+		fmt.Fprintln(os.Stderr, "  --json            machine-readable JSON output")
 		return 1
 	}
 
 	depth := 5
 	query := args[0]
 	jsonMode := false
-	includeTests := true
+	includeTests := false // tests excluded by default, consistent with other commands
 	for i, a := range args {
 		if a == "--json" {
 			jsonMode = true
 		}
-		if a == "--no-tests" {
-			includeTests = false
+		if a == "--include-tests" {
+			includeTests = true
 		}
 		if a == "--depth" && i+1 < len(args) {
 			if n, err := strconv.Atoi(args[i+1]); err == nil {
