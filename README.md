@@ -119,6 +119,7 @@ gograph arity --min 5             # Find functions with many arguments (long par
 gograph changes                   # New/modified/deleted symbols since last build
 gograph constructors "User"       # Find factory functions returning the named struct
 gograph context "ValidateToken"   # Node + source + callers + callees + tests in ONE call
+gograph explain "ValidateToken"   # LLM-ready architectural narrative: role, callers, callees, complexity, SQL, env, tests
 gograph deps "internal/auth"      # Direct import dependencies of a package
 gograph deps "internal/auth" --transitive  # Full transitive closure
 gograph fixtures "internal/auth"  # Find test helper structs and functions in test files

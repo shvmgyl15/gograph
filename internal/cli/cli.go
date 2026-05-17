@@ -155,6 +155,8 @@ func Run(args []string) int {
 		return runBoundaries(args[1:])
 	case "endpoint":
 		return runEndpoint(args[1:])
+	case "explain":
+		return runExplain(args[1:])
 	case "plan":
 		return runPlan(args[1:])
 	case "review":
@@ -242,6 +244,9 @@ hotspot [--top N]    : rank functions by incoming calls (study these first)
 endpoint <route>     : full vertical slice for an HTTP endpoint — route, handler, call chain, SQL, env reads
                        LIMITATION: route patterns only resolve flat literals. If using Gin/Echo/Chi groups,
                        search by handler symbol name: gograph endpoint "HandlerName"
+explain <sym>         : LLM-ready architectural summary — callers, callees, complexity, SQL, env, routes,
+                       concurrency, test coverage, interface satisfaction, and an opinionated role classification
+                       in one prompt-ready narrative block
 mocks <iface>        : structs implementing iface in test files
 mutate <field>       : find functions that mutate a specific struct field
 plan <sym>           : generate an operational change plan (read-first, tests, risk profile)
@@ -850,6 +855,11 @@ CODE QUALITY
                              Instability = FanOut / (FanIn + FanOut). Range [0,1].
   context <symbol>           Bundle node+source+callers+callees+tests in one call.
                              Replaces 4–5 separate commands. Primary token saver.
+  explain <symbol>           LLM-ready architectural narrative for a symbol.
+                             Synthesizes callers (prod vs test split), callees,
+                             complexity, SQL, env, routes, concurrency, tests,
+                             interface satisfaction, and an opinionated role
+                             classification into one prompt-ready text block.
   hotspot [--top N]          Rank functions by incoming call count (fan-in).
                              Shows the most-depended-on code to study first.
                              Default: --top 10
@@ -2080,5 +2090,37 @@ func runReview(args []string) int {
 	}
 
 	fmt.Print(report.String())
+	return 0
+}
+
+func runExplain(args []string) int {
+	if len(args) == 0 {
+		if jsonMode {
+			return PrintJSON(errEnvelope("explain", "usage: gograph explain <symbol>"))
+		}
+		fmt.Fprintln(os.Stderr, "usage: gograph explain <symbol>")
+		return 1
+	}
+	g, err := loadGraph(".")
+	if err != nil {
+		if jsonMode {
+			return PrintJSON(errEnvelope("explain", err.Error()))
+		}
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	term := strings.Join(args, " ")
+	result := search.Explain(g, term)
+	if result == nil {
+		if jsonMode {
+			return PrintJSON(okEnvelope("explain", term, nil, 0))
+		}
+		fmt.Printf("No symbol found matching %q.\n", term)
+		return 0
+	}
+	if jsonMode {
+		return PrintJSON(okEnvelope("explain", term, result, 1))
+	}
+	fmt.Printf("=== EXPLAIN: %s ===\n\n%s\n", result.Symbol, result.Narrative)
 	return 0
 }

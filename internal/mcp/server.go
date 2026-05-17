@@ -99,6 +99,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 				{"name": "gograph_schema", "purpose": "Find structs mapped to a database table or schema via struct tags."},
 				{"name": "gograph_globals", "purpose": "Find package-level variables and functions mutating them."},
 				{"name": "gograph_mocks", "purpose": "Find structs implementing an interface, filtered to test or mock files."},
+				{"name": "gograph_explain", "purpose": "LLM-ready architectural summary. Synthesizes callers, callees, complexity, SQL, env, routes, concurrency, tests, and interface satisfaction into one narrative with an opinionated role classification."},
 			},
 			"recommended_workflows": map[string][]string{
 				"before_edit":   {"gograph_context", "gograph_plan"},
@@ -900,4 +901,33 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 		results := search.Mocks(g, iface)
 		return formatResults(results), nil
 	})
+
+	// Tool: gograph_explain
+	explainTool := mcp.NewTool("gograph_explain",
+		mcp.WithDescription("LLM-ready architectural summary of a symbol. Synthesizes callers, callees, complexity, SQL, env, routes, concurrency, test coverage, and interface satisfaction into a single narrative. Use this for instant onboarding or prompt context injection."),
+		mcp.WithString("symbol", mcp.Required(), mcp.Description("The name or ID of the symbol to explain (e.g., 'CreateUser' or 'Graph')")),
+	)
+	addTool(explainTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		sym, ok := args["symbol"].(string)
+		if !ok || sym == "" {
+			return mcp.NewToolResultError("symbol must be a non-empty string"), nil
+		}
+		result := search.Explain(g, sym)
+		if result == nil {
+			return mcp.NewToolResultText(fmt.Sprintf(`{"symbol":"%s","found":false}`, sym)), nil
+		}
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
 }
+

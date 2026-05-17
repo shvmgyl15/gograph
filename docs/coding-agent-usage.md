@@ -57,6 +57,7 @@ gograph coupling                # package fan-in, fan-out, and instability table
 gograph coupling "internal/auth" # filter to a specific package
 # --- PRIMARY TOKEN SAVERS ---
 gograph context "ValidateToken"  # node + source + callers + callees + tests in ONE call
+gograph explain "ValidateToken"  # LLM-ready architectural narrative with role classification
 gograph hotspot                  # top 10 most-called functions (focus study here first)
 gograph hotspot --top 20         # expand the hotspot window
 gograph deps "internal/auth"     # direct import dependencies of a package
@@ -649,6 +650,7 @@ The current tool suite includes:
 - **`gograph_schema`**
 - **`gograph_globals`**
 - **`gograph_mocks`**
+- **`gograph_explain`**: LLM-ready architectural summary. Synthesizes callers (prod vs test), callees, complexity, SQL, env, routes, concurrency, test coverage, interface satisfaction, and an opinionated role classification into one structured narrative.
 
 ## Recommended project setup
 
