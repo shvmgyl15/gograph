@@ -8,18 +8,18 @@ import (
 
 // EndpointSlice is the full vertical slice for one HTTP endpoint.
 type EndpointSlice struct {
-	Route        string      `json:"route"`
-	Handler      string      `json:"handler"`
-	HandlerFile  string      `json:"handler_file"`
-	HandlerLine  int         `json:"handler_line"`
-	IsInline     bool        `json:"is_inline,omitempty"`
+	Route       string `json:"route"`
+	Handler     string `json:"handler"`
+	HandlerFile string `json:"handler_file"`
+	HandlerLine int    `json:"handler_line"`
+	IsInline    bool   `json:"is_inline,omitempty"`
 	// InlineBody contains the rendered source of the anonymous handler function.
 	// Non-empty only when IsInline is true and the body was captured at build time.
-	InlineBody   string      `json:"inline_body,omitempty"`
-	CallChain    []ChainStep `json:"call_chain"`
-	SQL          []SQLStep   `json:"sql,omitempty"`
-	EnvReads     []string    `json:"env_reads,omitempty"`
-	Limitations  []string    `json:"limitations"`
+	InlineBody  string      `json:"inline_body,omitempty"`
+	CallChain   []ChainStep `json:"call_chain"`
+	SQL         []SQLStep   `json:"sql,omitempty"`
+	EnvReads    []string    `json:"env_reads,omitempty"`
+	Limitations []string    `json:"limitations"`
 }
 
 // ChainStep is one symbol in the downstream call chain.
@@ -144,7 +144,6 @@ func Endpoint(g *graph.Graph, query string, depth int, includeTests bool) []Endp
 	}
 	return slices
 }
-
 
 // matchRoutes finds HTTPRoute entries matching the query string.
 // If includeTests is false, routes registered in *_test.go files are excluded.

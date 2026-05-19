@@ -19,9 +19,9 @@ func runCmd(t *testing.T, args ...string) []byte {
 	}
 
 	binPath := filepath.Join(root, "bin", "gograph-test")
-	
+
 	// Build binary only if it doesn't exist to speed up tests, or we could always build it.
-	// For reliable tests, we build it once per package test execution using TestMain, 
+	// For reliable tests, we build it once per package test execution using TestMain,
 	// but since we don't have TestMain set up here, we'll build it if needed.
 	if _, err := os.Stat(binPath); os.IsNotExist(err) {
 		cmd := exec.Command("go", "build", "-o", binPath, filepath.Join(root, "cmd", "gograph", "main.go"))
@@ -53,12 +53,12 @@ func TestJSONSchema(t *testing.T) {
 
 	t.Run("callers schema", func(t *testing.T) {
 		out := runCmd(t, "callers", "GetUser", "--json")
-		
+
 		var env map[string]interface{}
 		if err := json.Unmarshal(out, &env); err != nil {
 			t.Fatalf("invalid json: %v\nOutput: %s", err, string(out))
 		}
-		
+
 		if env["schema_version"] != "1" {
 			t.Errorf("expected schema_version '1', got %v", env["schema_version"])
 		}
@@ -68,16 +68,16 @@ func TestJSONSchema(t *testing.T) {
 		if env["command"] != "callers" {
 			t.Errorf("expected command 'callers', got %v", env["command"])
 		}
-		
+
 		results, ok := env["results"].([]interface{})
 		if !ok {
 			t.Fatalf("expected results array, got %T", env["results"])
 		}
-		
+
 		if len(results) == 0 {
 			t.Fatal("expected callers for GetUser, got none")
 		}
-		
+
 		// Verify result structure matches the Result JSON tags
 		first := results[0].(map[string]interface{})
 		requiredFields := []string{"name", "file", "line", "kind", "call_site_file", "call_site_line"}
@@ -90,17 +90,17 @@ func TestJSONSchema(t *testing.T) {
 
 	t.Run("hotspot schema", func(t *testing.T) {
 		out := runCmd(t, "hotspot", "--json")
-		
+
 		var env map[string]interface{}
 		if err := json.Unmarshal(out, &env); err != nil {
 			t.Fatalf("invalid json: %v\nOutput: %s", err, string(out))
 		}
-		
+
 		results, ok := env["results"].([]interface{})
 		if !ok || len(results) == 0 {
 			t.Fatalf("expected hotspot results array, got %v", env["results"])
 		}
-		
+
 		first := results[0].(map[string]interface{})
 		requiredFields := []string{"name", "file", "line", "kind", "incoming_calls"}
 		for _, field := range requiredFields {
@@ -112,17 +112,17 @@ func TestJSONSchema(t *testing.T) {
 
 	t.Run("deps schema", func(t *testing.T) {
 		out := runCmd(t, "deps", "auth", "--json")
-		
+
 		var env map[string]interface{}
 		if err := json.Unmarshal(out, &env); err != nil {
 			t.Fatalf("invalid json: %v\nOutput: %s", err, string(out))
 		}
-		
+
 		result, ok := env["results"].(map[string]interface{})
 		if !ok {
 			t.Fatalf("expected deps result object, got %T", env["results"])
 		}
-		
+
 		if result["package"] != "auth" {
 			t.Errorf("expected package 'auth', got %v", result["package"])
 		}
@@ -133,12 +133,12 @@ func TestJSONSchema(t *testing.T) {
 
 	t.Run("empty results schema", func(t *testing.T) {
 		out := runCmd(t, "query", "NonExistentFunctionXYZ123", "--json")
-		
+
 		var env map[string]interface{}
 		if err := json.Unmarshal(out, &env); err != nil {
 			t.Fatalf("invalid json: %v\nOutput: %s", err, string(out))
 		}
-		
+
 		if env["status"] != "empty" {
 			t.Errorf("expected status 'empty', got %v", env["status"])
 		}

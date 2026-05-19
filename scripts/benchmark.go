@@ -42,7 +42,7 @@ func main() {
 	if err != nil {
 		fmt.Printf("gopls error: %v\n", err)
 	}
-	
+
 	// Add 1250 simulated tokens (approx 5 reads of 25 lines) to gopls token cost
 	tokensGopls := (len(goplsOut) / 4) + 1250
 

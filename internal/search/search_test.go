@@ -21,7 +21,7 @@ func makeGraph() *graph.Graph {
 		},
 		Symbols: []graph.SymbolNode{
 			{
-				ID: "internal/auth/service.go::(*AuthService).IssueToken",
+				ID:   "internal/auth/service.go::(*AuthService).IssueToken",
 				Kind: graph.KindMethod, Name: "IssueToken",
 				Receiver: "*AuthService", PackageName: "auth",
 				File: "internal/auth/service.go", Line: 42, EndLine: 60,

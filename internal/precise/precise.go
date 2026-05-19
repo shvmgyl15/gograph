@@ -20,7 +20,7 @@ func Enrich(absRoot string, g *graph.Graph) error {
 			packages.NeedImports | packages.NeedDeps | packages.NeedTypes | packages.NeedTypesInfo | packages.NeedSyntax,
 		Dir: absRoot,
 	}
-	
+
 	// Load all packages
 	initial, err := packages.Load(cfg, "./...")
 	if err != nil {
@@ -50,7 +50,7 @@ func Enrich(absRoot string, g *graph.Graph) error {
 				if t == nil {
 					continue
 				}
-				
+
 				// Keep track of interface types
 				if iface, isIface := t.Underlying().(*types.Interface); isIface {
 					// We only care about interfaces with methods
@@ -100,23 +100,23 @@ func Enrich(absRoot string, g *graph.Graph) error {
 			key := fmt.Sprintf("%s->%s@%s:%d", edge.CallerName, edge.CalleeRaw, edge.File, edge.Line)
 			seenEdges[key] = true
 		}
-		
+
 		for _, node := range cg.Nodes {
 			if node.Func == nil || node.Func.Pkg == nil {
 				continue
 			}
 			callerName := cleanName(node.Func.Name())
-			
+
 			for _, edge := range node.Out {
 				if edge.Callee == nil || edge.Callee.Func == nil || edge.Callee.Func.Pkg == nil {
 					continue
 				}
 				calleeName := cleanName(edge.Callee.Func.Name())
-				
+
 				if edge.Site == nil {
 					continue
 				}
-				
+
 				pos := prog.Fset.Position(edge.Site.Pos())
 				if pos.Filename == "" || !strings.HasPrefix(pos.Filename, absRoot) {
 					continue

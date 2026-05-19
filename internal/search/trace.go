@@ -63,24 +63,24 @@ func Trace(g *graph.Graph, errStr string, includeTests bool) []TraceResult {
 	var results []TraceResult
 	for _, e := range matches {
 		targetFunc := e.Function
-		
+
 		// Perform a reverse BFS from targetFunc up to any entryPoint
 		var bestPath []Result
-		
+
 		type state struct {
 			node string
 			path []graph.CallEdge
 		}
-		
+
 		queue := []state{{node: targetFunc}}
 		visited := make(map[string]bool)
 		visited[targetFunc] = true
-		
+
 		found := false
 		for len(queue) > 0 {
 			cur := queue[0]
 			queue = queue[1:]
-			
+
 			if entryPoints[cur.node] && len(cur.path) > 0 {
 				// Reconstruct path forward
 				var chain []Result
@@ -105,12 +105,12 @@ func Trace(g *graph.Graph, errStr string, includeTests bool) []TraceResult {
 					Detail: "destination",
 					Score:  10,
 				})
-				
+
 				bestPath = chain
 				found = true
 				break
 			}
-			
+
 			for _, edge := range revAdj[cur.node] {
 				caller := edge.CallerName
 				if !visited[caller] {

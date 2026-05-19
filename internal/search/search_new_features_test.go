@@ -17,20 +17,20 @@ func buildRichGraph() *graph.Graph {
 		Symbols: []graph.SymbolNode{
 			// Interface with two methods
 			{
-				Name:    "Stringer",
-				Kind:    graph.KindInterface,
-				File:    "stringer.go",
-				Line:    1,
+				Name: "Stringer",
+				Kind: graph.KindInterface,
+				File: "stringer.go",
+				Line: 1,
 				InterfaceMethods: map[string]string{
 					"String": "func() string",
 				},
 			},
 			// Interface with both methods
 			{
-				Name:    "ReadWriter",
-				Kind:    graph.KindInterface,
-				File:    "rw.go",
-				Line:    5,
+				Name: "ReadWriter",
+				Kind: graph.KindInterface,
+				File: "rw.go",
+				Line: 5,
 				InterfaceMethods: map[string]string{
 					"Read":  "func([]byte) (int, error)",
 					"Write": "func([]byte) (int, error)",
@@ -39,7 +39,7 @@ func buildRichGraph() *graph.Graph {
 			// Worker has String method -> satisfies Stringer but NOT ReadWriter
 			{Name: "String", Kind: graph.KindMethod, Receiver: "*Worker", File: "worker.go", Line: 10, MethodSignature: "func() string"},
 			// Worker does not have Read/Write -> doesn't satisfy ReadWriter
-			
+
 			// For Constructors tests
 			{Name: "NewWorker", Kind: graph.KindFunction, Signature: "func() *Worker", File: "worker.go", Line: 20},
 			{Name: "NewWorkerVal", Kind: graph.KindFunction, Signature: "func() Worker", File: "worker.go", Line: 25},
@@ -63,7 +63,7 @@ func buildRichGraph() *graph.Graph {
 
 			// For Globals tests
 			{Name: "globalConfig", Kind: graph.KindVar, PackageName: "config", File: "config.go", Line: 5},
-			
+
 			// For Mocks tests
 			{
 				Name: "MockStringer", Kind: graph.KindStruct, File: "stringer_test.go", Line: 15,
@@ -245,7 +245,7 @@ func TestGlobals(t *testing.T) {
 	if len(res) != 2 {
 		t.Errorf("expected 2 global results, got %d: %v", len(res), res)
 	}
-	
+
 	hasVar := false
 	hasMut := false
 	for _, r := range res {

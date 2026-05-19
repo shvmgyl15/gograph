@@ -936,7 +936,7 @@ func Constructors(g *graph.Graph, structName string) []Result {
 func Schema(g *graph.Graph, tableName string) []Result {
 	var results []Result
 	nl := strings.ToLower(tableName)
-	
+
 	// Pre-compute the search targets to avoid string concatenation inside the loop
 	targets := []string{
 		`"` + nl + `"`,
@@ -1039,7 +1039,7 @@ func Mocks(g *graph.Graph, interfaceName string) []Result {
 func Fixtures(g *graph.Graph, pkgName string) []Result {
 	var results []Result
 	nl := strings.ToLower(pkgName)
-	
+
 	for _, s := range g.Symbols {
 		if !isTestFile(s.File) {
 			continue
@@ -1050,7 +1050,7 @@ func Fixtures(g *graph.Graph, pkgName string) []Result {
 		if strings.HasPrefix(s.Name, "Test") || strings.HasPrefix(s.Name, "Benchmark") || strings.HasPrefix(s.Name, "Example") {
 			continue
 		}
-		
+
 		results = append(results, Result{
 			Kind:   "fixture",
 			Name:   s.Name,
@@ -1060,7 +1060,7 @@ func Fixtures(g *graph.Graph, pkgName string) []Result {
 			Score:  10,
 		})
 	}
-	
+
 	sortResults(results)
 	return results
 }

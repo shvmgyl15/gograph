@@ -50,7 +50,7 @@ func TestGateFailOneViolation(t *testing.T) {
 	g := &graph.Graph{
 		Version:     graph.Version,
 		GeneratedAt: time.Now(),
-		Imports: make([]graph.ImportEdge, 30), // 30 current edges
+		Imports:     make([]graph.ImportEdge, 30), // 30 current edges
 		Baseline: &graph.GraphBaseline{
 			CouplingEdges: 20, // max new is 5, we have 10 new, this fails
 		},

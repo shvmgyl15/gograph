@@ -88,12 +88,12 @@ func Path(g *graph.Graph, from, to string, includeTests bool) []Result {
 			}
 			last := cur.path[len(cur.path)-1]
 			chain = append(chain, Result{
-				Kind:  "path",
-				Name:  last.CalleeRaw,
-				File:  last.File,
-				Line:  last.Line,
+				Kind:   "path",
+				Name:   last.CalleeRaw,
+				File:   last.File,
+				Line:   last.Line,
 				Detail: "destination",
-				Score: 10,
+				Score:  10,
 			})
 			return chain
 		}
@@ -300,7 +300,6 @@ func DefaultGodObjectParams() GodObjectParams {
 	}
 }
 
-
 // severity determines a label based on how far the candidate exceeds thresholds.
 func severity(methodCount, fieldCount, outgoingCalls int, p GodObjectParams) (string, int) {
 	score := 0
@@ -394,4 +393,3 @@ func GodObjects(g *graph.Graph, p GodObjectParams) []GodObjectCandidate {
 	}
 	return candidates
 }
-

@@ -67,7 +67,6 @@ func (r *ErrorFlowReport) String() string {
 	return sb.String()
 }
 
-
 func ErrorFlow(g *graph.Graph, term string) *ErrorFlowReport {
 	report := &ErrorFlowReport{
 		Term: term,
@@ -105,7 +104,7 @@ func ErrorFlow(g *graph.Graph, term string) *ErrorFlowReport {
 			}
 			continue
 		}
-		
+
 		if strings.Contains(strings.ToLower(e.Message), nl) {
 			matches = append(matches, e)
 			report.ReturnSites = append(report.ReturnSites, Result{
@@ -143,23 +142,23 @@ func ErrorFlow(g *graph.Graph, term string) *ErrorFlowReport {
 
 	for _, e := range matches {
 		targetFunc := e.Function
-		
+
 		type state struct {
 			node string
 			path []graph.CallEdge
 		}
-		
+
 		queue := []state{{node: targetFunc}}
 		visited := make(map[string]bool)
 		visited[targetFunc] = true
-		
+
 		found := false
 		var bestPath []Result
 
 		for len(queue) > 0 {
 			cur := queue[0]
 			queue = queue[1:]
-			
+
 			if entryDesc, isEntry := entryPoints[cur.node]; isEntry && len(cur.path) > 0 {
 				var chain []Result
 				for i := len(cur.path) - 1; i >= 0; i-- {
@@ -172,10 +171,10 @@ func ErrorFlow(g *graph.Graph, term string) *ErrorFlowReport {
 						Detail: "calls " + edge.CalleeRaw,
 					})
 				}
-				
+
 				// Label the entry point
 				chain[0].Detail = entryDesc + " -> " + chain[0].Detail
-				
+
 				lastEdge := cur.path[0]
 				chain = append(chain, Result{
 					Kind:   "path",
@@ -184,12 +183,12 @@ func ErrorFlow(g *graph.Graph, term string) *ErrorFlowReport {
 					Line:   lastEdge.Line,
 					Detail: "originates error",
 				})
-				
+
 				bestPath = chain
 				found = true
 				break
 			}
-			
+
 			for _, edge := range revAdj[cur.node] {
 				caller := edge.CallerName
 				if !visited[caller] {

@@ -120,7 +120,7 @@ func TestErrorFlow(t *testing.T) {
 	if path.Error.Function != "internalAuth" {
 		t.Errorf("Expected origin function internalAuth, got %s", path.Error.Function)
 	}
-	
+
 	// Root should be "Handler"
 	foundRoot := false
 	for _, step := range path.Path {

@@ -3,3 +3,6 @@
 bin/
 gograph
 docs/ARCHITECTURAL_GUIDELINES.mdcoverage.out
+
+# local agent instructions
+CLAUDE.md

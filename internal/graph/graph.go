@@ -8,24 +8,24 @@ const Version = "1"
 
 // Graph is the top-level data structure written to .gograph/graph.json.
 type Graph struct {
-	Version       string           `json:"version"`
-	GeneratedAt   time.Time        `json:"generated_at"`
-	Root          string           `json:"root"`
-	Packages      []PackageNode    `json:"packages"`
-	Files         []FileNode       `json:"files"`
-	Symbols       []SymbolNode     `json:"symbols"`
-	Imports       []ImportEdge     `json:"imports"`
-	Calls         []CallEdge       `json:"calls"`
-	EnvReads      []EnvRead        `json:"env_reads"`
-	Dependencies  []Dependency     `json:"dependencies"`
-	Routes        []HTTPRoute      `json:"routes,omitempty"`
-	SQLs          []SQLEdge        `json:"sqls,omitempty"`
-	Errors        []ErrorEdge      `json:"errors,omitempty"`
-	Concurrency   []ConcurrencyNode `json:"concurrency,omitempty"`
-	TestEdges     []TestEdge       `json:"test_edges,omitempty"`
-	Implements    []ImplementsEdge `json:"implements,omitempty"`
-	Mutations     []MutationEdge   `json:"mutations,omitempty"`
-	Baseline      *GraphBaseline   `json:"baseline,omitempty"`
+	Version      string            `json:"version"`
+	GeneratedAt  time.Time         `json:"generated_at"`
+	Root         string            `json:"root"`
+	Packages     []PackageNode     `json:"packages"`
+	Files        []FileNode        `json:"files"`
+	Symbols      []SymbolNode      `json:"symbols"`
+	Imports      []ImportEdge      `json:"imports"`
+	Calls        []CallEdge        `json:"calls"`
+	EnvReads     []EnvRead         `json:"env_reads"`
+	Dependencies []Dependency      `json:"dependencies"`
+	Routes       []HTTPRoute       `json:"routes,omitempty"`
+	SQLs         []SQLEdge         `json:"sqls,omitempty"`
+	Errors       []ErrorEdge       `json:"errors,omitempty"`
+	Concurrency  []ConcurrencyNode `json:"concurrency,omitempty"`
+	TestEdges    []TestEdge        `json:"test_edges,omitempty"`
+	Implements   []ImplementsEdge  `json:"implements,omitempty"`
+	Mutations    []MutationEdge    `json:"mutations,omitempty"`
+	Baseline     *GraphBaseline    `json:"baseline,omitempty"`
 }
 
 // GraphBaseline stores metrics from the previous build for gate comparisons.
@@ -79,7 +79,7 @@ type ConcurrencyNode struct {
 // TestEdge links a *testing.T test function to the symbols it exercises.
 type TestEdge struct {
 	TestFunc string `json:"test_func"`
-	Target   string `json:"target"`   // callee name that looks like a production symbol
+	Target   string `json:"target"` // callee name that looks like a production symbol
 	File     string `json:"file"`
 	Line     int    `json:"line"`
 }
@@ -92,9 +92,9 @@ type Dependency struct {
 
 // HTTPRoute represents an HTTP REST endpoint found in the AST.
 type HTTPRoute struct {
-	Method     string `json:"method"`
-	Path       string `json:"path"`
-	Handler    string `json:"handler"`
+	Method  string `json:"method"`
+	Path    string `json:"path"`
+	Handler string `json:"handler"`
 	// InlineBody holds the rendered source of an anonymous handler function.
 	// Populated only when the handler is a *ast.FuncLit (closure), empty otherwise.
 	// Captured at build time via go/printer — no file I/O needed at query time.
@@ -184,4 +184,3 @@ type EnvRead struct {
 	Line     int    `json:"line"`
 	Function string `json:"function,omitempty"`
 }
-

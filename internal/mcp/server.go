@@ -930,4 +930,3 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 		return mcp.NewToolResultText(string(data)), nil
 	})
 }
-

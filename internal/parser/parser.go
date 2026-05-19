@@ -87,7 +87,7 @@ func ParseFile(fset *token.FileSet, path, relPath string) (*FileResult, error) {
 		if !ok {
 			return true
 		}
-		
+
 		var method string
 		switch f := call.Fun.(type) {
 		case *ast.SelectorExpr:
@@ -155,7 +155,7 @@ func extractGenDecl(fset *token.FileSet, d *ast.GenDecl, relPath, pkgName string
 					} else if vs.Comment != nil {
 						doc = vs.Comment.Text()
 					}
-					
+
 					symKind := graph.KindVar
 					if d.Tok == token.CONST {
 						symKind = graph.KindConst
@@ -412,11 +412,11 @@ func extractFuncDecl(fset *token.FileSet, d *ast.FuncDecl, relPath, pkgName stri
 				parts := strings.Split(callee, ".")
 				method := parts[len(parts)-1]
 				isSQLMethod := method == "Query" || method == "QueryRow" || method == "Exec" || method == "QueryContext" || method == "QueryRowContext" || method == "ExecContext" || method == "Raw"
-				
+
 				if isSQLMethod && len(call.Args) > 0 {
 					var queryStr string
 					var found bool
-					
+
 					for _, arg := range call.Args {
 						if lit, ok := arg.(*ast.BasicLit); ok && lit.Kind == token.STRING {
 							queryStr = strings.Trim(lit.Value, "`\"")
@@ -430,14 +430,14 @@ func extractFuncDecl(fset *token.FileSet, d *ast.FuncDecl, relPath, pkgName stri
 							}
 						}
 					}
-					
+
 					if found {
 						upperQ := strings.ToUpper(queryStr)
-						if strings.Contains(upperQ, "SELECT ") || strings.Contains(upperQ, "INSERT ") || 
-							strings.Contains(upperQ, "UPDATE ") || strings.Contains(upperQ, "DELETE ") || 
-							strings.Contains(upperQ, "WITH ") || strings.Contains(upperQ, "CREATE ") || 
+						if strings.Contains(upperQ, "SELECT ") || strings.Contains(upperQ, "INSERT ") ||
+							strings.Contains(upperQ, "UPDATE ") || strings.Contains(upperQ, "DELETE ") ||
+							strings.Contains(upperQ, "WITH ") || strings.Contains(upperQ, "CREATE ") ||
 							strings.Contains(upperQ, "ALTER ") || strings.Contains(upperQ, "DROP ") {
-							
+
 							result.SQLs = append(result.SQLs, graph.SQLEdge{
 								Query:    queryStr,
 								Function: callerName,
