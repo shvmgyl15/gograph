@@ -129,7 +129,7 @@ func main() {
 	}
 
 	// 8. Test JSON flags
-	outJSON, err := runCmd("--json", "plan", "ReturnError")
+	outJSON, _ := runCmd("--json", "plan", "ReturnError")
 	var env map[string]interface{}
 	if err := json.Unmarshal([]byte(outJSON), &env); err != nil {
 		t.Fatalf("Failed to parse JSON for plan: %v\nOutput: %s", err, outJSON)

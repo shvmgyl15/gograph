@@ -407,7 +407,19 @@ func renderNarrative(displayName string, r *ExplainResult) string {
 	}
 
 	// Architectural role — the opinionated conclusion
-	fmt.Fprintf(&sb, "\n\nARCHITECTURAL ROLE: %s.", strings.Title(r.Role))
+	fmt.Fprintf(&sb, "\n\nARCHITECTURAL ROLE: %s.", titleCase(r.Role))
 
 	return sb.String()
+}
+
+// titleCase capitalises the first letter of each word in s.
+// Used in place of the deprecated strings.Title.
+func titleCase(s string) string {
+	words := strings.Fields(s)
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
 }
