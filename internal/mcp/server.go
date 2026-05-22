@@ -53,7 +53,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 	// TODO: Centralize version source with internal/cli.Version to avoid duplication.
 	s := server.NewMCPServer(
 		"gograph",
-		"1.4.44",
+		"1.4.59",
 		server.WithToolCapabilities(true),
 	)
 

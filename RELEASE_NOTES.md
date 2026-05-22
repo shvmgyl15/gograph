@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.4.59 — unreleased
+## v1.4.59 — 2026-05-22
 
 ### Improvements
 
