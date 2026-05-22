@@ -1,5 +1,29 @@
 # Release Notes
 
+## v1.4.55 — 2026-05-22
+
+### Other
+
+- fix scripts/gen-release-notes.sh
+- style: refactor code and tests with consistent indentation and add CLAUDE.md to .gitignore
+- +RELEASE_NOTES.md file
+
+
+---
+
+
+## v1.4.55 — 2026-05-22
+
+### Other
+
+- fix scripts/gen-release-notes.sh
+- style: refactor code and tests with consistent indentation and add CLAUDE.md to .gitignore
+- +RELEASE_NOTES.md file
+
+
+---
+
+
 ## v1.4.54 — 2026-05-18
 
 ### New Commands
