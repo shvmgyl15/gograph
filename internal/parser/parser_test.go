@@ -18,7 +18,7 @@ func fixtureDir() string {
 func TestParseFile_Symbols(t *testing.T) {
 	fset := token.NewFileSet()
 	fixturePath := filepath.Join(fixtureDir(), "widget.go")
-	result, err := parser.ParseFile(fset, fixturePath, "widget/widget.go")
+	result, err := parser.ParseFile(fset, fixturePath, "widget/widget.go", "example.com/widget")
 	if err != nil {
 		t.Fatalf("ParseFile returned error: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestParseFile_Symbols(t *testing.T) {
 
 func TestParseFile_Imports(t *testing.T) {
 	fset := token.NewFileSet()
-	result, err := parser.ParseFile(fset, filepath.Join(fixtureDir(), "widget.go"), "widget/widget.go")
+	result, err := parser.ParseFile(fset, filepath.Join(fixtureDir(), "widget.go"), "widget/widget.go", "example.com/widget")
 	if err != nil {
 		t.Fatalf("ParseFile returned error: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestParseFile_Imports(t *testing.T) {
 
 func TestParseFile_Calls(t *testing.T) {
 	fset := token.NewFileSet()
-	result, err := parser.ParseFile(fset, filepath.Join(fixtureDir(), "widget.go"), "widget/widget.go")
+	result, err := parser.ParseFile(fset, filepath.Join(fixtureDir(), "widget.go"), "widget/widget.go", "example.com/widget")
 	if err != nil {
 		t.Fatalf("ParseFile returned error: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestParseFile_Calls(t *testing.T) {
 
 func TestParseFile_EnvReads(t *testing.T) {
 	fset := token.NewFileSet()
-	result, err := parser.ParseFile(fset, filepath.Join(fixtureDir(), "widget.go"), "widget/widget.go")
+	result, err := parser.ParseFile(fset, filepath.Join(fixtureDir(), "widget.go"), "widget/widget.go", "example.com/widget")
 	if err != nil {
 		t.Fatalf("ParseFile returned error: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestParseFile_EnvReads(t *testing.T) {
 
 func TestParseFile_LineNumbers(t *testing.T) {
 	fset := token.NewFileSet()
-	result, err := parser.ParseFile(fset, filepath.Join(fixtureDir(), "widget.go"), "widget/widget.go")
+	result, err := parser.ParseFile(fset, filepath.Join(fixtureDir(), "widget.go"), "widget/widget.go", "example.com/widget")
 	if err != nil {
 		t.Fatalf("ParseFile returned error: %v", err)
 	}

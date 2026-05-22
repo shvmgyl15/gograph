@@ -18,7 +18,7 @@ func concurrentDir() string {
 func TestParseConcurrency(t *testing.T) {
 	fset := token.NewFileSet()
 	fixturePath := filepath.Join(concurrentDir(), "concurrent.go")
-	result, err := parser.ParseFile(fset, fixturePath, "concurrent/concurrent.go")
+	result, err := parser.ParseFile(fset, fixturePath, "concurrent/concurrent.go", "example.com/concurrent")
 	if err != nil {
 		t.Fatalf("ParseFile returned error: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestParseConcurrency(t *testing.T) {
 func TestParseEnvRead(t *testing.T) {
 	fset := token.NewFileSet()
 	fixturePath := filepath.Join(concurrentDir(), "concurrent.go")
-	result, err := parser.ParseFile(fset, fixturePath, "concurrent/concurrent.go")
+	result, err := parser.ParseFile(fset, fixturePath, "concurrent/concurrent.go", "example.com/concurrent")
 	if err != nil {
 		t.Fatalf("ParseFile returned error: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestParseEnvRead(t *testing.T) {
 func TestParseInterfaceMethods(t *testing.T) {
 	fset := token.NewFileSet()
 	fixturePath := filepath.Join(concurrentDir(), "concurrent.go")
-	result, err := parser.ParseFile(fset, fixturePath, "concurrent/concurrent.go")
+	result, err := parser.ParseFile(fset, fixturePath, "concurrent/concurrent.go", "example.com/concurrent")
 	if err != nil {
 		t.Fatalf("ParseFile returned error: %v", err)
 	}

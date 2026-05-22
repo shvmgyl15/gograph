@@ -377,6 +377,21 @@ func BuildGraph(absRoot string) (*graph.Graph, error) {
 		g.Dependencies = deps
 	}
 
+	// Pre-compute the module-rooted import path for each package directory.
+	// This is read from go.mod once per unique directory and cached so that
+	// the import path is available when generating stable symbol IDs below.
+	dirToImportPath := make(map[string]string)
+	for _, path := range files {
+		rel, err := filepath.Rel(absRoot, path)
+		if err != nil {
+			continue
+		}
+		dir := filepath.Dir(rel)
+		if _, seen := dirToImportPath[dir]; !seen {
+			dirToImportPath[dir] = bestEffortImportPath(absRoot, dir)
+		}
+	}
+
 	fset := token.NewFileSet()
 	pkgMap := make(map[string]*graph.PackageNode)
 
@@ -385,7 +400,9 @@ func BuildGraph(absRoot string) (*graph.Graph, error) {
 		if err != nil {
 			rel = path
 		}
-		result, err := parser.ParseFile(fset, path, rel)
+		dir := filepath.Dir(rel)
+		pkgImportPath := dirToImportPath[dir]
+		result, err := parser.ParseFile(fset, path, rel, pkgImportPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  warning: %v\n", err)
 			continue
@@ -403,12 +420,11 @@ func BuildGraph(absRoot string) (*graph.Graph, error) {
 		g.TestEdges = append(g.TestEdges, result.TestEdges...)
 		g.Mutations = append(g.Mutations, result.Mutations...)
 
-		dir := filepath.Dir(rel)
 		if _, ok := pkgMap[dir]; !ok {
 			pkgMap[dir] = &graph.PackageNode{
 				ID:                   dir,
 				Name:                 result.File.PackageName,
-				ImportPathBestEffort: bestEffortImportPath(absRoot, dir),
+				ImportPathBestEffort: pkgImportPath,
 				Dir:                  dir,
 			}
 		}
@@ -427,6 +443,7 @@ func BuildGraph(absRoot string) (*graph.Graph, error) {
 	sortGraph(g)
 	return g, nil
 }
+
 
 // printResults prints []Result in text or JSON mode.
 // cmd is the command name; query is the search term (may be empty).

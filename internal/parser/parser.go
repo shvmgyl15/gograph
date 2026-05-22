@@ -32,8 +32,10 @@ type FileResult struct {
 
 // ParseFile parses a single .go file and extracts its nodes.
 // path must be an absolute or repo-relative path.
-// relPath is the path stored in node IDs and graph edges (relative to repo root).
-func ParseFile(fset *token.FileSet, path, relPath string) (*FileResult, error) {
+// relPath is the repo-relative file path, stored in File nodes and graph edges.
+// pkgImportPath is the module-rooted import path of the package (e.g. "github.com/org/repo/internal/auth").
+// It is used as the stable prefix for symbol IDs so that IDs survive file renames within a package.
+func ParseFile(fset *token.FileSet, path, relPath, pkgImportPath string) (*FileResult, error) {
 	f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
@@ -75,9 +77,9 @@ func ParseFile(fset *token.FileSet, path, relPath string) (*FileResult, error) {
 	for _, decl := range f.Decls {
 		switch d := decl.(type) {
 		case *ast.GenDecl:
-			extractGenDecl(fset, d, relPath, pkgName, result)
+			extractGenDecl(fset, d, relPath, pkgName, pkgImportPath, result)
 		case *ast.FuncDecl:
-			extractFuncDecl(fset, d, relPath, pkgName, result)
+			extractFuncDecl(fset, d, relPath, pkgName, pkgImportPath, result)
 		}
 	}
 
@@ -142,7 +144,7 @@ func ParseFile(fset *token.FileSet, path, relPath string) (*FileResult, error) {
 }
 
 // extractGenDecl handles type declarations (structs, interfaces).
-func extractGenDecl(fset *token.FileSet, d *ast.GenDecl, relPath, pkgName string, result *FileResult) {
+func extractGenDecl(fset *token.FileSet, d *ast.GenDecl, relPath, pkgName, pkgImportPath string, result *FileResult) {
 	for _, spec := range d.Specs {
 		if vs, ok := spec.(*ast.ValueSpec); ok {
 			if d.Tok == token.VAR || d.Tok == token.CONST {
@@ -162,7 +164,7 @@ func extractGenDecl(fset *token.FileSet, d *ast.GenDecl, relPath, pkgName string
 					}
 
 					sym := graph.SymbolNode{
-						ID:          fmt.Sprintf("%s::%s", relPath, name.Name),
+						ID:          fmt.Sprintf("%s::%s", pkgImportPath, name.Name),
 						Kind:        symKind,
 						Name:        name.Name,
 						PackageName: pkgName,
@@ -232,7 +234,7 @@ func extractGenDecl(fset *token.FileSet, d *ast.GenDecl, relPath, pkgName string
 		}
 
 		sym := graph.SymbolNode{
-			ID:               fmt.Sprintf("%s::%s", relPath, ts.Name.Name),
+			ID:               fmt.Sprintf("%s::%s", pkgImportPath, ts.Name.Name),
 			Kind:             kind,
 			Name:             ts.Name.Name,
 			PackageName:      pkgName,
@@ -249,7 +251,7 @@ func extractGenDecl(fset *token.FileSet, d *ast.GenDecl, relPath, pkgName string
 }
 
 // extractFuncDecl handles function and method declarations.
-func extractFuncDecl(fset *token.FileSet, d *ast.FuncDecl, relPath, pkgName string, result *FileResult) {
+func extractFuncDecl(fset *token.FileSet, d *ast.FuncDecl, relPath, pkgName, pkgImportPath string, result *FileResult) {
 	pos := fset.Position(d.Pos())
 	endPos := fset.Position(d.End())
 
@@ -280,9 +282,9 @@ func extractFuncDecl(fset *token.FileSet, d *ast.FuncDecl, relPath, pkgName stri
 			}
 		}
 	}
-	id := fmt.Sprintf("%s::%s", relPath, d.Name.Name)
+	id := fmt.Sprintf("%s::%s", pkgImportPath, d.Name.Name)
 	if receiver != "" {
-		id = fmt.Sprintf("%s::(%s).%s", relPath, receiver, d.Name.Name)
+		id = fmt.Sprintf("%s::(%s).%s", pkgImportPath, receiver, d.Name.Name)
 	}
 
 	sym := graph.SymbolNode{

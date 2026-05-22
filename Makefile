@@ -15,6 +15,11 @@ build:
 
 release:
 	@echo "Bumping patch version, committing, and tagging..."
+	$(eval NEW_VERSION := $(shell bump2version --dry-run --list patch 2>/dev/null | grep new_version | cut -d= -f2))
+	@echo "Generating RELEASE_NOTES.md for v$(NEW_VERSION)..."
+	@chmod +x scripts/gen-release-notes.sh
+	@scripts/gen-release-notes.sh "$(NEW_VERSION)"
+	@git add RELEASE_NOTES.md
 	bump2version patch
 	git push origin master --tags
 

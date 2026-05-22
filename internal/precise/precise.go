@@ -95,9 +95,11 @@ func Enrich(absRoot string, g *graph.Graph) error {
 	if cg != nil {
 		// Do not clear g.Calls (g.Calls = nil). We want to be strictly additive.
 		// Instead, map the existing AST calls so we don't duplicate them.
+		// Both the caller and callee are normalized with cleanName so the keys
+		// match what CHA produces (CHA strips package qualifiers; AST does not).
 		seenEdges := make(map[string]bool)
 		for _, edge := range g.Calls {
-			key := fmt.Sprintf("%s->%s@%s:%d", edge.CallerName, edge.CalleeRaw, edge.File, edge.Line)
+			key := fmt.Sprintf("%s->%s@%s:%d", cleanName(edge.CallerName), cleanName(edge.CalleeRaw), edge.File, edge.Line)
 			seenEdges[key] = true
 		}
 
@@ -121,9 +123,14 @@ func Enrich(absRoot string, g *graph.Graph) error {
 				if pos.Filename == "" || !strings.HasPrefix(pos.Filename, absRoot) {
 					continue
 				}
+				// Normalize to a repo-relative path so the dedup key matches the
+				// AST-sourced edge keys (which use relative paths). Without this,
+				// every AST call edge gets a CHA duplicate because the keys never
+				// match (absolute vs. relative path for the same call site).
+				relFile := strings.TrimPrefix(pos.Filename, absRoot+"/")
 
 				// Create a unique key to prevent duplicate call edges
-				key := fmt.Sprintf("%s->%s@%s:%d", callerName, calleeName, pos.Filename, pos.Line)
+				key := fmt.Sprintf("%s->%s@%s:%d", callerName, calleeName, relFile, pos.Line)
 				if seenEdges[key] {
 					continue
 				}
@@ -133,7 +140,7 @@ func Enrich(absRoot string, g *graph.Graph) error {
 				g.Calls = append(g.Calls, graph.CallEdge{
 					CallerName: callerName,
 					CalleeRaw:  calleeName,
-					File:       pos.Filename,
+					File:       relFile,
 					Line:       pos.Line,
 				})
 			}

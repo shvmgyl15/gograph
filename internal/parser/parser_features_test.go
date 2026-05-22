@@ -18,7 +18,7 @@ func featuresDir() string {
 func TestParseFile_Features(t *testing.T) {
 	fset := token.NewFileSet()
 	fixturePath := filepath.Join(featuresDir(), "features.go")
-	result, err := parser.ParseFile(fset, fixturePath, "features/features.go")
+	result, err := parser.ParseFile(fset, fixturePath, "features/features.go", "example.com/features")
 	if err != nil {
 		t.Fatalf("ParseFile returned error: %v", err)
 	}
