@@ -58,9 +58,9 @@ CLI and MCP are now at full functional parity for all query and analysis command
 
 ### Documentation
 
-- `README.md`: added `plan --with-context`, updated context description to mention role.
-- `docs/coding-agent-usage.md`: added `plan --with-context` to cheat sheet; updated `gograph_plan` MCP entry.
-- `gograph capabilities` and `gograph --help`: updated context and plan entries.
+- `README.md`: added `plan --with-context`, `returnusage`, updated context description to mention role.
+- `docs/coding-agent-usage.md`: added `plan --with-context`, `returnusage` to cheat sheet; added all 17 new MCP tools to MCP tools list; updated `gograph_plan` and `gograph_context` MCP entries.
+- `gograph capabilities` and `gograph --help`: updated context, plan, and all 17 new MCP tool entries.
 
 ---
 
@@ -69,19 +69,47 @@ CLI and MCP are now at full functional parity for all query and analysis command
 ### New Commands
 
 #### `gograph dependents <package>`
-Returns all packages in the repository that import the named package — the inverse of `gograph deps`.
+Returns all packages in the repository that import the named package — the inverse of `gograph deps`. Accepts short name, path suffix, or full import path. Case-insensitive. New MCP tool: `gograph_dependents`.
 
-- Accepts short name (`auth`), path suffix (`internal/auth`), or full import path. Case-insensitive.
-- Deduplicates by package: even if multiple files in a package import the target, the package appears once.
-- Each result includes the source file and import line for immediate navigation.
-- Supports `--json`.
-- New MCP tool: `gograph_dependents`.
+---
 
-**Gap this fills:** before any package-level refactor, an agent needs every consumer. `deps` shows what a package imports; `dependents` shows what depends on it. Previously the only workaround was multiple per-file `imports` calls that did not aggregate by package. Zero schema changes — purely a query-time inversion of existing `g.Imports` edges.
+#### `gograph literals <struct>`
+Finds every composite-literal initialization site for a named struct (`Foo{Field: val}`). Collected at parse time via `ast.CompositeLit` walk. New `LiteralEdge` in `graph.json`. New MCP tool: `gograph_literals`.
+
+**Gap this fills:** `constructors` finds `NewFoo()` but misses struct literals. Adding a required field breaks every literal site at compile time — `literals` finds them all before the change.
+
+---
+
+#### `gograph usages <type>`
+Finds every place a named type is referenced in function signatures (param/return), struct fields, and interface method signatures. Word-boundary matching prevents false positives (`AuthService` does not match `AuthServiceImpl`). New MCP tool: `gograph_usages`.
+
+**Gap this fills:** `implementers` shows who satisfies an interface; `usages` shows who *consumes* it — the true blast radius of an interface change.
+
+---
+
+### New Flags
+
+#### `gograph context --uncommitted` / MCP `uncommitted=true`
+Bundles context for all uncommitted modified symbols in one call. Replaces 5–8 sequential `context <sym>` calls after `plan --uncommitted`. MCP `gograph_context` `symbol` parameter is now optional — provide either `symbol` or `uncommitted=true`.
+
+---
+
+#### `gograph impact --since <ref>` / MCP `since=<ref>`
+Blast radius of all symbols changed since a git ref — the PR-level equivalent of `impact --uncommitted`. Composes `ChangesByGitRef` + `ImpactMultiple` internally. MCP `gograph_impact` also gained `uncommitted` boolean (was CLI-only).
 
 ---
 
 ### Improvements
+
+#### `make test` extended with security and quality gates
+Added to the `test` target: `staticcheck ./...`, `golangci-lint run ./...`, `go run golang.org/x/vuln/cmd/govulncheck@latest ./...`, `grype dir:. --fail-on high`. All four gates run on every `make test`.
+
+---
+
+#### `gograph capabilities` restructured for agent onboarding
+Capabilities output reorganised into five labelled sections: PREREQUISITE (build step requirement), COMMON WORKFLOWS (task → command), WHEN TO USE WHAT (disambiguation for overlapping commands), OUTPUT FORMAT (--json/--files-only), and STATIC ANALYSIS LIMITATIONS. Previously a flat command reference; now structured for a new agent reading it cold.
+
+---
 
 #### `gograph implementers <iface> --test-only`
 Adds a `--test-only` flag to `implementers`. When set, results are filtered to structs defined in test or mock files — equivalent to the former `mocks` command.
@@ -107,7 +135,7 @@ The MCP tool `gograph_orphans` was calling `search.Orphans` (simple 0-incoming-c
 
 ### Documentation
 
-- `README.md`: added `dependents`, `literals`, `usages`, `context --uncommitted`, `impact --since`, updated `mocks`/`trace` as aliases, fixed unclosed code block.
+- `README.md`: added `dependents`, `literals`, `usages`, `context --uncommitted`, `impact --since`, `plan --with-context`; updated `mocks`/`trace` as aliases; fixed unclosed code block.
 - `docs/coding-agent-usage.md`: updated cheat sheet and MCP tools list for all new commands.
 - `gograph capabilities` and `gograph --help`: updated all affected command entries.
 
