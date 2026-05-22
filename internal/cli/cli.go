@@ -138,7 +138,7 @@ func Run(args []string) int {
 	case "deps":
 		return runDeps(args[1:])
 	case "changes":
-		return runChanges()
+		return runChanges(args[1:])
 	case "capabilities":
 		return runCapabilities()
 	case "mcp":
@@ -242,6 +242,7 @@ TOKEN SAVERS (COMPOSED COMMANDS):
 errorflow <term>     : trace likely error paths up to entry points (AST heuristic, NO SSA)
 arity [--min 5]      : find functions with many arguments (long parameter list smell)
 changes              : symbols modified/new/deleted since last build
+changes --git <ref>  : symbols in files changed since a git ref (MODIFIED only; e.g. main, HEAD~5, v1.4.50)
 constructors <struct>: factory functions returning struct
 context <sym> [--limit N]: bundle node+source+callers+callees+tests (saves 4-5 tool calls)
 deps <pkg> [--transitive] : import dependency tree of a package
@@ -927,6 +928,11 @@ CODE QUALITY
   changes                    Symbols modified/added/deleted since last 'build'.
                              Surfaces new functions, deleted files, and modified
                              symbols without re-reading changed source files.
+  changes --git <ref>        Symbols in files changed since a git ref (MODIFIED
+                             only). Useful for PR review and release scoping.
+                             NEW and DELETED detection requires a full baseline
+                             build. Ref must match [A-Za-z0-9._/\-~^]+.
+                             Examples: --git main  --git HEAD~5  --git v1.4.50
   godobj [flags]             God-object struct candidates scored by method count,
                              field count, and outgoing calls.
                              Flags: --methods N  --fields N  --calls N  --top N
@@ -1454,8 +1460,18 @@ func runDeps(args []string) int {
 	return 0
 }
 
-// runChanges reports symbols modified/added/deleted since the last build.
-func runChanges() int {
+// runChanges reports symbols modified/added/deleted since the last build,
+// or — when --git <ref> is provided — symbols in files changed since that git ref.
+func runChanges(args []string) int {
+	// Parse --git <ref> flag.
+	var gitRef string
+	for i, a := range args {
+		if a == "--git" && i+1 < len(args) {
+			gitRef = args[i+1]
+			break
+		}
+	}
+
 	g, err := loadGraph(".")
 	if err != nil {
 		if jsonMode {
@@ -1465,6 +1481,42 @@ func runChanges() int {
 		return 1
 	}
 	root, _ := filepath.Abs(".")
+
+	// --- git-ref mode ---
+	if gitRef != "" {
+		result, err := search.ChangesByGitRef(g, root, gitRef)
+		if err != nil {
+			if jsonMode {
+				return PrintJSON(errEnvelope("changes", err.Error()))
+			}
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		if jsonMode {
+			return PrintJSON(okEnvelope("changes", gitRef, result, len(result.ChangedFiles)+len(result.Symbols)))
+		}
+		if len(result.ChangedFiles) == 0 && len(result.Symbols) == 0 {
+			fmt.Printf("No Go file changes detected since %s.\n", gitRef)
+			return 0
+		}
+		fmt.Printf("Changes since %s (git-ref mode — MODIFIED only):\n\n", gitRef)
+		if len(result.ChangedFiles) > 0 {
+			fmt.Printf("Modified files (%d):\n", len(result.ChangedFiles))
+			for _, f := range result.ChangedFiles {
+				fmt.Printf("  %s\n", f)
+			}
+			fmt.Println()
+		}
+		fmt.Printf("Affected symbols: %d modified\n", len(result.Symbols))
+		fmt.Println("Note: NEW and DELETED detection requires a full baseline build from that ref.")
+		fmt.Println()
+		for _, sym := range result.Symbols {
+			fmt.Printf("[MODIFIED] %s  (%s:%d)\n", sym.Name, sym.File, sym.Line)
+		}
+		return 0
+	}
+
+	// --- default mode: mtime vs graph.json ---
 	result := search.Changes(g, root)
 	if jsonMode {
 		return PrintJSON(okEnvelope("changes", "", result, len(result.ChangedFiles)+len(result.Symbols)))

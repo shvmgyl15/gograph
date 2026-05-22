@@ -2,13 +2,6 @@
 
 ## v1.4.56 — 2026-05-22
 
-No changes recorded since last release.
-
----
-
-
-## v1.4.56 — 2026-05-22
-
 ### New Commands
 
 #### `gograph stats`
@@ -26,12 +19,29 @@ No flags required. Supports `--json` for machine-readable output (standard JSON 
 
 ---
 
+### New Flags
+
+#### `gograph changes --git <ref>`
+Extends the existing `gograph changes` command with a git-ref mode. Instead of comparing file modification times against `graph.json`, it runs `git diff --name-only <ref>` and returns symbols in the changed files.
+
+- **Default mode** (`gograph changes`) is unchanged: mtime vs `graph.json` generated_at.
+- **Git-ref mode** (`gograph changes --git <ref>`) returns `[MODIFIED]` symbols from files git reports as changed since that ref.
+- Accepts any valid git ref: branch name, tag, commit SHA (e.g. `--git main`, `--git HEAD~5`, `--git v1.4.50`).
+- Ref is validated against a positive allowlist `[A-Za-z0-9._/\-~^]+` to prevent injection.
+- `NEW` and `DELETED` classification is not available in git-ref mode (requires a full baseline graph build from that ref). A note is printed in text mode.
+- Supports `--json` for the standard machine-readable envelope (`query` field is set to the ref).
+
+**Token-saving benefit:** Agents can scope symbol changes to a PR branch (`--git main`) or a release (`--git v1.4.50`) without reading files or rebuilding the graph.
+
+---
+
 ### Documentation
 
-- `README.md`: added `stats` to the features list and to the usage command block.
-- `docs/coding-agent-usage.md`: added `gograph stats` to the AI cheat sheet command block and `gograph_stats` to the MCP tool registry.
-- `gograph capabilities`: added `stats` entry to the QUERY COMMANDS section.
-- `gograph --help`: added `stats` entry to the INDEXING section.
+- `README.md`: added `stats` to the features list and usage block; updated Change Detection bullet with `--git` flag.
+- `docs/coding-agent-usage.md`: added `gograph stats`, `gograph changes --git <ref>` to the cheat sheet; `gograph_stats` to MCP tool registry; expanded change detection section.
+- `gograph capabilities`: added `stats` and `changes --git <ref>` entries.
+- `gograph --help`: added `stats` to INDEXING section; `changes --git <ref>` to CODE QUALITY section.
+- `docs/TODO.md`: marked items 1 (`gograph stats`) and 2 (`gograph changed <git-ref>`) as done.
 
 ---
 

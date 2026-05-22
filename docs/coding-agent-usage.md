@@ -66,6 +66,7 @@ gograph deps "internal/auth" --transitive  # full transitive import closure
 gograph plan <symbol>            # generate an operational change plan for a symbol
 gograph plan --uncommitted       # generate a change plan for all uncommitted changes
 gograph changes                  # new/modified/deleted symbols since last build
+gograph changes --git <ref>      # symbols in files changed since a git ref (MODIFIED only; e.g. --git main, --git HEAD~5, --git v1.4.50)
 gograph trace "parse failed"     # trace an error string backwards to entry points
 gograph mutate "User.Status"     # find functions that mutate a specific struct field
 gograph arity --min 5            # find functions with many arguments (long parameter list smell)
@@ -553,6 +554,12 @@ This tells an agent exactly which packages will be affected if `cli` changes, wi
 - **MODIFIED** — symbols in files that changed since the last build
 - **NEW** — top-level declarations in changed files not recorded in the graph
 - **DELETED** — symbols whose source files no longer exist
+
+`gograph changes --git <ref>` extends this to git-ref-based scoping:
+- Runs `git diff --name-only <ref>` to get the list of changed files
+- Returns **MODIFIED** symbols from those files (NEW/DELETED require a full baseline build)
+- Accepts any valid git ref: branch name, tag, or commit SHA (e.g. `--git main`, `--git HEAD~5`, `--git v1.4.50`)
+- Ref is validated against a positive allowlist to prevent injection
 
 This allows an agent in an iterative session to see exactly what changed without re-reading files or re-running `gograph build`.
 

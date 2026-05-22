@@ -28,8 +28,7 @@ In short: `gopls` is optimized for human IDEs. `gograph` is optimized for termin
 - **Token-Saving Context Bundle:** `context <symbol>` replaces 4–5 separate tool calls — returns node, source, callers, callees, and tests in one response.
 - **Hotspot Ranking:** `hotspot` ranks functions by incoming call count so agents know which functions to study first.
 - **Code Quality Analysis:** Cyclomatic complexity (`complexity`), god-object detection (`godobj`), and package coupling/instability (`coupling`).
-- **Change Detection:** `changes` surfaces new/modified/deleted symbols since the last build without re-reading source files.
-- **Index Health:** `stats` returns a compact JSON summary of the current graph — schema version, build timestamp, and counts of packages, files, symbols, calls, routes, SQL, env reads, and test edges — in a single zero-parse call.
+- **Change Detection:** `changes` surfaces new/modified/deleted symbols since the last build without re-reading source files. `changes --git <ref>` scopes the same output to files changed since any git ref (branch, tag, or commit).
 - **Dependency Trees:** `deps <pkg> [--transitive]` shows direct or full transitive import closures for any package.
 - **Tech Stack Extraction:** Automatically parses `go.mod` to summarize your external dependencies (like `gin` or `pgx`) so agents instantly understand your stack.
 - **Concurrency Mapping:** Detects goroutine spawns, channel sends, mutex locks, WaitGroup usage, and `sync.Once.Do` calls across the entire codebase.
@@ -125,6 +124,8 @@ gograph snapshot drop v1          # Delete snapshot v1
 gograph api --since main          # Identify breaking API and contract changes since a git reference
 gograph arity --min 5             # Find functions with many arguments (long parameter list smell)
 gograph changes                   # New/modified/deleted symbols since last build
+gograph changes --git main        # Symbols in files changed since main (git-ref mode)
+gograph changes --git v1.4.50     # Same, scoped to a release tag
 gograph constructors "User"       # Find factory functions returning the named struct
 gograph context "ValidateToken"   # Node + source + callers + callees + tests in ONE call
 gograph explain "ValidateToken"   # LLM-ready architectural narrative: role, callers, callees, complexity, SQL, env, tests
