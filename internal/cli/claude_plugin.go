@@ -12,14 +12,14 @@ import (
 
 const claudeMDBlock = `
 <!-- gograph-start: do not remove -->
-## Gograph - Go Repository Intelligence
+## Gograph — Go Repository Intelligence
 
 Rules (enforced when gograph MCP server is connected):
 
 1. NEVER use grep, rg, find, or glob to search for Go symbols, functions, structs, or types. Use gograph_query instead.
-2. Before editing any Go symbol, run gograph_plan <symbol> to understand callers, tests, and risk.
-3. After editing Go code, run gograph_review --uncommitted to verify test coverage and blast radius.
-4. To understand a function, use gograph_context <symbol> (replaces 4-5 separate tool calls).
+2. Before editing any symbol, run gograph_plan with symbol and with_context=true — this returns the change plan AND full context for every inspect_first symbol in one call.
+3. After editing Go code, run gograph_review with uncommitted=true to verify test coverage and blast radius.
+4. To understand a symbol, use gograph_context — it returns node, source, callers, callees, tests, and an architectural role classification in one call. Use uncommitted=true to get context for all uncommitted symbols at once.
 5. Run gograph_capabilities at the start of any Go coding session.
 <!-- gograph-end: do not remove -->
 `
@@ -42,7 +42,7 @@ func installPlugin() error {
 	}
 
 	// 1. Register MCP server in Claude Desktop config
-	if err := installMCPServer(home); err != nil {
+	if err := installMCPServer(); err != nil {
 		fmt.Printf("⚠️  MCP server registration skipped: %v\n", err)
 	}
 
@@ -66,7 +66,7 @@ func installPlugin() error {
 }
 
 // installMCPServer writes the gograph entry into claude_desktop_config.json.
-func installMCPServer(home string) error {
+func installMCPServer() error {
 	configPath := getClaudeConfigPath()
 	if configPath == "" {
 		return fmt.Errorf("unsupported OS")

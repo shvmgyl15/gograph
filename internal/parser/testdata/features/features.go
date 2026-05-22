@@ -39,3 +39,19 @@ func MakeAdmin(role string) *AdminUser {
 		Role:     role,
 	}
 }
+
+func helper() (int, error) { return 0, nil }
+
+func ReturnUsageExamples() {
+	// discarded
+	helper()
+	// assigned
+	n, err := helper()
+	_ = n
+	_ = err
+	// partially_ignored
+	_, err2 := helper()
+	_ = err2
+	// returned (in a wrapper)
+	_ = func() (int, error) { return helper() }
+}

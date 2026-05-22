@@ -1,6 +1,8 @@
 package search
 
 import (
+	"strings"
+
 	"github.com/ozgurcd/gograph/internal/graph"
 )
 
@@ -20,11 +22,16 @@ type ContextResult struct {
 	Callees []Result
 	// Tests lists test functions that exercise this symbol.
 	Tests []Result
+	// Role is a lightweight architectural classification derived from callers,
+	// callees, routes, and SQL — without a full Explain computation.
+	// Values: "HTTP handler", "data access", "orchestrator", "coordinator",
+	//         "utility", "entry point", "internal".
+	Role string
 }
 
 // Context finds the best-matching symbol for term and returns a ContextResult
-// bundling its node details, source code, callers, callees, and test coverage.
-// Returns nil if no symbol matches.
+// bundling its node details, source code, callers, callees, test coverage, and
+// a lightweight architectural role. Returns nil if no symbol matches.
 // rootDir is the repository root for source extraction (pass "." for cwd).
 func Context(g *graph.Graph, rootDir, term string) *ContextResult {
 	node := Node(g, term)
@@ -33,12 +40,56 @@ func Context(g *graph.Graph, rootDir, term string) *ContextResult {
 	}
 
 	src, srcErr := Source(g, rootDir, term)
+	callers := Callers(g, term, true)
+	callees := Callees(g, term, true)
+
 	return &ContextResult{
 		Node:      node,
 		Source:    src,
 		SourceErr: srcErr,
-		Callers:   Callers(g, term, true),
-		Callees:   Callees(g, term, true),
+		Callers:   callers,
+		Callees:   callees,
 		Tests:     Tests(g, term),
+		Role:      quickRole(g, term, callers, callees),
 	}
+}
+
+// quickRole derives an architectural role from data already computed in Context,
+// without the full cost of Explain. It is intentionally coarse-grained.
+func quickRole(g *graph.Graph, term string, callers, callees []Result) string {
+	nl := strings.ToLower(term)
+
+	for _, r := range g.Routes {
+		if strings.ToLower(r.Handler) == nl || strings.HasSuffix(strings.ToLower(r.Handler), "."+nl) {
+			return "HTTP handler"
+		}
+	}
+
+	for _, sql := range g.SQLs {
+		if strings.ToLower(sql.Function) == nl || strings.HasSuffix(strings.ToLower(sql.Function), "."+nl) {
+			return "data access"
+		}
+	}
+
+	prodCallers := 0
+	for _, c := range callers {
+		if !isTestFile(c.File) {
+			prodCallers++
+		}
+	}
+	calleeCount := len(callees)
+
+	if prodCallers == 0 {
+		return "entry point"
+	}
+	if prodCallers >= 5 && calleeCount >= 5 {
+		return "orchestrator"
+	}
+	if prodCallers >= 5 {
+		return "utility"
+	}
+	if calleeCount >= 5 {
+		return "coordinator"
+	}
+	return "internal"
 }

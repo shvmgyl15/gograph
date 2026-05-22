@@ -1,5 +1,69 @@
 # Release Notes
 
+## v1.4.59 — unreleased
+
+### Improvements
+
+#### `gograph plan --with-context` / MCP `with_context=true`
+When set, `plan` bundles full context (source, callers, callees, role, tests) for every symbol in its `inspect_first` list. Eliminates the N sequential `context` calls that normally follow `plan`.
+
+- CLI: `gograph plan <sym> --with-context` prints the plan then each inspect_first symbol's full context block.
+- MCP: `gograph_plan` with `with_context=true` adds `inspect_contexts` array to the response — each entry has `symbol`, `role`, `node`, `source`, `callers`, `callees`, `tests`.
+- Works with `--uncommitted` too: `gograph plan --uncommitted --with-context`.
+
+**Token-saving benefit:** Reduces `plan + N×context` (N+1 calls) to a single call. In a typical editing session with 3–5 inspect_first symbols, this saves 3–5 tool calls.
+
+---
+
+#### `gograph context` now includes architectural role
+Every `context` response now includes a `role` field — a lightweight architectural classification computed from callers, callees, routes, and SQL already fetched during the call. No extra round trips.
+
+Values: `"HTTP handler"`, `"data access"`, `"entry point"`, `"orchestrator"`, `"coordinator"`, `"utility"`, `"internal"`.
+
+- CLI: displayed on the NODE line as `role: <value>`.
+- MCP: included in the `risk` map as `risk.role`.
+- `context --uncommitted` also includes `role` per symbol.
+
+**Token-saving benefit:** Eliminates the follow-up `explain` call agents make just to get the architectural role. `context` now answers both "what data do I need?" and "what does this symbol do?" in one call.
+
+---
+
+#### `gograph returnusage <function>` / MCP `gograph_returnusage`
+Shows how each caller consumes the return value of a named function. Recorded at parse time by classifying the AST statement wrapping each call site.
+
+Labels: `discarded` (`foo()` standalone), `assigned` (`x := foo()`), `partially_ignored` (`_, err := foo()`), `returned` (`return foo()`), `goroutine` (`go foo()`), `deferred` (`defer foo()`), `passed` (nested inside another call).
+
+- New field `ReturnUsage string` on `graph.CallEdge` (schema-compatible, `omitempty`).
+- Parser change: `buildReturnUsageMap` walks the function body at the statement level before the existing call-extraction pass, mapping each `CallExpr.Pos()` to a label.
+
+**Gap this fills:** before changing a return signature (adding an error return, changing a type), an agent needs to know which callers silently discard the return value — those will compile but behave incorrectly. `returnusage` shows this in one call; `callers` alone cannot.
+
+---
+
+#### MCP CLI parity — 17 new MCP tools
+Added MCP equivalents for CLI commands that had no MCP counterpart:
+`gograph_node`, `gograph_envs`, `gograph_interfaces`, `gograph_tests`, `gograph_hotspot`, `gograph_deps`, `gograph_changes`, `gograph_path`, `gograph_stale`, `gograph_complexity`, `gograph_coupling`, `gograph_mutate`, `gograph_arity`, `gograph_concurrency`, `gograph_fixtures`, `gograph_godobj`, `gograph_skeleton`.
+
+CLI and MCP are now at full functional parity for all query and analysis commands. Remaining CLI-only commands (`check`, `gate`, `snapshot`) are CI/automation tools not appropriate for the MCP surface.
+
+---
+
+### Fix
+
+#### `gograph add-claude-plugin` — unused parameter and stale CLAUDE.md rules
+- `installMCPServer` had an unused `home string` parameter; removed.
+- `claudeMDBlock` (the rules injected into `~/.claude/CLAUDE.md`) updated to reflect current workflow: `plan with_context=true`, `context uncommitted=true`, and the role field on context responses.
+
+---
+
+### Documentation
+
+- `README.md`: added `plan --with-context`, updated context description to mention role.
+- `docs/coding-agent-usage.md`: added `plan --with-context` to cheat sheet; updated `gograph_plan` MCP entry.
+- `gograph capabilities` and `gograph --help`: updated context and plan entries.
+
+---
+
 ## v1.4.58 — 2026-05-22
 
 ### New Commands
@@ -43,10 +107,9 @@ The MCP tool `gograph_orphans` was calling `search.Orphans` (simple 0-incoming-c
 
 ### Documentation
 
-- `README.md`: added `dependents`, updated `mocks`/`trace` as aliases, added `implementers --test-only` and `errorflow --no-tests` examples.
-- `docs/coding-agent-usage.md`: updated cheat sheet with `dependents`, `implementers --test-only`, `errorflow --no-tests`, alias notes for `mocks` and `trace`.
+- `README.md`: added `dependents`, `literals`, `usages`, `context --uncommitted`, `impact --since`, updated `mocks`/`trace` as aliases, fixed unclosed code block.
+- `docs/coding-agent-usage.md`: updated cheat sheet and MCP tools list for all new commands.
 - `gograph capabilities` and `gograph --help`: updated all affected command entries.
-- `docs/TODO.md`: marked Package dependents as done, reprioritised remaining items.
 
 ---
 
@@ -76,7 +139,6 @@ Extends `callers` and `callees` with bounded BFS traversal up or down the call g
 - `docs/coding-agent-usage.md`: updated cheat sheet callers/callees entries with `--depth N`.
 - `gograph capabilities`: updated callers/callees one-liners with `--depth N`.
 - `gograph --help`: updated CALL GRAPH section entries with `--depth N`.
-- `docs/TODO.md`: marked item 3 (`--depth N` on callers/callees) as done.
 
 
 ---
@@ -123,7 +185,6 @@ Extends the existing `gograph changes` command with a git-ref mode. Instead of c
 - `docs/coding-agent-usage.md`: added `gograph stats`, `gograph changes --git <ref>` to the cheat sheet; `gograph_stats` to MCP tool registry; expanded change detection section.
 - `gograph capabilities`: added `stats` and `changes --git <ref>` entries.
 - `gograph --help`: added `stats` to INDEXING section; `changes --git <ref>` to CODE QUALITY section.
-- `docs/TODO.md`: marked items 1 (`gograph stats`) and 2 (`gograph changed <git-ref>`) as done.
 
 ---
 

@@ -58,7 +58,7 @@ gograph complexity "Run"        # complexity for a specific function by name
 gograph coupling                # package fan-in, fan-out, and instability table
 gograph coupling "internal/auth" # filter to a specific package
 # --- PRIMARY TOKEN SAVERS ---
-gograph context "ValidateToken"  # node + source + callers + callees + tests in ONE call (use for raw structured data)
+gograph context "ValidateToken"  # node + source + callers + callees + tests + role in ONE call (use for raw structured data)
 gograph context --uncommitted    # context for ALL uncommitted symbols bundled — replaces 5-8 sequential calls after plan --uncommitted
 gograph explain "ValidateToken"  # LLM-ready narrative: role, complexity, SQL, env, routes, interfaces (use to understand purpose)
 gograph hotspot                  # top 10 most-called functions (focus study here first)
@@ -67,6 +67,7 @@ gograph deps "internal/auth"     # direct import dependencies of a package
 gograph deps "internal/auth" --transitive  # full transitive import closure
 gograph dependents "internal/auth"  # all packages that import this package (inverse of deps — run before any package refactor)
 gograph plan <symbol>            # generate an operational change plan for a symbol
+gograph plan <symbol> --with-context  # plan + full context for every inspect_first symbol in ONE call
 gograph plan --uncommitted       # generate a change plan for all uncommitted changes
 gograph changes                  # new/modified/deleted symbols since last build
 gograph changes --git <ref>      # symbols in files changed since a git ref (MODIFIED only; e.g. --git main, --git HEAD~5, --git v1.4.50)
@@ -78,6 +79,7 @@ gograph skeleton                 # output the whole repository's API signatures 
 gograph constructors <struct>    # find factory functions returning a named struct
 gograph literals <struct>        # all Foo{...} composite literal sites — run before adding/removing a required field
 gograph usages <type>            # every place a type appears in param/return/field/iface-method — run before changing an interface
+gograph returnusage <function>   # how each caller uses the return value (discarded/assigned/partially_ignored/returned/passed) — run before changing a return signature
 gograph schema <table>           # find structs mapped to a database table or schema via tags
 gograph globals <pkg>            # find pkg-level vars, consts, and functions mutating them
 gograph implementers <interface> --test-only  # find structs implementing an interface in test or mock files
@@ -663,7 +665,7 @@ The current tool suite includes:
 - **`gograph_api`**: Compares public-facing contract and integration surface drift against a baseline git reference.
 - **`gograph_routes`**
 - **`gograph_context`**: Bundles node details, callers, callees, tests, and source code into one compact structured response.
-- **`gograph_plan`**: Pre-edit planning. Highlights likely affected tests, routes, env reads, SQL touches, and public API impact in a structured JSON payload.
+- **`gograph_plan`**: Pre-edit planning. Highlights likely affected tests, routes, env reads, SQL touches, and public API impact. Set `with_context=true` to bundle full context for every `inspect_first` symbol — eliminates follow-up `context` calls.
 - **`gograph_review`**: Post-edit review. Summarizes what changed and its risk profile in a structured JSON payload.
 - **`gograph_errorflow`**: Traces likely error paths up to entry points (HTTP routes or CLI commands). (*Limitation: Uses heuristic static call-graph and AST reference analysis, not SSA data-flow tracking.*)
 - **`gograph_imports`**
@@ -674,6 +676,12 @@ The current tool suite includes:
 - **`gograph_constructors`**
 - **`gograph_literals`**: Find all composite-literal initialization sites for a named struct. Run before adding a required field — every site returned will break at compile time.
 - **`gograph_usages`**: Find every place a named type appears in function signatures (param/return), struct fields, and interface method signatures. Run before changing an interface to see the full consumption blast radius.
+- **`gograph_returnusage`**: Show how each caller uses the return value of a function (discarded/assigned/partially_ignored/returned/passed). Run before changing a return signature to find callers that silently discard values.
+- **`gograph_arity`**: Find functions with too many arguments. Optional `min` parameter (default: 5).
+- **`gograph_concurrency`**: Map goroutine spawns, channel operations, mutex locks, WaitGroups, and sync.Once. Optional filter by kind.
+- **`gograph_fixtures`**: Find test helper structs and functions in test files for a package.
+- **`gograph_godobj`**: Find god-object struct candidates. Optional thresholds: `methods`, `fields`, `calls`, `top`.
+- **`gograph_skeleton`**: Full repository API signatures with bodies stripped. Large output — use on small repos or targeted packages.
 - **`gograph_schema`**
 - **`gograph_globals`**
 - **`gograph_mocks`**

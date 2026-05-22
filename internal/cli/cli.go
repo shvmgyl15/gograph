@@ -151,6 +151,8 @@ func Run(args []string) int {
 		return runLiterals(args[1:])
 	case "usages":
 		return runUsages(args[1:])
+	case "returnusage":
+		return runReturnUsage(args[1:])
 	case "schema":
 		return runSchema(args[1:])
 	case "globals":
@@ -344,8 +346,10 @@ changes --git <ref>  : symbols in files changed since a git ref (e.g. main, HEAD
 constructors <struct>: factory functions returning this struct
 literals <struct>    : composite literal sites Foo{...} — run before adding/removing a required field
 usages <type>        : where a type appears in signatures and fields (param/return/field/iface method)
+returnusage <fn>     : how each caller uses the return value of fn (discarded/assigned/returned/passed)
 context <sym> [--limit N]: node+source+callers+callees+tests — raw structured data
 context --uncommitted    : context for ALL uncommitted symbols in one call (replaces 5-8 sequential context calls)
+                           NOTE: every context response now includes 'role' (architectural classification)
 dependents <pkg>     : packages that import this package (run before any package refactor)
 deps <pkg> [--transitive]: import dependency tree (add --transitive for full BFS closure)
 endpoint <handler>   : route + handler + full call chain + SQL + env reads
@@ -359,6 +363,7 @@ hotspot [--top N]    : functions ranked by incoming call count — study these f
 mocks <iface>        : alias for 'implementers --test-only' (kept for compatibility)
 mutate <field>       : functions that mutate a specific struct field
 plan <sym>           : change plan — callers, tests, SQL/env/route risk, public API impact
+plan <sym> --with-context : plan + full context for every inspect_first symbol (saves N follow-up context calls)
 plan --uncommitted   : change plan for all currently uncommitted modified symbols
 review <sym>         : post-edit review — test coverage, complexity, risk profile
 review --uncommitted : post-edit review for all uncommitted changes
@@ -646,7 +651,9 @@ func runCallers(args []string) int {
 		case "--depth":
 			if i+1 < len(args) {
 				i++
-				fmt.Sscanf(args[i], "%d", &depth)
+				if n, err := strconv.Atoi(args[i]); err == nil {
+					depth = n
+				}
 				if depth < 1 {
 					depth = 1
 				}
@@ -685,7 +692,9 @@ func runCallees(args []string) int {
 		case "--depth":
 			if i+1 < len(args) {
 				i++
-				fmt.Sscanf(args[i], "%d", &depth)
+				if n, err := strconv.Atoi(args[i]); err == nil {
+					depth = n
+				}
 				if depth < 1 {
 					depth = 1
 				}
@@ -1029,6 +1038,10 @@ INTERFACES & TYPES
   constructors <struct>      Find factory functions returning the named struct.
   literals <struct>          Find composite-literal initialization sites (Foo{...}) for a struct.
                              Run before adding a required field to know every site that will break.
+  returnusage <function>     Show how each caller uses the return value of a function.
+                             Labels: discarded, assigned, partially_ignored, returned, passed.
+                             Run before changing a return signature — finds callers that silently
+                             discard a value that will carry different semantics after the change.
   usages <type>              Find every place a type is referenced in a function signature
                              (param or return type), struct field, or interface method signature.
                              Run before changing an interface — shows the full consumption blast radius.
@@ -1052,10 +1065,11 @@ CODE QUALITY
                              HIGH / VERY HIGH (McCabe thresholds: 5 / 10 / 20).
   coupling [package]         Fan-in, fan-out, and instability per package.
                              Instability = FanOut / (FanIn + FanOut). Range [0,1].
-  context <symbol>           Bundle node+source+callers+callees+tests in one call.
+  context <symbol>           Bundle node+source+callers+callees+tests+role in one call.
+                             'role' is a lightweight architectural classification (HTTP handler,
+                             data access, orchestrator, coordinator, utility, entry point, internal).
   context --uncommitted      Context for all uncommitted modified symbols in one call.
                              Replaces 5-8 sequential 'context <sym>' calls after 'plan --uncommitted'.
-                             Replaces 4–5 separate commands. Primary token saver.
   explain <symbol>           LLM-ready architectural narrative for a symbol.
                              Synthesizes callers (prod vs test split), callees,
                              complexity, SQL, env, routes, concurrency, tests,
@@ -1532,6 +1546,9 @@ func printContextResult(result *search.ContextResult, limit int) {
 		fmt.Println("--- NODE ---")
 		for _, r := range result.Node {
 			fmt.Println(r.String())
+		}
+		if result.Role != "" {
+			fmt.Printf("role: %s\n", result.Role)
 		}
 		fmt.Println()
 	}
@@ -2146,6 +2163,26 @@ func runUsages(args []string) int {
 	return printResults("usages", args[0], results, fmt.Sprintf("No usage sites found for type %q.", args[0]))
 }
 
+func runReturnUsage(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: gograph returnusage <function>")
+		return 1
+	}
+	g, err := loadGraph(".")
+	if err != nil {
+		if jsonMode {
+			return PrintJSON(errEnvelope("returnusage", err.Error()))
+		}
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	results := search.ReturnUsages(g, args[0])
+	if jsonMode {
+		return PrintJSON(okEnvelope("returnusage", args[0], results, len(results)))
+	}
+	return printResults("returnusage", args[0], results, fmt.Sprintf("No call sites found for %q.", args[0]))
+}
+
 func runLiterals(args []string) int {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: gograph literals <struct>")
@@ -2395,9 +2432,20 @@ func runEndpoint(args []string) int {
 // runPlan generates an operational change plan for one or more symbols or for uncommitted changes.
 func runPlan(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: gograph plan <symbol> OR gograph plan --uncommitted")
+		fmt.Fprintln(os.Stderr, "usage: gograph plan <symbol> [--with-context]\n       gograph plan --uncommitted [--with-context]")
 		return 1
 	}
+
+	withContext := false
+	var filtered []string
+	for _, a := range args {
+		if a == "--with-context" {
+			withContext = true
+		} else {
+			filtered = append(filtered, a)
+		}
+	}
+	args = filtered
 
 	g, err := loadGraph(".")
 	if err != nil {
@@ -2408,7 +2456,7 @@ func runPlan(args []string) int {
 	var symbolNames []string
 	var title string
 
-	if args[0] == "--uncommitted" {
+	if len(args) > 0 && args[0] == "--uncommitted" {
 		symbolNames, err = search.UncommittedSymbols(g)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -2419,9 +2467,12 @@ func runPlan(args []string) int {
 			return 0
 		}
 		title = "Uncommitted Changes"
-	} else {
+	} else if len(args) > 0 {
 		symbolNames = []string{strings.Join(args, " ")}
 		title = symbolNames[0]
+	} else {
+		fmt.Fprintln(os.Stderr, "usage: gograph plan <symbol> [--with-context]\n       gograph plan --uncommitted [--with-context]")
+		return 1
 	}
 
 	plan := search.Plan(g, symbolNames, title)
@@ -2431,6 +2482,19 @@ func runPlan(args []string) int {
 	}
 
 	fmt.Print(plan.String())
+
+	if withContext && len(plan.ReadFirst) > 0 {
+		root, _ := filepath.Abs(".")
+		fmt.Println("\n=== INSPECT_FIRST CONTEXTS ===")
+		for _, sym := range plan.ReadFirst {
+			result := search.Context(g, root, sym.Name)
+			if result == nil {
+				continue
+			}
+			fmt.Printf("\n=== CONTEXT: %s ===\n\n", sym.Name)
+			printContextResult(result, 0)
+		}
+	}
 	return 0
 }
 

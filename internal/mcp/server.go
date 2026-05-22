@@ -53,7 +53,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 	// TODO: Centralize version source with internal/cli.Version to avoid duplication.
 	s := server.NewMCPServer(
 		"gograph",
-		"1.4.57",
+		"1.4.44",
 		server.WithToolCapabilities(true),
 	)
 
@@ -81,17 +81,35 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 				{"name": "gograph_fields", "purpose": "Extract all fields from a specific struct, including their types and struct tags."},
 				{"name": "gograph_source", "purpose": "Extract the exact source code for a specific function, method, struct, or interface."},
 				{"name": "gograph_orphans", "purpose": "Find functions and methods unreachable from any entry point (main, HTTP routes, exported symbols). Uses full BFS reachability — matches CLI behavior."},
-				{"name": "gograph_impact", "purpose": "Traverse the call graph backwards to find all symbols that eventually call the target symbol."},
+				{"name": "gograph_impact", "purpose": "Traverse the call graph backwards to find all symbols that eventually call the target symbol. Also supports uncommitted=true (blast radius of uncommitted changes) and since=<ref> (blast radius of all changes since a git ref)."},
 				{"name": "gograph_boundaries", "purpose": "Verify package architecture constraints against boundaries.json."},
 				{"name": "gograph_endpoint", "purpose": "Full vertical slice for one HTTP endpoint: route, handler, downstream call chain (BFS), SQL emitted, env reads."},
 				{"name": "gograph_api", "purpose": "Compare the public-facing contract and integration surface drift against a baseline git reference."},
 				{"name": "gograph_routes", "purpose": "Extract all HTTP REST API routes found in the codebase."},
-				{"name": "gograph_context", "purpose": "Bundles node details, callers, callees, tests, and source code into one structured response."},
-				{"name": "gograph_plan", "purpose": "Safe edit planning before code changes. Highlights likely affected tests, routes, env reads, SQL touches, and public API impact."},
+				{"name": "gograph_context", "purpose": "Bundles node details, callers, callees, tests, source, and architectural role into one structured response. Set uncommitted=true to bundle all uncommitted symbols in one call."},
+				{"name": "gograph_plan", "purpose": "Safe edit planning before code changes. Set with_context=true to bundle full context for each inspect_first symbol — eliminates follow-up context calls."},
 				{"name": "gograph_review", "purpose": "Post-edit or symbol-focused review. Summarizes what changed and its risk profile."},
 				{"name": "gograph_errorflow", "purpose": "Trace likely error paths up to entry points (HTTP routes or CLI commands)."},
 				{"name": "gograph_imports", "purpose": "Find all files that import a specific external package."},
 				{"name": "gograph_dependents", "purpose": "Find all packages that import the named package (inverse of deps). Essential before package-level refactors."},
+				{"name": "gograph_node", "purpose": "Full AST metadata for one symbol: kind, file, line, signature, doc, struct fields."},
+				{"name": "gograph_envs", "purpose": "List every os.Getenv / viper.Get* read in the codebase. Optional filter by key name."},
+				{"name": "gograph_interfaces", "purpose": "Find interfaces satisfied by a named struct (duck-typing). Inverse of gograph_implementers."},
+				{"name": "gograph_tests", "purpose": "Find test functions that exercise a named symbol. Omit symbol to list all test edges."},
+				{"name": "gograph_hotspot", "purpose": "Rank functions by incoming call count (fan-in). Shows the most-depended-on code to study first."},
+				{"name": "gograph_deps", "purpose": "Import dependency tree of a package. Use transitive=true for the full BFS closure."},
+				{"name": "gograph_changes", "purpose": "Symbols modified/added/deleted since last build. Use git_ref to compare against a git reference."},
+				{"name": "gograph_path", "purpose": "Shortest call chain between two symbols (BFS). Confirms whether a handler reaches a given function."},
+				{"name": "gograph_stale", "purpose": "Check whether graph.json is older than any source file. Run before structural analysis."},
+				{"name": "gograph_complexity", "purpose": "Cyclomatic complexity per function, sorted highest first. Labels: LOW / MEDIUM / HIGH / VERY HIGH."},
+				{"name": "gograph_coupling", "purpose": "Fan-in, fan-out, and instability per package. Instability range [0,1]: 0=stable, 1=unstable."},
+				{"name": "gograph_returnusage", "purpose": "Show how each caller uses the return value of a function (discarded/assigned/partially_ignored/returned/passed). Run before changing a return signature."},
+				{"name": "gograph_arity", "purpose": "Find functions with too many arguments (long parameter list smell). Default minimum: 5."},
+				{"name": "gograph_concurrency", "purpose": "Map goroutine spawns, channel ops, mutex locks, WaitGroups, and sync.Once. Optional filter by kind."},
+				{"name": "gograph_fixtures", "purpose": "Find test helper structs and functions in test files for a package."},
+				{"name": "gograph_godobj", "purpose": "Find god-object struct candidates scored by method count, field count, and outgoing calls."},
+				{"name": "gograph_skeleton", "purpose": "Full repository API signatures with bodies stripped. WARNING: can be very large on big repos."},
+				{"name": "gograph_mutate", "purpose": "Find functions that mutate a specific struct field."},
 				{"name": "gograph_sql", "purpose": "Extract database SQL queries found in the codebase."},
 				{"name": "gograph_errors", "purpose": "Extract custom error messages and panics."},
 				{"name": "gograph_embeds", "purpose": "Find what structs embed the given target struct."},
@@ -565,9 +583,10 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 				return mcp.NewToolResultText(string(data)), nil
 			}
 			type symbolContext struct {
-				Symbol  string         `json:"symbol"`
-				Node    *search.Result `json:"node,omitempty"`
-				Source  string         `json:"source,omitempty"`
+				Symbol  string          `json:"symbol"`
+				Role    string          `json:"role,omitempty"`
+				Node    *search.Result  `json:"node,omitempty"`
+				Source  string          `json:"source,omitempty"`
 				Callers []search.Result `json:"callers,omitempty"`
 				Callees []search.Result `json:"callees,omitempty"`
 				Tests   []string        `json:"tests,omitempty"`
@@ -580,6 +599,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 				}
 				sc := symbolContext{
 					Symbol:  sym,
+					Role:    r.Role,
 					Source:  r.Source,
 					Callers: r.Callers,
 					Callees: r.Callees,
@@ -621,7 +641,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 			Source:  result.Source,
 			Callers: result.Callers,
 			Callees: result.Callees,
-			Risk:    map[string]any{},
+			Risk:    map[string]any{"role": result.Role},
 		}
 		resp.TestResults = result.Tests
 		for _, t := range result.Tests {
@@ -636,9 +656,10 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_plan
 	planTool := mcp.NewTool("gograph_plan",
-		mcp.WithDescription("Safe edit planning before code changes. Highlights likely affected tests, routes, env reads, SQL touches, and public API impact."),
+		mcp.WithDescription("Safe edit planning before code changes. Highlights likely affected tests, routes, env reads, SQL touches, and public API impact. Set with_context=true to bundle full context for each inspect_first symbol, eliminating follow-up context calls."),
 		mcp.WithString("symbol", mcp.Description("The symbol to plan changes for")),
 		mcp.WithBoolean("uncommitted", mcp.Description("Set to true to plan all uncommitted changes")),
+		mcp.WithBoolean("with_context", mcp.Description("If true, include full context (source, callers, callees, role) for each inspect_first symbol")),
 	)
 	addTool(planTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -665,20 +686,58 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		}
 
 		planRes := search.Plan(g, symbolNames, title)
+		withContext, _ := args["with_context"].(bool)
 
-		resp := MCPResponse{
-			Summary:      "Change plan for " + planRes.Title,
-			InspectFirst: planRes.ReadFirst,
-			Tests:        planRes.Tests,
-			Routes:       planRes.Routes,
-			Env:          planRes.Envs,
-			Risk: map[string]any{
+		type inspectContext struct {
+			Symbol  string          `json:"symbol"`
+			Role    string          `json:"role,omitempty"`
+			Node    *search.Result  `json:"node,omitempty"`
+			Source  string          `json:"source,omitempty"`
+			Callers []search.Result `json:"callers,omitempty"`
+			Callees []search.Result `json:"callees,omitempty"`
+			Tests   []string        `json:"tests,omitempty"`
+		}
+
+		resp := map[string]any{
+			"summary":       "Change plan for " + planRes.Title,
+			"inspect_first": planRes.ReadFirst,
+			"tests":         planRes.Tests,
+			"routes":        planRes.Routes,
+			"env":           planRes.Envs,
+			"risk": map[string]any{
 				"public_api":     planRes.PublicAPI,
 				"touches_sql":    planRes.TouchesSQL,
 				"touches_routes": len(planRes.Routes) > 0,
 				"touches_env":    len(planRes.Envs) > 0,
 			},
 		}
+
+		if withContext {
+			root, _ := filepath.Abs(".")
+			var contexts []inspectContext
+			for _, sym := range planRes.ReadFirst {
+				r := search.Context(g, root, sym.Name)
+				if r == nil {
+					continue
+				}
+				ic := inspectContext{
+					Symbol:  sym.Name,
+					Role:    r.Role,
+					Source:  r.Source,
+					Callers: r.Callers,
+					Callees: r.Callees,
+				}
+				if len(r.Node) > 0 {
+					ic.Node = &r.Node[0]
+				}
+				for _, t := range r.Tests {
+					ic.Tests = append(ic.Tests, t.Name)
+				}
+				contexts = append(contexts, ic)
+			}
+			resp["inspect_contexts"] = contexts
+		}
+
 		data, err := json.MarshalIndent(resp, "", "  ")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -1092,6 +1151,422 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_node
+	nodeTool := mcp.NewTool("gograph_node",
+		mcp.WithDescription("Show full AST details for a symbol, package, or file: kind, file, line, signature, doc, and struct fields."),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The symbol, package, or file name to look up")),
+	)
+	addTool(nodeTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		name, ok := args["name"].(string)
+		if !ok || name == "" {
+			return mcp.NewToolResultError("name must be a non-empty string"), nil
+		}
+		results := search.Node(g, name)
+		return formatResults(results), nil
+	})
+
+	// Tool: gograph_envs
+	envsTool := mcp.NewTool("gograph_envs",
+		mcp.WithDescription("List every os.Getenv / viper.Get* read in the codebase with file and line. Optionally filter by key name."),
+		mcp.WithString("term", mcp.Description("Optional filter term (e.g., 'DATABASE' matches DATABASE_URL, DATABASE_HOST, etc.)")),
+	)
+	addTool(envsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		term := ""
+		if args, ok := request.Params.Arguments.(map[string]any); ok {
+			if t, ok := args["term"].(string); ok {
+				term = t
+			}
+		}
+		results := search.Envs(g, term)
+		return formatResults(results), nil
+	})
+
+	// Tool: gograph_interfaces
+	interfacesTool := mcp.NewTool("gograph_interfaces",
+		mcp.WithDescription("Find all interfaces satisfied by a named struct (duck-typing). Inverse of gograph_implementers."),
+		mcp.WithString("struct", mcp.Required(), mcp.Description("The name of the struct (e.g., 'AuthService')")),
+	)
+	addTool(interfacesTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		structName, ok := args["struct"].(string)
+		if !ok || structName == "" {
+			return mcp.NewToolResultError("struct must be a non-empty string"), nil
+		}
+		results := search.Interfaces(g, structName)
+		return formatResults(results), nil
+	})
+
+	// Tool: gograph_tests
+	testsTool := mcp.NewTool("gograph_tests",
+		mcp.WithDescription("Find test functions that exercise a named symbol. Omit symbol to list all test edges."),
+		mcp.WithString("symbol", mcp.Description("The symbol name to find tests for (optional)")),
+	)
+	addTool(testsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		term := ""
+		if args, ok := request.Params.Arguments.(map[string]any); ok {
+			if s, ok := args["symbol"].(string); ok {
+				term = s
+			}
+		}
+		results := search.Tests(g, term)
+		return formatResults(results), nil
+	})
+
+	// Tool: gograph_hotspot
+	hotspotTool := mcp.NewTool("gograph_hotspot",
+		mcp.WithDescription("Rank functions by incoming call count (fan-in). Shows the most-depended-on code — study these first before making structural changes."),
+		mcp.WithNumber("top", mcp.Description("Number of results to return (default: 10, 0 = all)")),
+	)
+	addTool(hotspotTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		top := 10
+		if args, ok := request.Params.Arguments.(map[string]any); ok {
+			if n, ok := args["top"].(float64); ok {
+				top = int(n)
+			}
+		}
+		results := search.Hotspot(g, top)
+		data, err := json.MarshalIndent(results, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_deps
+	depsTool := mcp.NewTool("gograph_deps",
+		mcp.WithDescription("Show the import dependency tree of a package. Use transitive=true for the full BFS closure."),
+		mcp.WithString("package", mcp.Required(), mcp.Description("The package name or path (e.g., 'internal/auth')")),
+		mcp.WithBoolean("transitive", mcp.Description("If true, return the full transitive import closure via BFS")),
+	)
+	addTool(depsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		pkg, ok := args["package"].(string)
+		if !ok || pkg == "" {
+			return mcp.NewToolResultError("package must be a non-empty string"), nil
+		}
+		transitive, _ := args["transitive"].(bool)
+		result := search.Deps(g, pkg, transitive)
+		if result == nil {
+			return mcp.NewToolResultText(fmt.Sprintf(`{"package":%q,"found":false}`, pkg)), nil
+		}
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_changes
+	changesTool := mcp.NewTool("gograph_changes",
+		mcp.WithDescription("Show symbols modified, added, or deleted since the last build. Use git_ref to compare against a git reference (e.g., 'main', 'HEAD~5')."),
+		mcp.WithString("git_ref", mcp.Description("Optional git reference to compare against (e.g., 'main', 'HEAD~5', 'v1.4.50')")),
+	)
+	addTool(changesTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		root, _ := filepath.Abs(".")
+		gitRef := ""
+		if args, ok := request.Params.Arguments.(map[string]any); ok {
+			if r, ok := args["git_ref"].(string); ok {
+				gitRef = r
+			}
+		}
+		if gitRef != "" {
+			result, err := search.ChangesByGitRef(g, root, gitRef)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			data, err := json.MarshalIndent(result, "", "  ")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(string(data)), nil
+		}
+		result := search.Changes(g, root)
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_path
+	pathTool := mcp.NewTool("gograph_path",
+		mcp.WithDescription("Find the shortest call chain between two symbols using BFS. Useful to confirm whether an HTTP handler actually reaches a given function."),
+		mcp.WithString("from", mcp.Required(), mcp.Description("The starting symbol name")),
+		mcp.WithString("to", mcp.Required(), mcp.Description("The target symbol name")),
+	)
+	addTool(pathTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		from, ok := args["from"].(string)
+		if !ok || from == "" {
+			return mcp.NewToolResultError("from must be a non-empty string"), nil
+		}
+		to, ok := args["to"].(string)
+		if !ok || to == "" {
+			return mcp.NewToolResultError("to must be a non-empty string"), nil
+		}
+		chain := search.Path(g, from, to, true)
+		if len(chain) == 0 {
+			return mcp.NewToolResultText(fmt.Sprintf(`{"from":%q,"to":%q,"found":false}`, from, to)), nil
+		}
+		data, err := json.MarshalIndent(map[string]any{
+			"from":  from,
+			"to":    to,
+			"found": true,
+			"steps": chain,
+		}, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_stale
+	staleTool := mcp.NewTool("gograph_stale",
+		mcp.WithDescription("Check whether graph.json is older than any source file. Run before structural analysis to confirm the index is current."),
+	)
+	addTool(staleTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		absRoot, _ := filepath.Abs(".")
+		sr := search.Stale(g, absRoot)
+		data, err := json.MarshalIndent(sr, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_complexity
+	complexityTool := mcp.NewTool("gograph_complexity",
+		mcp.WithDescription("Estimate cyclomatic complexity per function, sorted highest first. Optionally filter by symbol name substring. Labels: LOW / MEDIUM / HIGH / VERY HIGH."),
+		mcp.WithString("symbol", mcp.Description("Optional symbol name substring to filter results")),
+	)
+	addTool(complexityTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		term := ""
+		if args, ok := request.Params.Arguments.(map[string]any); ok {
+			if s, ok := args["symbol"].(string); ok {
+				term = s
+			}
+		}
+		results := search.Complexity(g, term)
+		data, err := json.MarshalIndent(results, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_coupling
+	couplingTool := mcp.NewTool("gograph_coupling",
+		mcp.WithDescription("Show fan-in, fan-out, and instability per package. Instability = FanOut / (FanIn + FanOut). Range [0,1]: 0 = stable, 1 = unstable. Optionally filter by package name."),
+		mcp.WithString("package", mcp.Description("Optional package name substring to filter results")),
+	)
+	addTool(couplingTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		term := ""
+		if args, ok := request.Params.Arguments.(map[string]any); ok {
+			if p, ok := args["package"].(string); ok {
+				term = p
+			}
+		}
+		results := search.Coupling(g, term)
+		data, err := json.MarshalIndent(results, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_arity
+	arityTool := mcp.NewTool("gograph_arity",
+		mcp.WithDescription("Find functions with too many arguments (long parameter list smell). Default minimum is 5; override with min parameter."),
+		mcp.WithNumber("min", mcp.Description("Minimum argument count to report (default: 5)")),
+	)
+	addTool(arityTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		minArgs := 5
+		if args, ok := request.Params.Arguments.(map[string]any); ok {
+			if n, ok := args["min"].(float64); ok && n > 0 {
+				minArgs = int(n)
+			}
+		}
+		results := search.Arity(g, minArgs)
+		return formatResults(results), nil
+	})
+
+	// Tool: gograph_concurrency
+	concurrencyTool := mcp.NewTool("gograph_concurrency",
+		mcp.WithDescription("Map goroutine spawns, channel operations, mutex locks, WaitGroups, and sync.Once calls. Optionally filter by term."),
+		mcp.WithString("term", mcp.Description("Optional filter term (e.g., 'goroutine', 'mutex', 'channel')")),
+	)
+	addTool(concurrencyTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		term := ""
+		if args, ok := request.Params.Arguments.(map[string]any); ok {
+			if t, ok := args["term"].(string); ok {
+				term = t
+			}
+		}
+		results := search.Concurrency(g, term)
+		return formatResults(results), nil
+	})
+
+	// Tool: gograph_fixtures
+	fixturesTool := mcp.NewTool("gograph_fixtures",
+		mcp.WithDescription("Find test helper structs and functions in test files for a package. Useful for understanding what test infrastructure exists before writing new tests."),
+		mcp.WithString("package", mcp.Required(), mcp.Description("The package path or name (e.g., 'internal/auth')")),
+	)
+	addTool(fixturesTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		pkg, ok := args["package"].(string)
+		if !ok || pkg == "" {
+			return mcp.NewToolResultError("package must be a non-empty string"), nil
+		}
+		results := search.Fixtures(g, pkg)
+		return formatResults(results), nil
+	})
+
+	// Tool: gograph_godobj
+	godobjTool := mcp.NewTool("gograph_godobj",
+		mcp.WithDescription("Find god-object struct candidates scored by method count, field count, and outgoing calls. All thresholds are optional; defaults: methods=5, fields=8, calls=15, top=10."),
+		mcp.WithNumber("methods", mcp.Description("Minimum method count (default: 5)")),
+		mcp.WithNumber("fields", mcp.Description("Minimum field count (default: 8)")),
+		mcp.WithNumber("calls", mcp.Description("Minimum outgoing call count (default: 15)")),
+		mcp.WithNumber("top", mcp.Description("Maximum results to return (default: 10)")),
+	)
+	addTool(godobjTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		p := search.DefaultGodObjectParams()
+		if args, ok := request.Params.Arguments.(map[string]any); ok {
+			if n, ok := args["methods"].(float64); ok && n > 0 {
+				p.MinMethods = int(n)
+			}
+			if n, ok := args["fields"].(float64); ok && n > 0 {
+				p.MinFields = int(n)
+			}
+			if n, ok := args["calls"].(float64); ok && n > 0 {
+				p.MinCalls = int(n)
+			}
+			if n, ok := args["top"].(float64); ok && n > 0 {
+				p.Top = int(n)
+			}
+		}
+		candidates := search.GodObjects(g, p)
+		data, err := json.MarshalIndent(candidates, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_skeleton
+	skeletonTool := mcp.NewTool("gograph_skeleton",
+		mcp.WithDescription("Output the entire repository's exported API signatures with function bodies stripped. Useful for a high-level structural overview. WARNING: output can be very large on big repositories."),
+	)
+	addTool(skeletonTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		return mcp.NewToolResultText(search.Skeleton(g)), nil
+	})
+
+	// Tool: gograph_returnusage
+	returnusageTool := mcp.NewTool("gograph_returnusage",
+		mcp.WithDescription("Show how each caller uses the return value of a named function. Labels: discarded (return not captured), assigned (all returns captured), partially_ignored (some returns blanked with _), returned (passed up the stack), passed (nested inside another call). Run before changing a return signature to find callers that silently discard values."),
+		mcp.WithString("function", mcp.Required(), mcp.Description("The function name to analyse (e.g., 'ValidateToken')")),
+	)
+	addTool(returnusageTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		fn, ok := args["function"].(string)
+		if !ok || fn == "" {
+			return mcp.NewToolResultError("function must be a non-empty string"), nil
+		}
+		results := search.ReturnUsages(g, fn)
+		return formatResults(results), nil
+	})
+
+	// Tool: gograph_mutate
+	mutateTool := mcp.NewTool("gograph_mutate",
+		mcp.WithDescription("Find functions that mutate a specific struct field. Useful for tracking down unintended state changes."),
+		mcp.WithString("field", mcp.Required(), mcp.Description("The field name to search for mutations (e.g., 'Status')")),
+	)
+	addTool(mutateTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		field, ok := args["field"].(string)
+		if !ok || field == "" {
+			return mcp.NewToolResultError("field must be a non-empty string"), nil
+		}
+		results := search.Mutate(g, field)
+		return formatResults(results), nil
 	})
 
 	// Tool: gograph_stats

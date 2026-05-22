@@ -270,6 +270,62 @@ func TestDeps_EmptyGraph(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// ReturnUsages tests
+// ---------------------------------------------------------------------------
+
+func buildReturnUsageGraph() *graph.Graph {
+	return &graph.Graph{
+		Calls: []graph.CallEdge{
+			{CallerName: "CreateUser", CalleeRaw: "validateInput", File: "handler.go", Line: 10, ReturnUsage: "discarded"},
+			{CallerName: "CreateUser", CalleeRaw: "db.Save", File: "handler.go", Line: 12, ReturnUsage: "assigned"},
+			{CallerName: "UpdateUser", CalleeRaw: "validateInput", File: "handler.go", Line: 20, ReturnUsage: "partially_ignored"},
+			{CallerName: "DeleteUser", CalleeRaw: "validateInput", File: "handler.go", Line: 30, ReturnUsage: "returned"},
+			{CallerName: "ListUsers", CalleeRaw: "validateInput", File: "handler.go", Line: 40},
+		},
+	}
+}
+
+func TestReturnUsages_Discarded(t *testing.T) {
+	g := buildReturnUsageGraph()
+	results := search.ReturnUsages(g, "validateInput")
+	if len(results) != 4 {
+		t.Fatalf("expected 4 results for validateInput, got %d", len(results))
+	}
+	byDetail := make(map[string]bool)
+	for _, r := range results {
+		byDetail[r.Detail] = true
+	}
+	if !byDetail["discarded ← validateInput"] {
+		t.Error("expected discarded result")
+	}
+	if !byDetail["partially_ignored ← validateInput"] {
+		t.Error("expected partially_ignored result")
+	}
+	if !byDetail["returned ← validateInput"] {
+		t.Error("expected returned result")
+	}
+	if !byDetail["passed ← validateInput"] {
+		t.Error("expected passed result (empty ReturnUsage → passed)")
+	}
+}
+
+func TestReturnUsages_NotFound(t *testing.T) {
+	g := buildReturnUsageGraph()
+	results := search.ReturnUsages(g, "nonexistent")
+	if len(results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(results))
+	}
+}
+
+func TestReturnUsages_EmptyGraph(t *testing.T) {
+	g := &graph.Graph{}
+	results := search.ReturnUsages(g, "foo")
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for empty graph, got %d", len(results))
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Usages tests
 // ---------------------------------------------------------------------------
 

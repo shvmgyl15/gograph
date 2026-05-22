@@ -180,6 +180,10 @@ type CallEdge struct {
 	CalleeRaw      string `json:"callee_raw"`
 	File           string `json:"file"`
 	Line           int    `json:"line"`
+	// ReturnUsage describes how the caller consumes the return value.
+	// Values: "discarded", "assigned", "partially_ignored", "returned",
+	//         "goroutine", "deferred", "" (nested/passed as argument).
+	ReturnUsage string `json:"return_usage,omitempty"`
 }
 
 // ImportEdge records an import statement in a file.

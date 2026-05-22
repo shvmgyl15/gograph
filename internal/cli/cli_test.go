@@ -104,6 +104,7 @@ func TestAllCommandsRegistered(t *testing.T) {
 		"constructors",
 		"literals",
 		"usages",
+		"returnusage",
 		"schema",
 		"globals",
 		"mocks",

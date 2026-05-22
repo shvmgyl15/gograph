@@ -78,6 +78,24 @@ func TestParseFile_Features(t *testing.T) {
 		}
 	})
 
+	t.Run("Return Usage Classified", func(t *testing.T) {
+		usage := make(map[string]string) // callee → usage
+		for _, c := range result.Calls {
+			if c.CalleeRaw == "helper" && c.ReturnUsage != "" {
+				usage[c.ReturnUsage] = c.ReturnUsage
+			}
+		}
+		if usage["discarded"] == "" {
+			t.Error("expected a 'discarded' call to helper()")
+		}
+		if usage["assigned"] == "" {
+			t.Error("expected an 'assigned' call to helper()")
+		}
+		if usage["partially_ignored"] == "" {
+			t.Error("expected a 'partially_ignored' call to helper()")
+		}
+	})
+
 	t.Run("Struct Literals Extracted", func(t *testing.T) {
 		byType := make(map[string][]graph.LiteralEdge)
 		for _, lit := range result.Literals {

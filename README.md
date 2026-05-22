@@ -133,7 +133,8 @@ gograph changes --git v1.4.50     # Same, scoped to a release tag
 gograph constructors "User"       # Find factory functions returning the named struct
 gograph literals "User"           # All Foo{...} composite literal sites (run before adding a required field)
 gograph usages "AuthService"      # Every place a type appears in signatures and fields (run before changing an interface)
-gograph context "ValidateToken"   # Node + source + callers + callees + tests in ONE call
+gograph returnusage "ValidateToken" # How each caller uses the return value (discarded/assigned/returned/passed)
+gograph context "ValidateToken"   # Node + source + callers + callees + tests + role in ONE call
 gograph context --uncommitted     # Context for ALL uncommitted symbols bundled (replaces 5-8 sequential calls)
 gograph explain "ValidateToken"   # LLM-ready architectural narrative: role, callers, callees, complexity, SQL, env, tests
 gograph deps "internal/auth"      # Direct import dependencies of a package
@@ -146,6 +147,7 @@ gograph hotspot --top 20          # Expand to top 20
 gograph mocks "AuthService"       # Alias for: gograph implementers "AuthService" --test-only
 gograph mutate "User.Status"      # Find functions that mutate a specific struct field
 gograph plan "ValidateToken"      # Generate an operational change plan (callers, tests, risk profile) before editing a symbol
+gograph plan "ValidateToken" --with-context  # Plan + full context for every inspect_first symbol (replaces plan + N×context)
 gograph plan --uncommitted        # Generate a change plan for all currently uncommitted modified symbols
 gograph review "ValidateToken"    # Generate a post-edit final review report for a modified symbol
 gograph review --uncommitted      # Generate a post-edit final review report for all uncommitted changes
@@ -158,6 +160,7 @@ gograph trace "parse failed"      # Alias for errorflow (kept for compatibility)
 # With Gin/Echo/Chi Group() routing, the prefix is lost in the AST. Use handler symbol name instead.
 gograph endpoint "CreateUser"     # RECOMMENDED: always works regardless of routing style [--depth N] [--json]
 gograph endpoint "POST /api/users" # route pattern: only works if path is a flat string literal (no Group() prefix)
+```
 
 **3. Architecture Boundary Enforcement:**
 You can configure `gograph` to actively enforce clean architecture by defining boundaries. Create a `.gograph/boundaries.json` file in your root directory:

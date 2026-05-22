@@ -336,6 +336,8 @@ func extractFuncDecl(fset *token.FileSet, d *ast.FuncDecl, relPath, pkgName, pkg
 			return true
 		})
 
+		returnUsageMap := buildReturnUsageMap(d.Body)
+
 		ast.Inspect(d.Body, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
@@ -483,6 +485,7 @@ func extractFuncDecl(fset *token.FileSet, d *ast.FuncDecl, relPath, pkgName, pkg
 				CalleeRaw:      callee,
 				File:           relPath,
 				Line:           callPos.Line,
+				ReturnUsage:    returnUsageMap[call.Pos()],
 			})
 			return true
 		})
@@ -534,6 +537,114 @@ func extractFuncDecl(fset *token.FileSet, d *ast.FuncDecl, relPath, pkgName, pkg
 			})
 			return true
 		})
+	}
+}
+
+// buildReturnUsageMap walks a function body at the statement level and returns
+// a map from each direct CallExpr position to a usage label describing how the
+// caller consumes the call's return value.
+// Values: "discarded", "assigned", "partially_ignored", "returned",
+//         "goroutine", "deferred". Calls nested inside other expressions are
+//         not recorded (they are "passed" by convention at query time).
+func buildReturnUsageMap(body *ast.BlockStmt) map[token.Pos]string {
+	m := make(map[token.Pos]string)
+	if body == nil {
+		return m
+	}
+	classifyStmtListUsage(body.List, m)
+	return m
+}
+
+func classifyStmtListUsage(stmts []ast.Stmt, m map[token.Pos]string) {
+	for _, s := range stmts {
+		classifyOneStmtUsage(s, m)
+	}
+}
+
+func classifyOneStmtUsage(stmt ast.Stmt, m map[token.Pos]string) {
+	switch s := stmt.(type) {
+	case *ast.ExprStmt:
+		if call, ok := s.X.(*ast.CallExpr); ok {
+			m[call.Pos()] = "discarded"
+		}
+	case *ast.AssignStmt:
+		for _, rhs := range s.Rhs {
+			if call, ok := rhs.(*ast.CallExpr); ok {
+				hasBlank := false
+				for _, lhs := range s.Lhs {
+					if id, ok := lhs.(*ast.Ident); ok && id.Name == "_" {
+						hasBlank = true
+						break
+					}
+				}
+				if hasBlank {
+					m[call.Pos()] = "partially_ignored"
+				} else {
+					m[call.Pos()] = "assigned"
+				}
+			}
+		}
+	case *ast.ReturnStmt:
+		for _, res := range s.Results {
+			if call, ok := res.(*ast.CallExpr); ok {
+				m[call.Pos()] = "returned"
+			}
+		}
+	case *ast.GoStmt:
+		m[s.Call.Pos()] = "goroutine"
+	case *ast.DeferStmt:
+		m[s.Call.Pos()] = "deferred"
+	case *ast.IfStmt:
+		if s.Init != nil {
+			classifyOneStmtUsage(s.Init, m)
+		}
+		classifyStmtListUsage(s.Body.List, m)
+		if s.Else != nil {
+			if block, ok := s.Else.(*ast.BlockStmt); ok {
+				classifyStmtListUsage(block.List, m)
+			} else {
+				classifyOneStmtUsage(s.Else, m)
+			}
+		}
+	case *ast.ForStmt:
+		if s.Init != nil {
+			classifyOneStmtUsage(s.Init, m)
+		}
+		if s.Post != nil {
+			classifyOneStmtUsage(s.Post, m)
+		}
+		classifyStmtListUsage(s.Body.List, m)
+	case *ast.RangeStmt:
+		classifyStmtListUsage(s.Body.List, m)
+	case *ast.SwitchStmt:
+		if s.Init != nil {
+			classifyOneStmtUsage(s.Init, m)
+		}
+		for _, c := range s.Body.List {
+			if cc, ok := c.(*ast.CaseClause); ok {
+				classifyStmtListUsage(cc.Body, m)
+			}
+		}
+	case *ast.TypeSwitchStmt:
+		if s.Init != nil {
+			classifyOneStmtUsage(s.Init, m)
+		}
+		for _, c := range s.Body.List {
+			if cc, ok := c.(*ast.CaseClause); ok {
+				classifyStmtListUsage(cc.Body, m)
+			}
+		}
+	case *ast.SelectStmt:
+		for _, c := range s.Body.List {
+			if cc, ok := c.(*ast.CommClause); ok {
+				if cc.Comm != nil {
+					classifyOneStmtUsage(cc.Comm, m)
+				}
+				classifyStmtListUsage(cc.Body, m)
+			}
+		}
+	case *ast.BlockStmt:
+		classifyStmtListUsage(s.List, m)
 	}
 }
 

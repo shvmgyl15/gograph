@@ -31,6 +31,14 @@ install:
 test: build
 	@echo "Running all unit tests and e2e integration tests..."
 	go test -v ./...
+	@echo "Running static analysis..."
+	staticcheck ./...
+	@echo "Running linter..."
+	golangci-lint run ./...
+	@echo "Running vulnerability check..."
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	@echo "Running dependency vulnerability scan..."
+	grype dir:. --fail-on high
 
 test-coverage:
 	go test ./... -coverprofile=coverage.out
