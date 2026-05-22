@@ -77,4 +77,29 @@ func TestParseFile_Features(t *testing.T) {
 			t.Error("expected to find SQL execution call via QueryRow")
 		}
 	})
+
+	t.Run("Struct Literals Extracted", func(t *testing.T) {
+		byType := make(map[string][]graph.LiteralEdge)
+		for _, lit := range result.Literals {
+			byType[lit.TypeName] = append(byType[lit.TypeName], lit)
+		}
+		if len(byType["AdminUser"]) == 0 {
+			t.Error("expected AdminUser literal site from MakeAdmin")
+		}
+		if len(byType["BaseUser"]) == 0 {
+			t.Error("expected BaseUser literal site from MakeAdmin")
+		}
+		// Verify enclosing function is recorded
+		for _, lit := range byType["AdminUser"] {
+			if lit.Function == "" {
+				t.Error("expected non-empty Function for AdminUser literal")
+			}
+			if lit.File == "" {
+				t.Error("expected non-empty File for AdminUser literal")
+			}
+			if lit.Line == 0 {
+				t.Error("expected non-zero Line for AdminUser literal")
+			}
+		}
+	})
 }

@@ -270,6 +270,255 @@ func TestDeps_EmptyGraph(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Usages tests
+// ---------------------------------------------------------------------------
+
+func buildUsagesGraph() *graph.Graph {
+	return &graph.Graph{
+		Symbols: []graph.SymbolNode{
+			// Function with AuthService as param
+			{
+				ID:        "github.com/foo/bar/internal/handler::CreateUser",
+				Kind:      graph.KindFunction,
+				Name:      "CreateUser",
+				File:      "internal/handler/user.go",
+				Line:      10,
+				Signature: "func CreateUser(svc AuthService, id string) (*User, error)",
+			},
+			// Method returning AuthService
+			{
+				ID:        "github.com/foo/bar/internal/factory::(*Factory).NewAuth",
+				Kind:      graph.KindMethod,
+				Name:      "NewAuth",
+				Receiver:  "Factory",
+				File:      "internal/factory/factory.go",
+				Line:      20,
+				Signature: "func (*Factory).NewAuth() AuthService",
+			},
+			// Struct with AuthService field
+			{
+				ID:   "github.com/foo/bar/internal/server::Server",
+				Kind: graph.KindStruct,
+				Name: "Server",
+				File: "internal/server/server.go",
+				Line: 5,
+				StructFields: []graph.StructField{
+					{Name: "auth", Type: "AuthService"},
+					{Name: "db", Type: "*sql.DB"},
+				},
+			},
+			// Should NOT match AuthServiceImpl (longer identifier)
+			{
+				ID:        "github.com/foo/bar/internal/impl::WrapService",
+				Kind:      graph.KindFunction,
+				Name:      "WrapService",
+				File:      "internal/impl/wrap.go",
+				Line:      30,
+				Signature: "func WrapService(impl AuthServiceImpl) AuthService",
+			},
+		},
+	}
+}
+
+func TestUsages_ParamType(t *testing.T) {
+	g := buildUsagesGraph()
+	results := search.Usages(g, "AuthService")
+	// CreateUser (param), NewAuth (return), Server.auth (field), WrapService (return only — param is AuthServiceImpl)
+	if len(results) == 0 {
+		t.Fatal("expected results for AuthService, got none")
+	}
+	kinds := make(map[string]int)
+	for _, r := range results {
+		kinds[r.Kind]++
+	}
+	if kinds["function"] == 0 && kinds["method"] == 0 {
+		t.Error("expected at least one function/method usage")
+	}
+	if kinds["field"] == 0 {
+		t.Error("expected at least one field usage")
+	}
+}
+
+func TestUsages_NoFalsePositive(t *testing.T) {
+	g := buildUsagesGraph()
+	results := search.Usages(g, "AuthService")
+	// WrapService takes AuthServiceImpl (not AuthService) as param — should only
+	// appear as a return type, not a param type.
+	for _, r := range results {
+		if r.Name == "github.com/foo/bar/internal/impl::WrapService" {
+			if r.Detail == "param type" {
+				t.Errorf("AuthServiceImpl matched as AuthService param: %+v", r)
+			}
+		}
+	}
+}
+
+func TestUsages_CaseInsensitive(t *testing.T) {
+	g := buildUsagesGraph()
+	upper := search.Usages(g, "AuthService")
+	lower := search.Usages(g, "authservice")
+	if len(upper) != len(lower) {
+		t.Errorf("case sensitivity mismatch: %d vs %d results", len(upper), len(lower))
+	}
+}
+
+func TestUsages_NotFound(t *testing.T) {
+	g := buildUsagesGraph()
+	results := search.Usages(g, "NonExistentType")
+	if len(results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(results))
+	}
+}
+
+func TestUsages_EmptyGraph(t *testing.T) {
+	g := &graph.Graph{}
+	results := search.Usages(g, "AuthService")
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for empty graph, got %d", len(results))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Literals tests
+// ---------------------------------------------------------------------------
+
+func buildLiteralsGraph() *graph.Graph {
+	return &graph.Graph{
+		Literals: []graph.LiteralEdge{
+			{TypeName: "User", Function: "CreateUser", File: "handlers/user.go", Line: 42},
+			{TypeName: "User", Function: "UpdateUser", File: "handlers/user.go", Line: 88},
+			{TypeName: "Config", Function: "NewConfig", File: "internal/config/config.go", Line: 15},
+		},
+	}
+}
+
+func TestLiterals_Basic(t *testing.T) {
+	g := buildLiteralsGraph()
+	results := search.Literals(g, "User")
+	if len(results) != 2 {
+		t.Fatalf("expected 2 User literal sites, got %d", len(results))
+	}
+}
+
+func TestLiterals_CaseInsensitive(t *testing.T) {
+	g := buildLiteralsGraph()
+	results := search.Literals(g, "user")
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results for lowercase 'user', got %d", len(results))
+	}
+}
+
+func TestLiterals_NotFound(t *testing.T) {
+	g := buildLiteralsGraph()
+	results := search.Literals(g, "Order")
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for unknown struct, got %d", len(results))
+	}
+}
+
+func TestLiterals_EmptyGraph(t *testing.T) {
+	g := &graph.Graph{}
+	results := search.Literals(g, "User")
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for empty graph, got %d", len(results))
+	}
+}
+
+func TestLiterals_DetailField(t *testing.T) {
+	g := buildLiteralsGraph()
+	results := search.Literals(g, "Config")
+	if len(results) != 1 {
+		t.Fatalf("expected 1 Config result, got %d", len(results))
+	}
+	if results[0].Kind != "literal" {
+		t.Errorf("expected kind 'literal', got %q", results[0].Kind)
+	}
+	if results[0].Detail == "" {
+		t.Error("expected non-empty Detail")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Dependents tests
+// ---------------------------------------------------------------------------
+
+func TestDependents_Basic(t *testing.T) {
+	g := buildDepsGraph()
+	// "db" is imported by both "api" and "auth"
+	results := search.Dependents(g, "db")
+	if len(results) != 2 {
+		t.Fatalf("expected 2 dependents for 'db', got %d: %v", len(results), results)
+	}
+	names := make(map[string]bool)
+	for _, r := range results {
+		names[r.Name] = true
+	}
+	if !names["api"] {
+		t.Errorf("expected 'api' in dependents, got %v", results)
+	}
+	if !names["auth"] {
+		t.Errorf("expected 'auth' in dependents, got %v", results)
+	}
+}
+
+func TestDependents_SingleDependent(t *testing.T) {
+	g := buildDepsGraph()
+	// "auth" is only imported by "api"
+	results := search.Dependents(g, "auth")
+	if len(results) != 1 {
+		t.Fatalf("expected 1 dependent for 'auth', got %d: %v", len(results), results)
+	}
+	if results[0].Name != "api" {
+		t.Errorf("expected 'api', got %q", results[0].Name)
+	}
+	if results[0].Kind != "package" {
+		t.Errorf("expected kind 'package', got %q", results[0].Kind)
+	}
+}
+
+func TestDependents_FullPath(t *testing.T) {
+	g := buildDepsGraph()
+	// Full import path should also match
+	results := search.Dependents(g, "database/sql")
+	if len(results) != 1 {
+		t.Fatalf("expected 1 dependent for 'database/sql', got %d: %v", len(results), results)
+	}
+	if results[0].Name != "db" {
+		t.Errorf("expected 'db', got %q", results[0].Name)
+	}
+}
+
+func TestDependents_NotFound(t *testing.T) {
+	g := buildDepsGraph()
+	results := search.Dependents(g, "nonexistent")
+	if len(results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(results))
+	}
+}
+
+func TestDependents_EmptyGraph(t *testing.T) {
+	g := &graph.Graph{}
+	results := search.Dependents(g, "auth")
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for empty graph, got %d", len(results))
+	}
+}
+
+func TestDependents_NoDuplicates(t *testing.T) {
+	// Same package importing via multiple files should appear once.
+	g := &graph.Graph{
+		Imports: []graph.ImportEdge{
+			{FromPackage: "api", FromFile: "api/a.go", ImportPath: "github.com/foo/bar/internal/auth"},
+			{FromPackage: "api", FromFile: "api/b.go", ImportPath: "github.com/foo/bar/internal/auth"},
+		},
+	}
+	results := search.Dependents(g, "auth")
+	if len(results) != 1 {
+		t.Errorf("expected 1 deduplicated result, got %d: %v", len(results), results)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Changes tests
 // ---------------------------------------------------------------------------
 

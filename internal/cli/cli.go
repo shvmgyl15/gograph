@@ -137,6 +137,8 @@ func Run(args []string) int {
 		return runHotspot(args[1:])
 	case "deps":
 		return runDeps(args[1:])
+	case "dependents":
+		return runDependents(args[1:])
 	case "changes":
 		return runChanges(args[1:])
 	case "capabilities":
@@ -145,6 +147,10 @@ func Run(args []string) int {
 		return runMCP(args[1:])
 	case "constructors":
 		return runConstructors(args[1:])
+	case "literals":
+		return runLiterals(args[1:])
+	case "usages":
+		return runUsages(args[1:])
 	case "schema":
 		return runSchema(args[1:])
 	case "globals":
@@ -195,82 +201,176 @@ func Run(args []string) int {
 func runCapabilities() int {
 	fmt.Println(`gograph: AST-aware Repository Navigation Tool for AI Agents
 
-COMMANDS (token-optimized):
-(Note: All search/navigation commands support --json and --files-only)
-build . [--precise]  : parse AST, gen GRAPH_REPORT.md & .gograph/*
+━━━ PREREQUISITE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ALL query commands read from .gograph/graph.json. If it does not exist, every
+query fails. Build it once before anything else:
 
-RULES FOR --precise:
-- Default (build .): Use during active, messy development. It's lightning-fast, tolerates syntax/build errors, and uses AST heuristics (duck-typing) for interfaces.
-- Precise (build . --precise): Use before a major refactor or when measuring blast radius (impact). Slower, but provides type-checked interface analysis and more precise call edges; requires compilable code.
+  gograph build .            fast, tolerates broken code — use during development
+  gograph build . --precise  type-checked CHA — use before refactors (needs compilable code)
 
+After build: graph.json + GRAPH_REPORT.md are written to .gograph/.
+  gograph stats   → counts (packages/files/symbols/calls/routes/SQL/tests)
+  gograph stale   → lists source files newer than graph.json
+
+Rebuild whenever source files change. The graph does NOT auto-update.
+
+━━━ COMMON WORKFLOWS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Start of any session         → stats, stale, read .gograph/GRAPH_REPORT.md
+  Onboard to unfamiliar repo   → hotspot, skeleton, focus <pkg>
+  Find where X is defined      → query <term>  then  source <sym> to read body
+  Understand a symbol (raw)    → context <sym>  (callers+callees+source+tests in one call)
+  Understand all changed syms  → context --uncommitted  (all contexts bundled — use after plan --uncommitted)
+  Understand a symbol (deep)   → explain <sym>  (role, complexity, SQL, env, routes, interfaces)
+  Before editing any symbol    → plan <sym>     (callers, tests, SQL/env/route risk)
+  After editing, before commit → review --uncommitted  then  build . --precise
+  Before a package refactor    → dependents <pkg>  (every consumer of this package)
+  Full blast radius of change  → impact <sym>  or  impact --uncommitted  or  impact --since <ref>
+  PR / branch scope review     → changes --git main
+  HTTP endpoint deep-dive      → endpoint <handler>  (route + call chain + SQL + env)
+  Error root-cause trace       → errorflow <err_str>
+  Dead code sweep              → orphans
+  API breaking-change check    → api --since <ref>
+  CI enforcement               → gate, check --since <ref>
+
+━━━ WHEN TO USE WHAT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FINDING THINGS — three different scopes:
+  query <term>      broad: searches symbol names, file paths, package names, import paths, call sites
+  node <sym>        exact: AST metadata for one named symbol (kind, file, line, signature, doc)
+  source <sym>      body: extracts the actual source code block — use instead of reading the file
+
+CALL GRAPH — two different depths:
+  callers/callees <sym> [--depth N]   bounded: 1 hop (default) up to 10 — use for focused exploration
+  impact <sym>                         unbounded: full BFS to ALL transitive callers — can be large on hotspots
+
+SYMBOL UNDERSTANDING — two different outputs:
+  context <sym>   structured data: node + source + callers + callees + tests — fast, token-efficient
+  explain <sym>   narrative: role classification, prod vs test split, complexity, SQL, env, routes, interfaces
+                  → use context when you need lists to act on; use explain when you need to understand purpose
+
+PACKAGE RELATIONS — three different questions:
+  deps <pkg>           what does this package import? (outgoing)
+  dependents <pkg>     what imports this package? (incoming) — essential before refactoring a package
+  imports <path>       which files import this specific import path? — for tracing one external dependency
+
+STRUCT / TYPE — five different angles:
+  fields <struct>        what fields does this struct have?
+  embeds <struct>        which structs embed this struct?
+  constructors <struct>  which functions return this struct? (New*, factory functions)
+  literals <struct>      where is this struct initialized as Foo{...}? (run before adding a required field)
+  implementers <iface>   which structs satisfy this interface?
+  interfaces <struct>    which interfaces does this struct satisfy? (inverse of implementers)
+  usages <type>          where is this type used? (param/return types, struct fields, iface methods)
+                         → use before changing any interface or type — shows the full blast radius
+
+PACKAGE vs SYMBOL scope:
+  focus <pkg>    everything in a package: files, all symbols, internal calls, imports
+  public <pkg>   exported symbols only: the package's API surface
+  context <sym>  one symbol only: deep slice of a single function/struct/interface
+
+ERRORS — two different questions:
+  errors              where are all errors defined and returned in the codebase?
+  errorflow <term>    how does this specific error reach the HTTP layer? (definition → return sites → entry point)
+
+━━━ OUTPUT FORMAT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+All search/navigation commands support three output modes:
+
+  (default)       [kind] Name — detail  (file:line)  — one result per line
+  --json          {"ok":true,"cmd":"...","query":"...","count":N,"data":[...]}
+  --files-only    flat deduplicated list of file paths — use for checklists
+
+Use --json when piping output to another tool or when you need structured data.
+Use --files-only when you only need to know which files are involved.
+
+━━━ STATIC ANALYSIS LIMITATIONS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Know these before trusting results:
+
+  Interface dispatch    callers/callees may miss calls through interface variables unless
+                        'build . --precise' was used (enables type-checked CHA call graph)
+  errorflow             heuristic AST traversal — NOT SSA/data-flow. Useful for navigation,
+                        not proof. Confidence rating (HIGH/MEDIUM) is a heuristic estimate.
+  endpoint              route patterns only resolve flat string literals. Gin/Echo/Chi
+                        Group() prefixes are lost at AST level — always search by handler
+                        symbol name, not route string.
+  impact / skeleton     can produce very large output on hotspot symbols or large repos.
+                        Use callers --depth N for bounded traversal instead of impact.
+  All results           reflect the state of graph.json at last build. Run 'gograph stale'
+                        to confirm the index is current before structural analysis.
+
+━━━ COMMANDS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 AGENT WORKFLOW RULES (CRITICAL):
-1. BEFORE editing code: ALWAYS run 'gograph plan <symbol>' to understand the impact, mapped tests, and execution risks (SQL/Env/Routes) of your target.
-2. AFTER editing code: ALWAYS run 'gograph build . --precise' followed by 'gograph review --uncommitted' to verify test coverage, complexity, and that no unintended execution risks were introduced.
+1. BEFORE editing: run 'gograph plan <symbol>' — callers, tests, SQL/env/route risk in one call
+2. AFTER editing:  run 'gograph build . --precise' then 'gograph review --uncommitted'
+
+INDEXING:
+build . [--precise]  : parse AST, write graph.json + GRAPH_REPORT.md to .gograph/
+stale                : list source files newer than graph.json
+stats                : schema version, build time, symbol/call/route counts
 
 QUERY COMMANDS:
 boundaries [--config] : verify package architecture constraints using boundaries.json
 boundaries --create   : auto-generate a baseline boundaries.json from the current repo
-callees <fn> [--no-tests]: what fn calls (returns exact call-site source snippet)
-callers <fn> [--no-tests]: who calls fn (returns exact call-site source snippet)
+callees <fn> [--no-tests] [--depth N]: what fn calls (depth=1 direct; --depth 2+ expands N hops, max 10)
+callers <fn> [--no-tests] [--depth N]: who calls fn (depth=1 direct; --depth 2+ expands N hops, max 10)
 complexity [sym]     : cyclomatic complexity estimate per function (highest first)
 concurrency [str]    : goroutines/channels/mutexes
 coupling [pkg]       : fan-in, fan-out, and instability per package
 embeds <struct>      : structs embedding this struct
 envs [str]           : os.Getenv/viper reads
-errors [--no-tests]  : custom errors/panics (use --no-tests to exclude test files)
+errors [--no-tests]  : custom errors/panics
 fields <struct>      : fields/types of struct
-focus <pkg>          : isolate context for a package
-godobj               : find god-object struct candidates (--methods N --fields N --calls N --top N)
-impact <sym>         : blast radius (downstream callers)
-impact --uncommitted : blast radius of all your uncommitted code changes
-implementers <iface> : structs implementing iface
-imports <pkg>        : trace external/internal usage
-interfaces <struct>  : duck-type interface check
-node <sym>           : AST info of sym
-orphans              : functions with 0 explicit incoming calls (potential dead code)
+focus <pkg>          : all files, symbols, calls, imports for one package
+godobj               : god-object struct candidates (--methods N --fields N --calls N --top N)
+impact <sym>         : full transitive blast radius — WARNING: can be large on hotspot symbols
+impact --uncommitted : blast radius of all uncommitted changes
+impact --since <ref> : blast radius of all symbols changed since a git ref (e.g. main, HEAD~5)
+implementers <iface> [--test-only] : structs implementing iface (--test-only = test/mock files only)
+imports <path>       : files importing a specific import path
+interfaces <struct>  : interfaces satisfied by this struct (inverse of implementers)
+node <sym>           : AST metadata for one symbol (kind, file, line, signature, doc)
+orphans              : symbols unreachable from any entry point via BFS (main, routes, exports)
 path <from> <to>     : shortest call chain between two symbols (BFS)
-public <pkg>         : exported API of pkg
-query <str>          : search symbols/files/pkgs
-routes               : HTTP REST routes
-source <sym>         : exact code of sym (USE THIS instead of grep to read function bodies, mock stubs, or full interface definitions)
-sql                  : raw SQL queries mapped
-stale                : check if graph is out of date vs source files
-stats                : compact index health summary — schema version, build time, counts
-tests <sym>          : tests exercising sym
+public <pkg>         : exported symbols only
+query <str>          : broad search — symbols, files, packages, imports, call sites
+routes               : all HTTP REST routes
+source <sym>         : exact source code — USE THIS instead of reading files
+sql                  : raw SQL queries mapped to their functions
+tests <sym>          : test functions exercising this symbol
 
-TOKEN SAVERS (COMPOSED COMMANDS):
-errorflow <term>     : trace likely error paths up to entry points (AST heuristic, NO SSA)
-arity [--min 5]      : find functions with many arguments (long parameter list smell)
+TOKEN SAVERS (COMPOSED COMMANDS — each replaces 3-8 separate calls):
+api --since <ref>    : breaking API/contract changes since a git reference
+arity [--min 5]      : functions with too many arguments
 changes              : symbols modified/new/deleted since last build
-changes --git <ref>  : symbols in files changed since a git ref (MODIFIED only; e.g. main, HEAD~5, v1.4.50)
-constructors <struct>: factory functions returning struct
-context <sym> [--limit N]: bundle node+source+callers+callees+tests (saves 4-5 tool calls)
-deps <pkg> [--transitive] : import dependency tree of a package
+changes --git <ref>  : symbols in files changed since a git ref (e.g. main, HEAD~5, v1.4.50)
+constructors <struct>: factory functions returning this struct
+literals <struct>    : composite literal sites Foo{...} — run before adding/removing a required field
+usages <type>        : where a type appears in signatures and fields (param/return/field/iface method)
+context <sym> [--limit N]: node+source+callers+callees+tests — raw structured data
+context --uncommitted    : context for ALL uncommitted symbols in one call (replaces 5-8 sequential context calls)
+dependents <pkg>     : packages that import this package (run before any package refactor)
+deps <pkg> [--transitive]: import dependency tree (add --transitive for full BFS closure)
+endpoint <handler>   : route + handler + full call chain + SQL + env reads
+                       INPUT: handler symbol name (always works) or flat route string (flat routers only)
+errorflow <term> [--no-tests]: error definition → return sites → likely HTTP entry point path
+explain <sym>        : narrative summary — role, complexity, SQL, env, routes, interfaces, tests
+                       (use explain for understanding; use context for raw data to act on)
 fixtures <pkg>       : test helper structs and functions in test files
-globals <pkg>        : pkg-level vars, consts, and mutators
-hotspot [--top N]    : rank functions by incoming calls (study these first)
-endpoint <route>     : full vertical slice for an HTTP endpoint — route, handler, call chain, SQL, env reads
-                       LIMITATION: route patterns only resolve flat literals. If using Gin/Echo/Chi groups,
-                       search by handler symbol name: gograph endpoint "HandlerName"
-explain <sym>         : LLM-ready architectural summary — callers, callees, complexity, SQL, env, routes,
-                       concurrency, test coverage, interface satisfaction, and an opinionated role classification
-                       in one prompt-ready narrative block
-mocks <iface>        : structs implementing iface in test files
-mutate <field>       : find functions that mutate a specific struct field
-plan <sym>           : generate an operational change plan (read-first, tests, risk profile)
-plan --uncommitted   : generate a change plan for all currently uncommitted modified symbols
-review <sym>         : generate a post-edit final review report for a modified symbol
-review --uncommitted : generate a post-edit final review report for all uncommitted changes
-api --since <ref>    : identify breaking API and contract changes since a git reference
-schema <table>       : structs mapped to DB table via tags
-skeleton             : output the whole repository's API signatures (function bodies stripped)
-trace <err_str> [--no-tests]: trace an error backwards from entry points to origin
-check [--since ref]  : run static policy checks (boundaries, api_drift, test requirements)
-gate                 : run CI/CD enforcement checks against .gograph.yml thresholds
-snapshot <subcmd>    : capture and diff architectural metrics (save, diff, list, drop)
-mcp [path]           : start a Model Context Protocol server over stdio
-add-claude-plugin    : install gograph as a Claude Desktop/Code MCP plugin (also injects CLAUDE.md rules and PreToolUse hook)
-hook-guard           : PreToolUse hook — intercepts grep on Go symbols and redirects to gograph (invoked by Claude Code automatically)`)
+globals <pkg>        : package-level vars, consts, and functions mutating them
+hotspot [--top N]    : functions ranked by incoming call count — study these first
+mocks <iface>        : alias for 'implementers --test-only' (kept for compatibility)
+mutate <field>       : functions that mutate a specific struct field
+plan <sym>           : change plan — callers, tests, SQL/env/route risk, public API impact
+plan --uncommitted   : change plan for all currently uncommitted modified symbols
+review <sym>         : post-edit review — test coverage, complexity, risk profile
+review --uncommitted : post-edit review for all uncommitted changes
+schema <table>       : structs mapped to a DB table via struct tags
+skeleton             : full repository API signatures with bodies stripped — WARNING: large on big repos
+trace <err_str>      : alias for errorflow (kept for compatibility)
+check [--since ref]  : static policy checks (boundaries, api_drift, test requirements)
+gate                 : CI/CD enforcement against .gograph.yml thresholds
+snapshot <subcmd>    : architectural metric snapshots (save, diff, list, drop)
+mcp [path]           : start MCP server over stdio
+add-claude-plugin    : install MCP plugin + CLAUDE.md rules + PreToolUse hook
+hook-guard           : PreToolUse hook — blocks grep on Go symbols, redirects to gograph`)
 	return 0
 }
 
@@ -423,6 +523,7 @@ func BuildGraph(absRoot string) (*graph.Graph, error) {
 		g.Concurrency = append(g.Concurrency, result.Concurrency...)
 		g.TestEdges = append(g.TestEdges, result.TestEdges...)
 		g.Mutations = append(g.Mutations, result.Mutations...)
+		g.Literals = append(g.Literals, result.Literals...)
 
 		if _, ok := pkgMap[dir]; !ok {
 			pkgMap[dir] = &graph.PackageNode{
@@ -527,7 +628,7 @@ func runNode(args []string) int {
 
 func runCallers(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: gograph callers <function-or-method-name>")
+		fmt.Fprintln(os.Stderr, "usage: gograph callers <function-or-method-name> [--no-tests] [--depth N]")
 		return 1
 	}
 	g, err := loadGraph(".")
@@ -536,21 +637,37 @@ func runCallers(args []string) int {
 		return 1
 	}
 	includeTests := true
-	termParts := args[:0]
-	for _, a := range args {
-		if a == "--no-tests" {
+	depth := 1
+	var termParts []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--no-tests":
 			includeTests = false
-		} else {
-			termParts = append(termParts, a)
+		case "--depth":
+			if i+1 < len(args) {
+				i++
+				fmt.Sscanf(args[i], "%d", &depth)
+				if depth < 1 {
+					depth = 1
+				}
+			}
+		default:
+			termParts = append(termParts, args[i])
 		}
 	}
-	results := search.Callers(g, strings.Join(termParts, " "), includeTests)
-	return printResults("callers", strings.Join(termParts, " "), results, "no callers found")
+	term := strings.Join(termParts, " ")
+	var results []search.Result
+	if depth > 1 {
+		results = search.CallersDepth(g, term, depth, includeTests)
+	} else {
+		results = search.Callers(g, term, includeTests)
+	}
+	return printResults("callers", term, results, "no callers found")
 }
 
 func runCallees(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: gograph callees <function-or-method-name>")
+		fmt.Fprintln(os.Stderr, "usage: gograph callees <function-or-method-name> [--no-tests] [--depth N]")
 		return 1
 	}
 	g, err := loadGraph(".")
@@ -559,21 +676,46 @@ func runCallees(args []string) int {
 		return 1
 	}
 	includeTests := true
-	termParts := args[:0]
-	for _, a := range args {
-		if a == "--no-tests" {
+	depth := 1
+	var termParts []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--no-tests":
 			includeTests = false
+		case "--depth":
+			if i+1 < len(args) {
+				i++
+				fmt.Sscanf(args[i], "%d", &depth)
+				if depth < 1 {
+					depth = 1
+				}
+			}
+		default:
+			termParts = append(termParts, args[i])
+		}
+	}
+	term := strings.Join(termParts, " ")
+	var results []search.Result
+	if depth > 1 {
+		results = search.CalleesDepth(g, term, depth, includeTests)
+	} else {
+		results = search.Callees(g, term, includeTests)
+	}
+	return printResults("callees", term, results, "no callees found")
+}
+
+func runImplementers(args []string) int {
+	testOnly := false
+	var termParts []string
+	for _, a := range args {
+		if a == "--test-only" {
+			testOnly = true
 		} else {
 			termParts = append(termParts, a)
 		}
 	}
-	results := search.Callees(g, strings.Join(termParts, " "), includeTests)
-	return printResults("callees", strings.Join(termParts, " "), results, "no callees found")
-}
-
-func runImplementers(args []string) int {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: gograph implementers <interface>")
+	if len(termParts) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: gograph implementers <interface> [--test-only]")
 		return 1
 	}
 	g, err := loadGraph(".")
@@ -581,8 +723,13 @@ func runImplementers(args []string) int {
 		fmt.Fprintf(os.Stderr, "failed to load graph: %v\n", err)
 		return 1
 	}
-	results := search.Implementers(g, args[0])
-	return printResults("implementers", args[0], results, fmt.Sprintf("No structs found implementing '%s'.", args[0]))
+	iface := termParts[0]
+	if testOnly {
+		results := search.Mocks(g, iface)
+		return printResults("implementers", iface, results, fmt.Sprintf("No test/mock structs found implementing '%s'.", iface))
+	}
+	results := search.Implementers(g, iface)
+	return printResults("implementers", iface, results, fmt.Sprintf("No structs found implementing '%s'.", iface))
 }
 
 func runEnvs(args []string) int {
@@ -863,23 +1010,31 @@ SEARCH & NAVIGATION
   skeleton                   Output the whole repository's API signatures with bodies stripped.
 
 CALL GRAPH
-  callers <function> [--no-tests]    find functions that call a target function (returns exact call-site source snippet)
-  callees <function> [--no-tests]    find functions that a target function calls (returns exact call-site source snippet)
+  callers <function> [--no-tests] [--depth N]    find functions that call a target function; --depth 2-10 expands N hops up (callers-of-callers)
+  callees <function> [--no-tests] [--depth N]    find functions that a target function calls; --depth 2-10 expands N hops down
   impact <name>              Full downstream blast radius (recursive callers).
-  impact --uncommitted       Perform blast radius analysis on all currently modified,
-                             uncommitted code lines using git diff.
+  impact --uncommitted       Blast radius of all uncommitted modified symbols.
+  impact --since <ref>       Blast radius of all symbols changed since a git ref (e.g. main, HEAD~5).
+                             Composes changes --git <ref> + impact into one call.
   path <from> <to>           Shortest call chain between two symbols (BFS).
   trace <err_str>            Find the origin of an error and trace backwards to entry points.
   orphans                    Functions with 0 explicit incoming calls in the call graph.
                              Useful for spotting potentially unused code.
 
 INTERFACES & TYPES
-  implementers <interface>   Structs that implement the named interface (duck-typing).
+  implementers <interface> [--test-only]
+                             Structs that implement the named interface (duck-typing).
+                             --test-only limits results to structs defined in test/mock files.
   interfaces <struct>        Interfaces satisfied by the named struct (duck-typing).
   constructors <struct>      Find factory functions returning the named struct.
+  literals <struct>          Find composite-literal initialization sites (Foo{...}) for a struct.
+                             Run before adding a required field to know every site that will break.
+  usages <type>              Find every place a type is referenced in a function signature
+                             (param or return type), struct field, or interface method signature.
+                             Run before changing an interface — shows the full consumption blast radius.
   schema <table>             Find structs mapped to a database table/schema via tags.
   globals <pkg>              Find pkg-level vars, consts, and mutators.
-  mocks <interface>          Find structs implementing an interface in test/mock files.
+  mocks <interface>          Alias for 'implementers --test-only'. Kept for compatibility.
   fixtures <pkg>             Find test helper structs and functions in test files.
 
 CODE QUALITY
@@ -898,6 +1053,8 @@ CODE QUALITY
   coupling [package]         Fan-in, fan-out, and instability per package.
                              Instability = FanOut / (FanIn + FanOut). Range [0,1].
   context <symbol>           Bundle node+source+callers+callees+tests in one call.
+  context --uncommitted      Context for all uncommitted modified symbols in one call.
+                             Replaces 5-8 sequential 'context <sym>' calls after 'plan --uncommitted'.
                              Replaces 4–5 separate commands. Primary token saver.
   explain <symbol>           LLM-ready architectural narrative for a symbol.
                              Synthesizes callers (prod vs test split), callees,
@@ -925,6 +1082,8 @@ CODE QUALITY
                              To find handler names: gograph routes
   deps <pkg> [--transitive]  Direct import dependencies of a package.
                              Add --transitive for the full closure (BFS).
+  dependents <pkg>           Packages that import the named package (inverse of deps).
+                             Essential before any package-level refactor.
   changes                    Symbols modified/added/deleted since last 'build'.
                              Surfaces new functions, deleted files, and modified
                              symbols without re-reading changed source files.
@@ -948,7 +1107,10 @@ CODE QUALITY
 EXTRACTION
   routes                     All HTTP REST API routes and their handler functions.
   sql                        Raw SQL queries mapped to the functions that run them.
-  errorflow <term>           Trace likely error paths up to entry points (AST heuristic, NO SSA)
+  errorflow <term> [--no-tests]
+                             Trace likely error paths up to entry points (AST heuristic, NO SSA).
+                             --no-tests excludes test-file references from related-test collection.
+  trace <term> [--no-tests]  Alias for errorflow. Kept for compatibility.
   errors                     Custom error variables and panics mapped to their source.
   envs [term]                Every os.Getenv / viper.Get* read with file and line.
   concurrency [term]         Goroutine spawns, channel ops, mutex locks, WaitGroups.
@@ -1274,28 +1436,30 @@ func runCoupling(args []string) int {
 // runContext bundles node+source+callers+callees+tests for a symbol in one call.
 func runContext(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: gograph context <symbol> [--limit N]")
+		fmt.Fprintln(os.Stderr, "usage: gograph context <symbol> [--limit N]\n       gograph context --uncommitted")
 		return 1
 	}
-	term := ""
+
+	uncommitted := false
 	limit := 0
-	filtered := args[:0]
+	var termParts []string
 	i := 0
 	for i < len(args) {
 		a := args[i]
-		if (a == "--limit" || a == "-n") && i+1 < len(args) {
+		switch {
+		case a == "--uncommitted":
+			uncommitted = true
+		case (a == "--limit" || a == "-n") && i+1 < len(args):
 			if n, err := strconv.Atoi(args[i+1]); err == nil {
 				limit = n
 			}
-			i += 2
-			continue
+			i++
+		default:
+			termParts = append(termParts, a)
 		}
-		filtered = append(filtered, a)
 		i++
 	}
-	if len(filtered) > 0 {
-		term = strings.Join(filtered, " ")
-	}
+
 	g, err := loadGraph(".")
 	if err != nil {
 		if jsonMode {
@@ -1305,6 +1469,44 @@ func runContext(args []string) int {
 		return 1
 	}
 	root, _ := filepath.Abs(".")
+
+	if uncommitted {
+		syms, err := search.UncommittedSymbols(g)
+		if err != nil {
+			if jsonMode {
+				return PrintJSON(errEnvelope("context", err.Error()))
+			}
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		if len(syms) == 0 {
+			if jsonMode {
+				return PrintJSON(okEnvelope("context", "--uncommitted", nil, 0))
+			}
+			fmt.Println("No uncommitted modified symbols found.")
+			return 0
+		}
+		var results []*search.ContextResult
+		for _, sym := range syms {
+			if r := search.Context(g, root, sym); r != nil {
+				results = append(results, r)
+			}
+		}
+		if jsonMode {
+			return PrintJSON(okEnvelope("context", "--uncommitted", results, len(results)))
+		}
+		fmt.Printf("=== CONTEXT: %d uncommitted symbol(s) ===\n\n", len(results))
+		for _, r := range results {
+			printContextResult(r, limit)
+		}
+		return 0
+	}
+
+	if len(termParts) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: gograph context <symbol> [--limit N]\n       gograph context --uncommitted")
+		return 1
+	}
+	term := strings.Join(termParts, " ")
 	result := search.Context(g, root, term)
 	if result == nil {
 		if jsonMode {
@@ -1320,9 +1522,12 @@ func runContext(args []string) int {
 		}
 		return PrintJSON(okEnvelope("context", term, result, count))
 	}
-
 	fmt.Printf("=== CONTEXT: %s ===\n\n", term)
+	printContextResult(result, limit)
+	return 0
+}
 
+func printContextResult(result *search.ContextResult, limit int) {
 	if len(result.Node) > 0 {
 		fmt.Println("--- NODE ---")
 		for _, r := range result.Node {
@@ -1343,7 +1548,7 @@ func runContext(args []string) int {
 		for _, r := range result.Callers[:limit] {
 			fmt.Println(r.String())
 		}
-		fmt.Printf("... and %d more callers. Use --limit %d to see all.\n\n", len(result.Callers)-limit, len(result.Callers))
+		fmt.Printf("... and %d more callers.\n\n", len(result.Callers)-limit)
 	} else if len(result.Callers) > 0 {
 		fmt.Printf("--- CALLERS (%d) ---\n", len(result.Callers))
 		for _, r := range result.Callers {
@@ -1357,7 +1562,7 @@ func runContext(args []string) int {
 		for _, r := range result.Callees[:limit] {
 			fmt.Println(r.String())
 		}
-		fmt.Printf("... and %d more callees. Use --limit %d to see all.\n\n", len(result.Callees)-limit, len(result.Callees))
+		fmt.Printf("... and %d more callees.\n\n", len(result.Callees)-limit)
 	} else if len(result.Callees) > 0 {
 		fmt.Printf("--- CALLEES (%d) ---\n", len(result.Callees))
 		for _, r := range result.Callees {
@@ -1373,7 +1578,6 @@ func runContext(args []string) int {
 		}
 		fmt.Println()
 	}
-	return 0
 }
 
 // runHotspot ranks functions by incoming call count.
@@ -1458,6 +1662,28 @@ func runDeps(args []string) int {
 		}
 	}
 	return 0
+}
+
+// runDependents lists all packages that import the named package.
+func runDependents(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: gograph dependents <package>")
+		return 1
+	}
+	pkg := args[0]
+	g, err := loadGraph(".")
+	if err != nil {
+		if jsonMode {
+			return PrintJSON(errEnvelope("dependents", err.Error()))
+		}
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	results := search.Dependents(g, pkg)
+	if jsonMode {
+		return PrintJSON(okEnvelope("dependents", pkg, results, len(results)))
+	}
+	return printResults("dependents", pkg, results, fmt.Sprintf("No packages found that import %q.", pkg))
 }
 
 // runChanges reports symbols modified/added/deleted since the last build,
@@ -1656,7 +1882,7 @@ func runImports(args []string) int {
 // runImpact traverses the call graph backwards to find all symbols that eventually call the target.
 func runImpact(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: gograph impact <symbol> OR gograph impact --uncommitted")
+		fmt.Fprintln(os.Stderr, "usage: gograph impact <symbol>\n       gograph impact --uncommitted\n       gograph impact --since <ref>")
 		return 1
 	}
 
@@ -1668,6 +1894,14 @@ func runImpact(args []string) int {
 
 	if args[0] == "--uncommitted" {
 		return runImpactUncommitted(g)
+	}
+
+	if args[0] == "--since" {
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: gograph impact --since <ref>")
+			return 1
+		}
+		return runImpactSince(g, args[1])
 	}
 
 	results := search.Impact(g, strings.Join(args, " "), true)
@@ -1689,6 +1923,26 @@ func runImpactUncommitted(g *graph.Graph) int {
 	reason := fmt.Sprintf("downstream impact of uncommitted changes (%d symbols)", len(modifiedSymbolNames))
 	results := search.ImpactMultiple(g, modifiedSymbolNames, reason, true)
 	return printResults("impact", "--uncommitted", results, "No callers found in blast radius of uncommitted changes.")
+}
+
+// runImpactSince computes the blast radius of all symbols changed since a git ref.
+func runImpactSince(g *graph.Graph, ref string) int {
+	root, _ := filepath.Abs(".")
+	changes, err := search.ChangesByGitRef(g, root, ref)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if len(changes.Symbols) == 0 {
+		return printResults("impact", "--since "+ref, nil, fmt.Sprintf("No Go symbol changes found since %q.", ref))
+	}
+	names := make([]string, 0, len(changes.Symbols))
+	for _, s := range changes.Symbols {
+		names = append(names, s.Name)
+	}
+	reason := fmt.Sprintf("downstream impact of changes since %s (%d symbols)", ref, len(names))
+	results := search.ImpactMultiple(g, names, reason, true)
+	return printResults("impact", "--since "+ref, results, fmt.Sprintf("No callers found in blast radius of changes since %q.", ref))
 }
 
 // runRoutes lists all HTTP REST API routes and their handler functions.
@@ -1769,47 +2023,24 @@ func runMutate(args []string) int {
 
 // runTrace traces an error string backwards from entry points.
 func runTrace(args []string) int {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: gograph trace <error string> [--no-tests]")
-		return 1
-	}
-	includeTests := true
-	termParts := args[:0]
+	return runErrorFlow(args)
+}
+
+func runErrorFlow(args []string) int {
+	noTests := false
+	var termParts []string
 	for _, a := range args {
 		if a == "--no-tests" {
-			includeTests = false
+			noTests = true
 		} else {
 			termParts = append(termParts, a)
 		}
 	}
-	g, err := loadGraph(".")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	term := strings.Join(termParts, " ")
-	traces := search.Trace(g, term, includeTests)
-	if len(traces) == 0 {
-		fmt.Printf("No trace found for error matching %q\n", term)
-		return 0
-	}
-
-	for i, t := range traces {
-		fmt.Printf("=== Trace %d: %q generated in %s ===\n", i+1, t.Error.Message, t.Error.Function)
-		for j, step := range t.Path {
-			fmt.Printf("  %d. %s (%s:%d)\n", j+1, step.Name, step.File, step.Line)
-		}
-		fmt.Println()
-	}
-	return 0
-}
-
-func runErrorFlow(args []string) int {
-	if len(args) == 0 {
+	if len(termParts) == 0 {
 		if jsonMode {
-			return PrintJSON(errEnvelope("errorflow", "Usage: gograph errorflow <error-string|ErrSymbol>"))
+			return PrintJSON(errEnvelope("errorflow", "Usage: gograph errorflow <error-string|ErrSymbol> [--no-tests]"))
 		}
-		fmt.Println("Usage: gograph errorflow <error-string|ErrSymbol>")
+		fmt.Println("Usage: gograph errorflow <error-string|ErrSymbol> [--no-tests]")
 		return 1
 	}
 
@@ -1822,8 +2053,8 @@ func runErrorFlow(args []string) int {
 		return 1
 	}
 
-	term := strings.Join(args, " ")
-	report := search.ErrorFlow(g, term)
+	term := strings.Join(termParts, " ")
+	report := search.ErrorFlow(g, term, !noTests)
 
 	if jsonMode {
 		return PrintJSON(okEnvelope("errorflow", term, report, len(report.Paths)))
@@ -1895,6 +2126,46 @@ func runConstructors(args []string) int {
 	return printResults("constructors", args[0], results, fmt.Sprintf("No constructors found for struct '%s'.", args[0]))
 }
 
+func runUsages(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: gograph usages <TypeName>")
+		return 1
+	}
+	g, err := loadGraph(".")
+	if err != nil {
+		if jsonMode {
+			return PrintJSON(errEnvelope("usages", err.Error()))
+		}
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	results := search.Usages(g, args[0])
+	if jsonMode {
+		return PrintJSON(okEnvelope("usages", args[0], results, len(results)))
+	}
+	return printResults("usages", args[0], results, fmt.Sprintf("No usage sites found for type %q.", args[0]))
+}
+
+func runLiterals(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: gograph literals <struct>")
+		return 1
+	}
+	g, err := loadGraph(".")
+	if err != nil {
+		if jsonMode {
+			return PrintJSON(errEnvelope("literals", err.Error()))
+		}
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	results := search.Literals(g, args[0])
+	if jsonMode {
+		return PrintJSON(okEnvelope("literals", args[0], results, len(results)))
+	}
+	return printResults("literals", args[0], results, fmt.Sprintf("No literal sites found for struct %q.", args[0]))
+}
+
 func runSchema(args []string) int {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "Usage: gograph schema <table>")
@@ -1927,17 +2198,7 @@ func runGlobals(args []string) int {
 }
 
 func runMocks(args []string) int {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: gograph mocks <interface>")
-		return 1
-	}
-	g, err := loadGraph(".")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading graph: %v\n", err)
-		return 1
-	}
-	results := search.Mocks(g, args[0])
-	return printResults("mocks", args[0], results, fmt.Sprintf("No mocks found for interface '%s'.", args[0]))
+	return runImplementers(append([]string{"--test-only"}, args...))
 }
 
 func runFixtures(args []string) int {

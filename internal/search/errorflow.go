@@ -67,7 +67,7 @@ func (r *ErrorFlowReport) String() string {
 	return sb.String()
 }
 
-func ErrorFlow(g *graph.Graph, term string) *ErrorFlowReport {
+func ErrorFlow(g *graph.Graph, term string, includeTests bool) *ErrorFlowReport {
 	report := &ErrorFlowReport{
 		Term: term,
 	}
@@ -93,7 +93,7 @@ func ErrorFlow(g *graph.Graph, term string) *ErrorFlowReport {
 	var matches []graph.ErrorEdge
 	for _, e := range g.Errors {
 		if isTestFile(e.File) {
-			if strings.Contains(strings.ToLower(e.Message), nl) {
+			if includeTests && strings.Contains(strings.ToLower(e.Message), nl) {
 				report.RelatedTests = append(report.RelatedTests, Result{
 					Kind:   "test",
 					Name:   e.Function,

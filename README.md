@@ -77,8 +77,10 @@ gograph build . --precise
 **2. Query the Graph (Lightning fast, no re-parsing):**
 ```bash
 gograph boundaries [--config]     # Verify package architecture constraints using boundaries.json
-gograph callees "InitServer"      # See what InitServer calls (with exact source snippet)
-gograph callers "ValidateToken"   # See what functions call ValidateToken (with exact source snippet)
+gograph callees "InitServer"               # See what InitServer calls (direct, depth 1)
+gograph callees "InitServer" --depth 2     # 2 hops down (callees of callees)
+gograph callers "ValidateToken"            # See what functions call ValidateToken (direct)
+gograph callers "ValidateToken" --depth 3  # 3 hops up (callers-of-callers-of-callers)
 gograph complexity                # Cyclomatic complexity for all functions (highest first)
 gograph complexity "Run"          # Complexity for a specific function
 gograph concurrency               # Map all goroutines, channels, mutexes, and sync primitives
@@ -93,7 +95,9 @@ gograph godobj                    # Find god-object struct candidates
 gograph godobj --methods 10 --fields 12 --calls 30 --top 5  # Custom thresholds
 gograph impact "ValidateToken"    # View the full blast radius (all downstream callers)
 gograph impact --uncommitted      # Calculate the blast radius of all your uncommitted code changes
+gograph impact --since main       # Blast radius of all symbols changed since main (PR-level)
 gograph implementers "AuthService" # See which structs implement an interface
+gograph implementers "AuthService" --test-only  # Limit to test/mock files (replaces gograph mocks)
 gograph imports "redis"           # Find all files that import a specific external package
 gograph interfaces "UserService"  # See which interfaces a struct satisfies (type-checked if --precise was used)
 gograph node "UserStruct"         # Get detailed AST info about a specific node
@@ -127,15 +131,19 @@ gograph changes                   # New/modified/deleted symbols since last buil
 gograph changes --git main        # Symbols in files changed since main (git-ref mode)
 gograph changes --git v1.4.50     # Same, scoped to a release tag
 gograph constructors "User"       # Find factory functions returning the named struct
+gograph literals "User"           # All Foo{...} composite literal sites (run before adding a required field)
+gograph usages "AuthService"      # Every place a type appears in signatures and fields (run before changing an interface)
 gograph context "ValidateToken"   # Node + source + callers + callees + tests in ONE call
+gograph context --uncommitted     # Context for ALL uncommitted symbols bundled (replaces 5-8 sequential calls)
 gograph explain "ValidateToken"   # LLM-ready architectural narrative: role, callers, callees, complexity, SQL, env, tests
 gograph deps "internal/auth"      # Direct import dependencies of a package
 gograph deps "internal/auth" --transitive  # Full transitive closure
+gograph dependents "internal/auth" # All packages that import this package (inverse of deps)
 gograph fixtures "internal/auth"  # Find test helper structs and functions in test files
 gograph globals "internal/auth"   # Find pkg-level vars, consts, and functions mutating them
 gograph hotspot                   # Top 10 most-called functions (where to focus first)
 gograph hotspot --top 20          # Expand to top 20
-gograph mocks "AuthService"       # Find structs implementing an interface in test/mock files
+gograph mocks "AuthService"       # Alias for: gograph implementers "AuthService" --test-only
 gograph mutate "User.Status"      # Find functions that mutate a specific struct field
 gograph plan "ValidateToken"      # Generate an operational change plan (callers, tests, risk profile) before editing a symbol
 gograph plan --uncommitted        # Generate a change plan for all currently uncommitted modified symbols
@@ -143,8 +151,9 @@ gograph review "ValidateToken"    # Generate a post-edit final review report for
 gograph review --uncommitted      # Generate a post-edit final review report for all uncommitted changes
 gograph schema "users"            # Find structs mapped to a database table/schema via tags
 gograph skeleton                  # Output the whole repository's API signatures (bodies stripped)
-gograph trace "parse failed"      # Trace an error string backwards to entry points
 gograph errorflow "invalid token" # Trace an error's path from definition up to HTTP handlers (heuristic, NO SSA)
+gograph errorflow "invalid token" --no-tests  # Same, excluding test-file references
+gograph trace "parse failed"      # Alias for errorflow (kept for compatibility)
 # endpoint: full vertical slice for one HTTP endpoint. IMPORTANT: route patterns only work with flat routers.
 # With Gin/Echo/Chi Group() routing, the prefix is lost in the AST. Use handler symbol name instead.
 gograph endpoint "CreateUser"     # RECOMMENDED: always works regardless of routing style [--depth N] [--json]

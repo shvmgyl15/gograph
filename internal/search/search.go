@@ -254,6 +254,161 @@ func Callees(g *graph.Graph, name string, includeTests bool) []Result {
 	return results
 }
 
+// CallersDepth traverses the caller graph up to depth hops above name.
+// depth=1 is equivalent to Callers. Results carry a "depth N" prefix in Detail
+// so callers can group output by level. maxDepth is clamped to [1, 10].
+func CallersDepth(g *graph.Graph, name string, maxDepth int, includeTests bool) []Result {
+	if maxDepth <= 1 {
+		return Callers(g, name, includeTests)
+	}
+	if maxDepth > 10 {
+		maxDepth = 10
+	}
+
+	// Build reverse index: callee name (lower) → caller symbol IDs at that site.
+	type edge struct {
+		callerID   string
+		callerName string
+		file       string
+		line       int
+		callee     string
+	}
+	var allEdges []edge
+	for _, c := range g.Calls {
+		if !includeTests && isTestFile(c.File) {
+			continue
+		}
+		allEdges = append(allEdges, edge{c.CallerSymbolID, c.CallerName, c.File, c.Line, strings.ToLower(c.CalleeRaw)})
+	}
+
+	symByID := make(map[string]graph.SymbolNode)
+	for _, s := range g.Symbols {
+		symByID[s.ID] = s
+	}
+
+	// frontier holds the lowercase symbol names to expand at each level.
+	frontier := map[string]bool{strings.ToLower(name): true}
+	seen := make(map[string]bool) // seen caller symbol IDs across all depths
+	var results []Result
+
+	for depth := 1; depth <= maxDepth; depth++ {
+		nextFrontier := make(map[string]bool)
+		for _, e := range allEdges {
+			if !frontier[e.callee] {
+				continue
+			}
+			if seen[e.callerID] {
+				continue
+			}
+			seen[e.callerID] = true
+			sym, ok := symByID[e.callerID]
+			file, line := e.file, e.line
+			if ok {
+				file, line = sym.File, sym.Line
+			}
+			results = append(results, Result{
+				Kind:         "caller",
+				Name:         e.callerName,
+				File:         file,
+				Line:         line,
+				Detail:       fmt.Sprintf("depth %d — calls %s", depth, e.callee),
+				CallSiteFile: e.file,
+				CallSiteLine: e.line,
+				Score:        10 - depth,
+			})
+			nextFrontier[strings.ToLower(e.callerName)] = true
+		}
+		if len(nextFrontier) == 0 {
+			break
+		}
+		frontier = nextFrontier
+	}
+
+	sortResults(results)
+	return results
+}
+
+// CalleesDepth traverses the callee graph up to depth hops below name.
+// depth=1 is equivalent to Callees. maxDepth is clamped to [1, 10].
+func CalleesDepth(g *graph.Graph, name string, maxDepth int, includeTests bool) []Result {
+	if maxDepth <= 1 {
+		return Callees(g, name, includeTests)
+	}
+	if maxDepth > 10 {
+		maxDepth = 10
+	}
+
+	symByID := make(map[string]graph.SymbolNode)
+	symByName := make(map[string]string) // lowercase name → ID (best effort)
+	for _, s := range g.Symbols {
+		symByID[s.ID] = s
+		symByName[strings.ToLower(s.Name)] = s.ID
+	}
+
+	// Find the seed symbol IDs for name.
+	nl := strings.ToLower(name)
+	seedIDs := make(map[string]bool)
+	for _, s := range g.Symbols {
+		sname := strings.ToLower(s.Name)
+		full := strings.ToLower(fmt.Sprintf("(%s).%s", s.Receiver, s.Name))
+		if sname == nl || strings.Contains(full, nl) || strings.Contains(sname, nl) {
+			seedIDs[s.ID] = true
+		}
+	}
+
+	frontier := make(map[string]bool) // current caller symbol IDs to expand
+	for id := range seedIDs {
+		frontier[id] = true
+	}
+
+	seen := make(map[string]bool) // seen callee raw names
+	var results []Result
+
+	for depth := 1; depth <= maxDepth; depth++ {
+		nextFrontier := make(map[string]bool)
+		for _, c := range g.Calls {
+			if !includeTests && isTestFile(c.File) {
+				continue
+			}
+			if !frontier[c.CallerSymbolID] {
+				continue
+			}
+			calleeKey := strings.ToLower(c.CalleeRaw) + "|" + c.File + fmt.Sprintf("|%d", c.Line)
+			if seen[calleeKey] {
+				continue
+			}
+			seen[calleeKey] = true
+			results = append(results, Result{
+				Kind:         "callee",
+				Name:         c.CalleeRaw,
+				File:         c.File,
+				Line:         c.Line,
+				Detail:       fmt.Sprintf("depth %d — called by %s", depth, c.CallerName),
+				CallSiteFile: c.File,
+				CallSiteLine: c.Line,
+				Score:        10 - depth,
+			})
+			// Resolve callee to a symbol ID for the next frontier.
+			calleeLower := strings.ToLower(c.CalleeRaw)
+			// Try exact match, then short name (strip receiver prefix).
+			parts := strings.Split(calleeLower, ".")
+			shortName := parts[len(parts)-1]
+			if id, ok := symByName[calleeLower]; ok {
+				nextFrontier[id] = true
+			} else if id, ok := symByName[shortName]; ok {
+				nextFrontier[id] = true
+			}
+		}
+		if len(nextFrontier) == 0 {
+			break
+		}
+		frontier = nextFrontier
+	}
+
+	sortResults(results)
+	return results
+}
+
 func sortResults(results []Result) {
 	for i := 1; i < len(results); i++ {
 		for j := i; j > 0; j-- {

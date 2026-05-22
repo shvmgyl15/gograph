@@ -28,6 +28,7 @@ type Graph struct {
 	TestEdges    []TestEdge        `json:"test_edges,omitempty"`
 	Implements   []ImplementsEdge  `json:"implements,omitempty"`
 	Mutations    []MutationEdge    `json:"mutations,omitempty"`
+	Literals     []LiteralEdge     `json:"literals,omitempty"`
 	Baseline     *GraphBaseline    `json:"baseline,omitempty"`
 }
 
@@ -40,6 +41,16 @@ type GraphBaseline struct {
 // MutationEdge represents an assignment to a struct field.
 type MutationEdge struct {
 	Field    string `json:"field"`
+	Function string `json:"function"`
+	File     string `json:"file"`
+	Line     int    `json:"line"`
+}
+
+// LiteralEdge records a composite-literal initialization site for a named struct
+// (e.g., User{Name: "foo"}). Essential for finding every site that breaks when a
+// required field is added to or removed from a struct.
+type LiteralEdge struct {
+	TypeName string `json:"type_name"`
 	Function string `json:"function"`
 	File     string `json:"file"`
 	Line     int    `json:"line"`

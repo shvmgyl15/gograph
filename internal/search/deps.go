@@ -110,6 +110,38 @@ func Deps(g *graph.Graph, pkg string, transitive bool) *DepsResult {
 	}
 }
 
+// Dependents returns all packages in the graph that import the named package.
+// pkg is matched case-insensitively against the last path segment or the full
+// import path (e.g. "auth", "internal/auth", or the full module path all work).
+// Each result represents one dependent package, with its file and import line.
+func Dependents(g *graph.Graph, pkg string) []Result {
+	pl := strings.ToLower(pkg)
+
+	seen := make(map[string]bool)
+	var results []Result
+
+	for _, imp := range g.Imports {
+		ip := strings.ToLower(imp.ImportPath)
+		if ip != pl && !strings.HasSuffix(ip, "/"+pl) {
+			continue
+		}
+		if seen[imp.FromPackage] {
+			continue
+		}
+		seen[imp.FromPackage] = true
+		results = append(results, Result{
+			Kind:   "package",
+			Name:   imp.FromPackage,
+			File:   imp.FromFile,
+			Detail: "imports " + imp.ImportPath,
+			Score:  10,
+		})
+	}
+
+	sortResults(results)
+	return results
+}
+
 // sortStrings sorts a string slice in-place (avoids importing sort everywhere).
 func sortStrings(ss []string) {
 	for i := 1; i < len(ss); i++ {

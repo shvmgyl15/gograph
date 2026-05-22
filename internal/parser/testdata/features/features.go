@@ -32,3 +32,10 @@ func FetchUser(db *sql.DB, id int) (*AdminUser, error) {
 
 	return &admin, nil
 }
+
+func MakeAdmin(role string) *AdminUser {
+	return &AdminUser{
+		BaseUser: BaseUser{ID: 0},
+		Role:     role,
+	}
+}

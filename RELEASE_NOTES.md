@@ -1,8 +1,83 @@
 # Release Notes
 
+## v1.4.58 — 2026-05-22
+
+### New Commands
+
+#### `gograph dependents <package>`
+Returns all packages in the repository that import the named package — the inverse of `gograph deps`.
+
+- Accepts short name (`auth`), path suffix (`internal/auth`), or full import path. Case-insensitive.
+- Deduplicates by package: even if multiple files in a package import the target, the package appears once.
+- Each result includes the source file and import line for immediate navigation.
+- Supports `--json`.
+- New MCP tool: `gograph_dependents`.
+
+**Gap this fills:** before any package-level refactor, an agent needs every consumer. `deps` shows what a package imports; `dependents` shows what depends on it. Previously the only workaround was multiple per-file `imports` calls that did not aggregate by package. Zero schema changes — purely a query-time inversion of existing `g.Imports` edges.
+
+---
+
+### Improvements
+
+#### `gograph implementers <iface> --test-only`
+Adds a `--test-only` flag to `implementers`. When set, results are filtered to structs defined in test or mock files — equivalent to the former `mocks` command.
+
+- `gograph mocks <iface>` is now a one-line alias for `gograph implementers <iface> --test-only`. Kept for compatibility.
+- MCP: `gograph_implementers` gains an optional `test_only` boolean parameter.
+- `gograph_mocks` MCP tool retained for compatibility; description updated.
+
+#### `gograph errorflow <term> --no-tests`
+Adds a `--no-tests` flag to `errorflow`. When set, skips collecting `RelatedTests` from test files.
+
+- `gograph trace <term> [--no-tests]` is now a one-line alias delegating to `errorflow`. Kept for compatibility.
+- MCP: `gograph_errorflow` gains an optional `no_tests` boolean parameter. CLI and MCP behaviour are now identical.
+
+---
+
+### Fix
+
+#### `gograph_orphans` MCP tool now uses reachability analysis
+The MCP tool `gograph_orphans` was calling `search.Orphans` (simple 0-incoming-calls check) while the CLI `gograph orphans` was calling `search.ReachableOrphans` (full BFS from `main`, HTTP routes, and exported symbols). The MCP tool now calls `search.ReachableOrphans`, matching CLI behaviour. The tool description was updated to reflect this.
+
+---
+
+### Documentation
+
+- `README.md`: added `dependents`, updated `mocks`/`trace` as aliases, added `implementers --test-only` and `errorflow --no-tests` examples.
+- `docs/coding-agent-usage.md`: updated cheat sheet with `dependents`, `implementers --test-only`, `errorflow --no-tests`, alias notes for `mocks` and `trace`.
+- `gograph capabilities` and `gograph --help`: updated all affected command entries.
+- `docs/TODO.md`: marked Package dependents as done, reprioritised remaining items.
+
+---
+
 ## v1.4.57 — 2026-05-22
 
-No changes recorded since last release.
+### New Flags
+
+#### `gograph callers <sym> --depth N` and `gograph callees <sym> --depth N`
+Extends `callers` and `callees` with bounded BFS traversal up or down the call graph.
+
+- **Default** (`--depth 1`, unchanged): direct callers/callees only.
+- **`--depth 2`**: callers of callers (or callees of callees), one extra hop.
+- **`--depth N`** (max 10): expands N hops, deduplicating by symbol ID across levels.
+- Each result carries `depth N` in the Detail field so output is level-labelled.
+- Combines with `--no-tests` as before.
+- `--json` returns the standard machine-readable envelope.
+
+**Gap this fills:** `callers` was depth 1, `impact` was unlimited. Agents doing PR review or tracing a narrow change radius now have a middle option — "2–3 hops up" without the full blast radius noise.
+
+**New search functions:** `search.CallersDepth` and `search.CalleesDepth` in `internal/search/search.go`. Depth 1 delegates to the original functions (no behaviour change).
+
+---
+
+### Documentation
+
+- `README.md`: added `--depth` examples to the callers/callees usage block.
+- `docs/coding-agent-usage.md`: updated cheat sheet callers/callees entries with `--depth N`.
+- `gograph capabilities`: updated callers/callees one-liners with `--depth N`.
+- `gograph --help`: updated CALL GRAPH section entries with `--depth N`.
+- `docs/TODO.md`: marked item 3 (`--depth N` on callers/callees) as done.
+
 
 ---
 

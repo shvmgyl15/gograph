@@ -106,7 +106,7 @@ func TestReview(t *testing.T) {
 func TestErrorFlow(t *testing.T) {
 	g := buildParityGraph()
 	// Test tracing "invalid token signature"
-	report := search.ErrorFlow(g, "invalid token signature")
+	report := search.ErrorFlow(g, "invalid token signature", true)
 
 	if report.Term != "invalid token signature" {
 		t.Errorf("Expected Term invalid token signature, got %s", report.Term)

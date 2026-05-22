@@ -28,6 +28,7 @@ type FileResult struct {
 	Concurrency []graph.ConcurrencyNode
 	TestEdges   []graph.TestEdge
 	Mutations   []graph.MutationEdge
+	Literals    []graph.LiteralEdge
 }
 
 // ParseFile parses a single .go file and extracts its nodes.
@@ -514,7 +515,41 @@ func extractFuncDecl(fset *token.FileSet, d *ast.FuncDecl, relPath, pkgName, pkg
 			}
 			return true
 		})
+
+		// Struct Literal Extraction — finds Foo{...} composite literal sites.
+		ast.Inspect(d.Body, func(n ast.Node) bool {
+			lit, ok := n.(*ast.CompositeLit)
+			if !ok {
+				return true
+			}
+			typeName := compositeLitTypeName(lit)
+			if typeName == "" {
+				return true
+			}
+			result.Literals = append(result.Literals, graph.LiteralEdge{
+				TypeName: typeName,
+				Function: callerName,
+				File:     relPath,
+				Line:     fset.Position(lit.Pos()).Line,
+			})
+			return true
+		})
 	}
+}
+
+// compositeLitTypeName returns the type name from a composite literal, or ""
+// if the literal has no explicit type (anonymous) or is not a named struct type.
+func compositeLitTypeName(lit *ast.CompositeLit) string {
+	if lit.Type == nil {
+		return ""
+	}
+	switch t := lit.Type.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.SelectorExpr:
+		return t.Sel.Name
+	}
+	return ""
 }
 
 // receiverString converts an AST receiver type expression to a short string.

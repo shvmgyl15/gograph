@@ -29,15 +29,16 @@ And query commands the agent can invoke without re-parsing:
 ```sh
 gograph query <term>            # symbol/package/file/import/call substring search (works great for finding specific test names!)
 gograph focus <package>         # isolate context for a specific package
-gograph callers <function> [--no-tests] # who calls it (returns exact call-site source snippet)
-gograph callees <function> [--no-tests] # what it calls (returns exact call-site source snippet)
+gograph callers <function> [--no-tests] [--depth N] # who calls it; --depth 2-10 expands N hops up the call graph
+gograph callees <function> [--no-tests] [--depth N] # what it calls; --depth 2-10 expands N hops down
 gograph implementers <interface> # which structs implement an interface
 gograph interfaces <struct>     # which interfaces a struct satisfies (precise if --precise used)
 gograph fields <struct>         # extract fields and types of a struct
 gograph source <symbol>         # extract exact source code of a symbol (USE THIS instead of grep to read function bodies, mock stubs, or full interface definitions)
 gograph impact <symbol>         # find downstream callers (blast radius)
 gograph impact --uncommitted    # find blast radius of all uncommitted code changes
-gograph orphans                 # functions with 0 explicit incoming calls (potential dead code)
+gograph impact --since main     # blast radius of all symbols changed since main (PR-level)
+gograph orphans                 # functions unreachable from any entry point via BFS (main, routes, exports) — stricter than 0-call check
 gograph routes                  # extract all HTTP REST API routes
 gograph imports <pkg>           # trace external/internal package usage
 gograph sql                     # map raw SQL queries to their execution functions
@@ -57,24 +58,30 @@ gograph complexity "Run"        # complexity for a specific function by name
 gograph coupling                # package fan-in, fan-out, and instability table
 gograph coupling "internal/auth" # filter to a specific package
 # --- PRIMARY TOKEN SAVERS ---
-gograph context "ValidateToken"  # node + source + callers + callees + tests in ONE call
-gograph explain "ValidateToken"  # LLM-ready architectural narrative with role classification
+gograph context "ValidateToken"  # node + source + callers + callees + tests in ONE call (use for raw structured data)
+gograph context --uncommitted    # context for ALL uncommitted symbols bundled — replaces 5-8 sequential calls after plan --uncommitted
+gograph explain "ValidateToken"  # LLM-ready narrative: role, complexity, SQL, env, routes, interfaces (use to understand purpose)
 gograph hotspot                  # top 10 most-called functions (focus study here first)
 gograph hotspot --top 20         # expand the hotspot window
 gograph deps "internal/auth"     # direct import dependencies of a package
 gograph deps "internal/auth" --transitive  # full transitive import closure
+gograph dependents "internal/auth"  # all packages that import this package (inverse of deps — run before any package refactor)
 gograph plan <symbol>            # generate an operational change plan for a symbol
 gograph plan --uncommitted       # generate a change plan for all uncommitted changes
 gograph changes                  # new/modified/deleted symbols since last build
 gograph changes --git <ref>      # symbols in files changed since a git ref (MODIFIED only; e.g. --git main, --git HEAD~5, --git v1.4.50)
-gograph trace "parse failed"     # trace an error string backwards to entry points
+gograph errorflow "parse failed" --no-tests  # trace error path to entry points, excluding test references
+gograph trace "parse failed"     # alias for errorflow (kept for compatibility)
 gograph mutate "User.Status"     # find functions that mutate a specific struct field
 gograph arity --min 5            # find functions with many arguments (long parameter list smell)
 gograph skeleton                 # output the whole repository's API signatures (bodies stripped)
 gograph constructors <struct>    # find factory functions returning a named struct
+gograph literals <struct>        # all Foo{...} composite literal sites — run before adding/removing a required field
+gograph usages <type>            # every place a type appears in param/return/field/iface-method — run before changing an interface
 gograph schema <table>           # find structs mapped to a database table or schema via tags
 gograph globals <pkg>            # find pkg-level vars, consts, and functions mutating them
-gograph mocks <interface>        # find structs implementing an interface in test or mock files
+gograph implementers <interface> --test-only  # find structs implementing an interface in test or mock files
+gograph mocks <interface>        # alias for implementers --test-only (kept for compatibility)
 gograph fixtures <pkg>           # find test helper structs and functions in test files
 gograph endpoint <route>         # full vertical slice for one HTTP endpoint: handler, call chain, SQL, env reads [--depth N] [--json]
 gograph capabilities             # print token-optimized AI agent cheat sheet
@@ -125,7 +132,10 @@ grep -rn "runCheck" .            # → gograph_callers "runCheck"
 ## Concrete agent workflows
 
 ### Recommended agent workflow:
-- Before editing: `gograph plan <symbol>` / `gograph context <symbol>`
+- Session start: `gograph stats` + `gograph stale` (index health)
+- Understand a symbol: `gograph context <symbol>` (raw data) or `gograph explain <symbol>` (narrative — use when you need to understand purpose and architecture)
+- Before editing: `gograph plan <symbol>` (callers, tests, SQL/env/route risk)
+- Before a package refactor: `gograph dependents <pkg>` (every consumer)
 - After editing: `gograph review --uncommitted`
 - Before done: `gograph check --uncommitted`
 - If API-facing changes exist: `gograph check --since main` (or `master`)
@@ -368,7 +378,7 @@ If you are an agent making autonomous edits, you must always run `gograph build 
 ### 18. Error Flow Tracing
 `gograph errorflow <error-string|ErrSymbol>` is a powerful backend diagnostic command that maps the lifecycle of an error up to the HTTP layer.
 
-Unlike `gograph trace`, which just finds string origins, `errorflow` searches for:
+`gograph trace` is an alias for `errorflow` kept for compatibility — always prefer `errorflow` directly. `errorflow` searches for:
 1. **Definition sites**: Where the sentinel error is declared (`var ErrInvalidToken = errors.New(...)`).
 2. **Return/wrap sites**: Where the error string is created or wrapped (`fmt.Errorf("... %w", ErrInvalidToken)`).
 3. **Upward Paths**: It traverses the AST call graph upwards until it hits an entrypoint (like an HTTP route or `main`).
@@ -648,7 +658,7 @@ The current tool suite includes:
 - **`gograph_fields`**
 - **`gograph_source`**
 - **`gograph_orphans`**
-- **`gograph_impact`**
+- **`gograph_impact`**: Blast radius analysis. Supports three modes: single symbol, `uncommitted=true` for uncommitted changes, and `since=<ref>` for all changes since a git ref.
 - **`gograph_boundaries`**: Verifies package architecture constraints. Returns structured output.
 - **`gograph_api`**: Compares public-facing contract and integration surface drift against a baseline git reference.
 - **`gograph_routes`**
@@ -662,6 +672,8 @@ The current tool suite includes:
 - **`gograph_embeds`**
 - **`gograph_public`**
 - **`gograph_constructors`**
+- **`gograph_literals`**: Find all composite-literal initialization sites for a named struct. Run before adding a required field — every site returned will break at compile time.
+- **`gograph_usages`**: Find every place a named type appears in function signatures (param/return), struct fields, and interface method signatures. Run before changing an interface to see the full consumption blast radius.
 - **`gograph_schema`**
 - **`gograph_globals`**
 - **`gograph_mocks`**
