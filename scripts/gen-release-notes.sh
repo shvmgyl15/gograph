@@ -16,17 +16,22 @@ DATE=$(date -u +%Y-%m-%d)
 LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
 NOTES_FILE="RELEASE_NOTES.md"
 
-# Collect commits since last tag, excluding bump version commits and agent noise
+# Collect commits since last tag, excluding bump version commits and agent noise.
+# The trailing "-- $(git ls-files)" restricts output to commits that actually
+# touched tracked files, so changes to gitignored files (docs/TODO.md,
+# .agents/, .gograph/, etc.) never appear in the release notes.
 if [[ -n "$LAST_TAG" ]]; then
+  TRACKED_FILES=$(git ls-files)
   LOG=$(git log "${LAST_TAG}..HEAD" --oneline \
     --no-merges \
     --invert-grep \
     --grep="^Bump version" \
     --grep="^Viewed " \
     --grep="^Ran command" \
-    2>/dev/null || true)
+    2>/dev/null -- ${TRACKED_FILES} || true)
 else
-  LOG=$(git log --oneline --no-merges -20 2>/dev/null || true)
+  TRACKED_FILES=$(git ls-files)
+  LOG=$(git log --oneline --no-merges -20 2>/dev/null -- ${TRACKED_FILES} || true)
 fi
 
 # Build the new block header
