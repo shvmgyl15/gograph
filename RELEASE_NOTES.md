@@ -1,5 +1,33 @@
 # Release Notes
 
+## v1.4.56 — 2026-05-22
+
+### New Commands
+
+#### `gograph stats`
+Returns a compact index health summary in a single zero-parse call. Reads `graph.json` and emits:
+- `schema_version` — graph schema version (currently `"2"`)
+- `generated_at` — UTC timestamp of the last `gograph build` run
+- `packages`, `files`, `symbols`, `calls`, `imports` — core graph counts
+- `routes`, `sqls`, `env_reads`, `test_edges` — domain-specific signal counts
+
+No flags required. Supports `--json` for machine-readable output (standard JSON envelope).
+
+**Token-saving benefit:** Agents can confirm the graph is populated and check its version/timestamp in one call, without reading `GRAPH_REPORT.md` or running `gograph stale`. Typical use: run at the start of any analysis session as a sanity check.
+
+**MCP tool registered:** `gograph_stats` — no arguments, returns the same payload.
+
+---
+
+### Documentation
+
+- `README.md`: added `stats` to the features list and to the usage command block.
+- `docs/coding-agent-usage.md`: added `gograph stats` to the AI cheat sheet command block and `gograph_stats` to the MCP tool registry.
+- `gograph capabilities`: added `stats` entry to the QUERY COMMANDS section.
+- `gograph --help`: added `stats` entry to the INDEXING section.
+
+---
+
 ## v1.4.55 — 2026-05-22
 
 ### Other

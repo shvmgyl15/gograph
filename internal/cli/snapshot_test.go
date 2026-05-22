@@ -8,11 +8,28 @@ import (
 	"github.com/ozgurcd/gograph/internal/graph"
 )
 
+func chdir(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir %s: %v", dir, err)
+	}
+}
+
+func setupGraphDir(t *testing.T, g *graph.Graph) {
+	t.Helper()
+	if err := os.MkdirAll(".gograph", 0750); err != nil {
+		t.Fatalf("mkdir .gograph: %v", err)
+	}
+	if err := writeJSON(".gograph/graph.json", g); err != nil {
+		t.Fatalf("writeJSON: %v", err)
+	}
+}
+
 func TestSnapshotSaveAndList(t *testing.T) {
 	tmpDir := t.TempDir()
 	origWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(origWd)
+	chdir(t, tmpDir)
+	defer func() { chdir(t, origWd) }()
 
 	g := &graph.Graph{
 		Version:     graph.Version,
@@ -21,8 +38,7 @@ func TestSnapshotSaveAndList(t *testing.T) {
 			{Name: "Foo"},
 		},
 	}
-	os.MkdirAll(".gograph", 0750)
-	writeJSON(".gograph/graph.json", g)
+	setupGraphDir(t, g)
 
 	// Save
 	if code := runSnapshot([]string{"save", "v1"}); code != 0 {
@@ -38,8 +54,8 @@ func TestSnapshotSaveAndList(t *testing.T) {
 func TestSnapshotDiffImproved(t *testing.T) {
 	tmpDir := t.TempDir()
 	origWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(origWd)
+	chdir(t, tmpDir)
+	defer func() { chdir(t, origWd) }()
 
 	// Old graph (lots of imports)
 	gOld := &graph.Graph{
@@ -47,8 +63,7 @@ func TestSnapshotDiffImproved(t *testing.T) {
 		GeneratedAt: time.Now(),
 		Imports:     make([]graph.ImportEdge, 100),
 	}
-	os.MkdirAll(".gograph", 0750)
-	writeJSON(".gograph/graph.json", gOld)
+	setupGraphDir(t, gOld)
 	runSnapshot([]string{"save", "base"})
 
 	// New graph (fewer imports -> improved coupling edges)
@@ -57,8 +72,7 @@ func TestSnapshotDiffImproved(t *testing.T) {
 		GeneratedAt: time.Now(),
 		Imports:     make([]graph.ImportEdge, 50),
 	}
-	os.MkdirAll(".gograph", 0750)
-	writeJSON(".gograph/graph.json", gNew)
+	setupGraphDir(t, gNew)
 
 	if code := runSnapshot([]string{"diff", "base"}); code != 0 {
 		t.Fatalf("expected snapshot diff to succeed, got %d", code)
@@ -68,16 +82,15 @@ func TestSnapshotDiffImproved(t *testing.T) {
 func TestSnapshotDiffWorse(t *testing.T) {
 	tmpDir := t.TempDir()
 	origWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(origWd)
+	chdir(t, tmpDir)
+	defer func() { chdir(t, origWd) }()
 
 	gOld := &graph.Graph{
 		Version:     graph.Version,
 		GeneratedAt: time.Now(),
 		Imports:     make([]graph.ImportEdge, 10),
 	}
-	os.MkdirAll(".gograph", 0750)
-	writeJSON(".gograph/graph.json", gOld)
+	setupGraphDir(t, gOld)
 	runSnapshot([]string{"save", "base"})
 
 	// New graph (more imports -> worse coupling edges)
@@ -86,8 +99,7 @@ func TestSnapshotDiffWorse(t *testing.T) {
 		GeneratedAt: time.Now(),
 		Imports:     make([]graph.ImportEdge, 50),
 	}
-	os.MkdirAll(".gograph", 0750)
-	writeJSON(".gograph/graph.json", gNew)
+	setupGraphDir(t, gNew)
 
 	if code := runSnapshot([]string{"diff", "base"}); code != 0 {
 		t.Fatalf("expected snapshot diff to succeed, got %d", code)
@@ -97,15 +109,14 @@ func TestSnapshotDiffWorse(t *testing.T) {
 func TestSnapshotDrop(t *testing.T) {
 	tmpDir := t.TempDir()
 	origWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(origWd)
+	chdir(t, tmpDir)
+	defer func() { chdir(t, origWd) }()
 
 	g := &graph.Graph{
 		Version:     graph.Version,
 		GeneratedAt: time.Now(),
 	}
-	os.MkdirAll(".gograph", 0750)
-	writeJSON(".gograph/graph.json", g)
+	setupGraphDir(t, g)
 	runSnapshot([]string{"save", "v1"})
 
 	// Drop existing

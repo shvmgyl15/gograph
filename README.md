@@ -29,6 +29,7 @@ In short: `gopls` is optimized for human IDEs. `gograph` is optimized for termin
 - **Hotspot Ranking:** `hotspot` ranks functions by incoming call count so agents know which functions to study first.
 - **Code Quality Analysis:** Cyclomatic complexity (`complexity`), god-object detection (`godobj`), and package coupling/instability (`coupling`).
 - **Change Detection:** `changes` surfaces new/modified/deleted symbols since the last build without re-reading source files.
+- **Index Health:** `stats` returns a compact JSON summary of the current graph — schema version, build timestamp, and counts of packages, files, symbols, calls, routes, SQL, env reads, and test edges — in a single zero-parse call.
 - **Dependency Trees:** `deps <pkg> [--transitive]` shows direct or full transitive import closures for any package.
 - **Tech Stack Extraction:** Automatically parses `go.mod` to summarize your external dependencies (like `gin` or `pgx`) so agents instantly understand your stack.
 - **Concurrency Mapping:** Detects goroutine spawns, channel sends, mutex locks, WaitGroup usage, and `sync.Once.Do` calls across the entire codebase.
@@ -107,6 +108,7 @@ gograph endpoint "POST /api/users" # Same but via route pattern (ONLY works for 
 gograph source "ValidateToken"    # Extract the source code for a specific symbol
 gograph sql                       # Extract database SQL queries from the AST
 gograph stale                     # Check if graph.json is out of date vs source files
+gograph stats                     # Compact index health summary: schema version, build timestamp, counts
 gograph tests "ValidateToken"     # Find which test functions exercise a named symbol
 # --- STATIC GUARDS & CI ENFORCEMENT ---
 gograph check                     # Run static policy checks using .gograph/checks.json

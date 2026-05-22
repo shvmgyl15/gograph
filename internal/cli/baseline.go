@@ -70,7 +70,7 @@ func BuildBaselineGraphFromGitRef(baselineRef string, buildGraph func(string) (*
 
 	// Wait for git archive and close writer pipe so tar knows EOF
 	gitErr := gitCmd.Wait()
-	pw.Close()
+	_ = pw.Close()
 
 	tarErr := tarCmd.Wait()
 

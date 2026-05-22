@@ -437,8 +437,8 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 				break
 			}
 			if err != nil {
-				cmd.Process.Kill()
-				cmd.Wait()
+				_ = cmd.Process.Kill()
+				_ = cmd.Wait()
 				return mcp.NewToolResultError(fmt.Sprintf("tar read error: %v", err)), nil
 			}
 
@@ -450,13 +450,13 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 			switch header.Typeflag {
 			case tar.TypeDir:
-				os.MkdirAll(target, os.FileMode(header.Mode))
+				_ = os.MkdirAll(target, os.FileMode(header.Mode))
 			case tar.TypeReg:
-				os.MkdirAll(filepath.Dir(target), 0755)
+				_ = os.MkdirAll(filepath.Dir(target), 0755)
 				f, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.FileMode(header.Mode))
 				if err == nil {
-					io.Copy(f, tr)
-					f.Close()
+					_, _ = io.Copy(f, tr)
+					_ = f.Close()
 				}
 			}
 		}
@@ -924,6 +924,22 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 			return mcp.NewToolResultText(fmt.Sprintf(`{"symbol":"%s","found":false}`, sym)), nil
 		}
 		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_stats
+	statsTool := mcp.NewTool("gograph_stats",
+		mcp.WithDescription("Return a compact health summary of the current graph index: schema version, build timestamp, and counts of packages, files, symbols, calls, imports, routes, SQL queries, env reads, and test edges. Use this as a quick sanity check before starting any analysis session."),
+	)
+	addTool(statsTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		st := search.Stats(g)
+		data, err := json.MarshalIndent(st, "", "  ")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}

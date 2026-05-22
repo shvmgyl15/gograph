@@ -11,8 +11,14 @@ import (
 func TestGatePass(t *testing.T) {
 	tmpDir := t.TempDir()
 	origWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(origWd)
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(origWd); err != nil {
+			t.Logf("restore chdir: %v", err)
+		}
+	}()
 
 	g := &graph.Graph{
 		Version:     graph.Version,
@@ -25,8 +31,12 @@ func TestGatePass(t *testing.T) {
 			CouplingEdges: 20,
 		},
 	}
-	os.MkdirAll(".gograph", 0750)
-	writeJSON(".gograph/graph.json", g)
+	if err := os.MkdirAll(".gograph", 0750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := writeJSON(".gograph/graph.json", g); err != nil {
+		t.Fatalf("writeJSON: %v", err)
+	}
 
 	yml := `
 max_complexity: 50
@@ -34,7 +44,9 @@ max_instability: 1.0
 allow_new_orphans: false
 max_new_coupling_edges: 5
 `
-	os.WriteFile(".gograph.yml", []byte(yml), 0644)
+	if err := os.WriteFile(".gograph.yml", []byte(yml), 0644); err != nil {
+		t.Fatalf("write yml: %v", err)
+	}
 
 	if code := runGate(); code != 0 {
 		t.Fatalf("expected gate to pass, got exit code %d", code)
@@ -44,8 +56,14 @@ max_new_coupling_edges: 5
 func TestGateFailOneViolation(t *testing.T) {
 	tmpDir := t.TempDir()
 	origWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(origWd)
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(origWd); err != nil {
+			t.Logf("restore chdir: %v", err)
+		}
+	}()
 
 	g := &graph.Graph{
 		Version:     graph.Version,
@@ -55,13 +73,19 @@ func TestGateFailOneViolation(t *testing.T) {
 			CouplingEdges: 20, // max new is 5, we have 10 new, this fails
 		},
 	}
-	os.MkdirAll(".gograph", 0750)
-	writeJSON(".gograph/graph.json", g)
+	if err := os.MkdirAll(".gograph", 0750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := writeJSON(".gograph/graph.json", g); err != nil {
+		t.Fatalf("writeJSON: %v", err)
+	}
 
 	yml := `
 max_new_coupling_edges: 5
 `
-	os.WriteFile(".gograph.yml", []byte(yml), 0644)
+	if err := os.WriteFile(".gograph.yml", []byte(yml), 0644); err != nil {
+		t.Fatalf("write yml: %v", err)
+	}
 
 	if code := runGate(); code != 1 {
 		t.Fatalf("expected gate to fail, got exit code %d", code)
@@ -71,8 +95,14 @@ max_new_coupling_edges: 5
 func TestGateFailMultipleViolations(t *testing.T) {
 	tmpDir := t.TempDir()
 	origWd, _ := os.Getwd()
-	os.Chdir(tmpDir)
-	defer os.Chdir(origWd)
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer func() {
+		if err := os.Chdir(origWd); err != nil {
+			t.Logf("restore chdir: %v", err)
+		}
+	}()
 
 	g := &graph.Graph{
 		Version:     graph.Version,
@@ -87,14 +117,20 @@ func TestGateFailMultipleViolations(t *testing.T) {
 			CouplingEdges: 20, // 10 new, limit 5 -> violation
 		},
 	}
-	os.MkdirAll(".gograph", 0750)
-	writeJSON(".gograph/graph.json", g)
+	if err := os.MkdirAll(".gograph", 0750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := writeJSON(".gograph/graph.json", g); err != nil {
+		t.Fatalf("writeJSON: %v", err)
+	}
 
 	yml := `
 max_god_object_methods: 2
 max_new_coupling_edges: 5
 `
-	os.WriteFile(".gograph.yml", []byte(yml), 0644)
+	if err := os.WriteFile(".gograph.yml", []byte(yml), 0644); err != nil {
+		t.Fatalf("write yml: %v", err)
+	}
 
 	if code := runGate(); code != 1 {
 		t.Fatalf("expected gate to fail, got exit code %d", code)

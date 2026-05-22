@@ -201,9 +201,13 @@ func TestGographBoundaries_Structured(t *testing.T) {
 
 	// Create empty boundaries config
 	tmpFile, _ := os.CreateTemp("", "boundaries.json")
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Write([]byte(`{"layers":[]}`))
-	tmpFile.Close()
+	t.Cleanup(func() { _ = os.Remove(tmpFile.Name()) })
+	if _, err := tmpFile.Write([]byte(`{"layers":[]}`)); err != nil {
+		t.Fatalf("write tmp file: %v", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("close tmp file: %v", err)
+	}
 
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"config": tmpFile.Name()}

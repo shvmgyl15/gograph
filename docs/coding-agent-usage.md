@@ -49,6 +49,7 @@ gograph concurrency [term]      # map goroutines, channels, mutexes, waitgroups,
 gograph tests [symbol]          # find which test functions exercise a named symbol
 gograph path <from> <to>        # shortest call chain between two symbols (BFS traversal)
 gograph stale                   # check if graph.json is out of date vs source files
+gograph stats                   # compact index health summary: schema version, build timestamp, counts of packages/files/symbols/calls/routes/SQL/env/test edges
 gograph godobj                  # find god-object struct candidates (default thresholds)
 gograph godobj --methods 10 --fields 12 --calls 30 --top 5  # custom thresholds
 gograph complexity              # cyclomatic complexity for all functions, highest first
@@ -658,6 +659,7 @@ The current tool suite includes:
 - **`gograph_globals`**
 - **`gograph_mocks`**
 - **`gograph_explain`**: LLM-ready architectural summary. Synthesizes callers (prod vs test), callees, complexity, SQL, env, routes, concurrency, test coverage, interface satisfaction, and an opinionated role classification into one structured narrative.
+- **`gograph_stats`**: Compact index health summary. Returns schema version, build timestamp, and counts of packages, files, symbols, calls, imports, routes, SQL queries, env reads, and test edges. Use this as a quick sanity check at the start of any analysis session.
 
 ## Recommended project setup
 

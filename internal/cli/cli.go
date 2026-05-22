@@ -113,6 +113,8 @@ func Run(args []string) int {
 		return runPath(args[1:])
 	case "stale":
 		return runStale()
+	case "stats":
+		return runStats()
 	case "orphans":
 		return runOrphans()
 	case "godobj":
@@ -233,6 +235,7 @@ routes               : HTTP REST routes
 source <sym>         : exact code of sym (USE THIS instead of grep to read function bodies, mock stubs, or full interface definitions)
 sql                  : raw SQL queries mapped
 stale                : check if graph is out of date vs source files
+stats                : compact index health summary — schema version, build time, counts
 tests <sym>          : tests exercising sym
 
 TOKEN SAVERS (COMPOSED COMMANDS):
@@ -832,6 +835,10 @@ INDEXING
                              Hierarchy Analysis (CHA) for more precise call edges.
   stale                      Check if graph.json is older than any source file.
                              Agents should run this before structural analysis.
+  stats                      Compact index health summary: schema version, build
+                             timestamp, and counts of packages, files, symbols,
+                             calls, imports, routes, SQL queries, env reads, and
+                             test edges. Zero re-parsing — reads graph.json only.
 
 AGENT WORKFLOW RULES (CRITICAL)
   1. BEFORE editing: ALWAYS run 'gograph plan <symbol>' to understand the impact,
@@ -1046,6 +1053,33 @@ func runStale() int {
 		fmt.Printf("  %s\n", f)
 	}
 	fmt.Println("Run `gograph build .` to refresh.")
+	return 0
+}
+
+func runStats() int {
+	g, err := loadGraph(".")
+	if err != nil {
+		if jsonMode {
+			return PrintJSON(errEnvelope("stats", err.Error()))
+		}
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	st := search.Stats(g)
+	if jsonMode {
+		return PrintJSON(okEnvelope("stats", "", st, 1))
+	}
+	fmt.Printf("schema_version : %s\n", st.SchemaVersion)
+	fmt.Printf("generated_at   : %s\n", st.GeneratedAt)
+	fmt.Printf("packages       : %d\n", st.Packages)
+	fmt.Printf("files          : %d\n", st.Files)
+	fmt.Printf("symbols        : %d\n", st.Symbols)
+	fmt.Printf("calls          : %d\n", st.Calls)
+	fmt.Printf("imports        : %d\n", st.Imports)
+	fmt.Printf("routes         : %d\n", st.Routes)
+	fmt.Printf("sqls           : %d\n", st.SQLs)
+	fmt.Printf("env_reads      : %d\n", st.EnvReads)
+	fmt.Printf("test_edges     : %d\n", st.TestEdges)
 	return 0
 }
 

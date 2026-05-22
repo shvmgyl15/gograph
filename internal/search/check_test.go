@@ -127,7 +127,9 @@ func TestCheckBoundariesViolation(t *testing.T) {
 			{"name": "Domain", "packages": ["domain/**"], "may_import": []}
 		]
 	}`
-	os.WriteFile(configPath, []byte(configData), 0644)
+	if err := os.WriteFile(configPath, []byte(configData), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
 
 	g := &graph.Graph{
 		Packages: []graph.PackageNode{

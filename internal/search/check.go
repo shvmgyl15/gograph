@@ -116,9 +116,10 @@ func RunChecks(p *CheckParams) (*CheckReport, error) {
 			Symbol:   symbol,
 			Metadata: meta,
 		})
-		if lvl == CheckError {
+		switch lvl {
+		case CheckError:
 			report.Summary.Errors++
-		} else if lvl == CheckWarn {
+		case CheckWarn:
 			report.Summary.Warnings++
 		}
 	}

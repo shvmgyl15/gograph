@@ -148,9 +148,11 @@ func installCLAUDEmd(home string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	_, err = f.WriteString(claudeMDBlock)
-	return err
+	if _, err = f.WriteString(claudeMDBlock); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 // installHook writes the hook script and registers it in ~/.claude/settings.json.
