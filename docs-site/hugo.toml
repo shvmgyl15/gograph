@@ -1,0 +1,60 @@
+baseURL = "/"
+languageCode = "en-us"
+title = "gograph – Go Codebase Analysis Tool"
+theme = "PaperMod"
+relativeURLs = true
+canonifyURLs = false
+
+enableRobotsTXT = true
+
+[params]
+  description = "A fast, AST-aware Go repository graph indexing & query tool for developers and AI agents."
+  author = "Ozgur Demir"
+  defaultTheme = "auto"
+  ShowThemeToggle = true
+  ShowReadingTime = true
+  ShowShareButtons = false
+  ShowCodeCopyButtons = true
+  ShowBreadCrumbs = true
+  disableAnchoredHeadings = false
+
+  homeInfoParams = { Title = "gograph", Content = "Understand, query, and trace Go codebases in milliseconds. AST-accurate call graphs, interface implementers, dependency trees, and error flow tracing designed for humans and AI agents." }
+
+  [params.schema]
+    publisherType = "Person"
+
+[[params.socialIcons]]
+  name = "github"
+  url = "https://github.com/ozgurcd/gograph"
+
+[menu]
+  [[menu.main]]
+    name = "Get Started"
+    url = "/docs/getting-started/"
+    weight = 1
+  [[menu.main]]
+    name = "Commands"
+    url = "/docs/command-reference/"
+    weight = 2
+  [[menu.main]]
+    name = "AI Integration"
+    url = "/docs/agent-integration/"
+    weight = 3
+  [[menu.main]]
+    name = "Workflows"
+    url = "/docs/workflows/"
+    weight = 4
+  [[menu.main]]
+    name = "Blog"
+    url = "/posts/"
+    weight = 5
+  [[menu.main]]
+    name = "GitHub"
+    url = "https://github.com/ozgurcd/gograph"
+    weight = 6
+
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = true
+

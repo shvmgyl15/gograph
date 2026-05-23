@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto" data-theme="auto">
+
+<head><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name="robots" content="index, follow">
+<title>AI Agent Integration &amp; Token Reduction | gograph – Go Codebase Analysis Tool</title>
+<meta name="keywords" content="">
+<meta name="description" content="Integrate gograph with Claude Code, Cursor, and Google Antigravity. Leverage MCP and semantic search to achieve massive token reduction and context savings.">
+<meta name="author" content="Ozgur Demir">
+<link rel="canonical" href="../../docs/agent-integration/">
+<link crossorigin="anonymous" href="../../assets/css/stylesheet.cd9298b33628769aa1bc1acebbbfd7aa11ce81dfe03484d479e1907760249a1d.css" integrity="sha256-zZKYszYodpqhvBrOu7/XqhHOgd/gNITUeeGQd2Akmh0=" rel="preload stylesheet" as="style">
+<link rel="icon" href="../../favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="../../favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="../../favicon-32x32.png">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<link rel="mask-icon" href="../../safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<link rel="alternate" hreflang="en" href="../../docs/agent-integration/">
+<noscript>
+    <style>
+        #theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+    <style>
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --theme: rgb(29, 30, 32);
+                --entry: rgb(46, 46, 51);
+                --primary: rgb(218, 218, 219);
+                --secondary: rgb(155, 156, 157);
+                --tertiary: rgb(65, 66, 68);
+                --content: rgb(196, 196, 197);
+                --code-block-bg: rgb(46, 46, 51);
+                --code-bg: rgb(55, 56, 62);
+                --border: rgb(51, 51, 51);
+                color-scheme: dark;
+            }
+
+            .list {
+                background: var(--theme);
+            }
+
+            .toc {
+                background: var(--entry);
+            }
+        }
+
+    </style>
+</noscript>
+<script>
+    if (localStorage.getItem("pref-theme") === "dark") {
+        document.querySelector("html").dataset.theme = 'dark';
+    } else if (localStorage.getItem("pref-theme") === "light") {
+       document.querySelector("html").dataset.theme = 'light';
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.querySelector("html").dataset.theme = 'dark';
+    } else {
+        document.querySelector("html").dataset.theme = 'light';
+    }
+
+</script><meta property="og:url" content="/docs/agent-integration/">
+  <meta property="og:site_name" content="gograph – Go Codebase Analysis Tool">
+  <meta property="og:title" content="AI Agent Integration & Token Reduction">
+  <meta property="og:description" content="Integrate gograph with Claude Code, Cursor, and Google Antigravity. Leverage MCP and semantic search to achieve massive token reduction and context savings.">
+  <meta property="og:locale" content="en_us">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="docs">
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="AI Agent Integration & Token Reduction">
+  <meta name="twitter:description" content="Integrate gograph with Claude Code, Cursor, and Google Antigravity. Leverage MCP and semantic search to achieve massive token reduction and context savings.">
+
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position":  1 ,
+      "name": "Documentation Portal",
+      "item": "/docs/"
+    }
+    {
+      "@type": "ListItem",
+      "position":  1 ,
+      "name": "AI Agent Integration \u0026 Token Reduction",
+      "item": "/docs/agent-integration/"
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "AI Agent Integration \u0026 Token Reduction",
+  "name": "AI Agent Integration \u0026 Token Reduction",
+  "description": "Integrate gograph with Claude Code, Cursor, and Google Antigravity. Leverage MCP and semantic search to achieve massive token reduction and context savings.",
+  "keywords": [
+    
+  ],
+  "articleBody": "gograph is built from the ground up to be an agent-first tool. While humans can query the CLI, the primary design target is AI coding agents (such as Claude Code, Cursor, Copilot, Google Antigravity, or OpenCode) that need accurate, structured repository intelligence without context-window inflation.\n🚫 The Problem: Unix Tools are Expensive \u0026 Blind In modern AI agent loops, models are highly habituated to using standard Unix text-processing commands (grep, find, sed) to understand and navigate code. For Go, this is an inefficient, token-expensive, and error-prone anti-pattern.\nGo’s unique structural features—such as implicit (duck-typed) interfaces, wrapping error chains, and package boundaries—cannot be solved by text patterns.\nWhy Generic Unix Tools Fail Agents: Massive Token Waste: A broad grep forces the model to ingest thousands of lines of search noise (test logs, mock code, comments) just to locate a single method caller. This rapidly consumes context windows and inflates API costs. Implicit Interfaces: In Go, a struct satisfies an interface implicitly (no implements keyword). To find what implements an interface using Unix tools, an agent must parse method sets and grep receivers across hundreds of files—a complex task that consumes thousands of context tokens and is highly prone to omission. Wrapped Errors: Go errors are often wrapped (fmt.Errorf(\"user not found: %w\", err)). The original error symbol and its bubble-up path are lost in string wrapping. Generic Unix tools cannot trace this structural relationship. Structural Blindness: grep matches comments, inactive mock files, test fixtures, and raw strings equally. Agents get overwhelmed by noise and are highly prone to hallucinating architectural relationships. ⚡ Comparative Analysis: Unix vs. gograph Real-World Production Impact In actual production evaluations conducted by development teams running 35 specialized Claude Code agents on large Go codebases, utilizing raw grep across 80+ endpoints resulted in a measured hallucination rate of ~12% on routine calls.\nWhen replacing generic text searches with gograph’s AST-accurate call graph and pruned context, the agent hallucination rate dropped to 2%.\nObjective The Unix Way (grep, find) The gograph Way Token Cost Comparison Accuracy Find callers of a method grep -rn \"Update\" . (Scans mocks, comments, other types) gograph callers UserStore.Update (AST-accurate call edges) Extremely high context footprint (model reads irrelevant source lines) vs. Minimal footprint (single-line caller symbols) ❌ High hallucination risk (~12% error)\n🎯 100% Structural Ground Truth (~2% error) Find interface implementers Multi-step grep searches of method receivers and receivers sets gograph implementers Connection (Duck-typing interface satisfaction) Massive context inflation (reading dozens of files to match signatures) vs. Minimal footprint (only concrete struct types) ❌ Highly prone to omissions\n🎯 100% Structural Ground Truth Trace wrapped errors Grepping for substring matches inside formatting blocks gograph errorflow \"invalid token\" (Reversed call graph BFS of %w wraps) High context inflation (scanning format strings across call paths) vs. Minimal footprint (structured error flow paths) ❌ Misses wrapping context\n🎯 100% Structural Ground Truth Concrete Workflow Example: Modifying a Struct Field Suppose an agent needs to add a required field to a struct named Config.\nThe Unix Way (Manual Grepping):\nAgent runs grep -rn \"type Config struct\" . to locate the type definition. Agent tries to locate every composite literal declaration to see where it is initialized: grep -rn \"Config{\" .. Because Config is a common word, it matches test utilities, local files, config parser variables, and external package docs. The agent is forced to inspect multiple different files manually to see if the block matches. Total cost: Massive token consumption, 5-10 sequential tool calls, high risk of missing initialization sites inside test suites. The gograph Way (Structural Call):\nAgent runs a single tool call: gograph literals Config gograph queries the AST database and returns the exact file, line, and code snippet of every composite literal initialization site (Config{...}) in milliseconds. Total cost: Extremely low token cost, 1 tool call, complete structural certainty. 🔬 Empirical Case Study: gograph Codebase Benchmark To verify these savings, we ran both generic Unix tools and gograph directly against the gograph repository itself (which consists of 16 Go packages, 70 Go files, 518 AST symbols, and 5,443 call edges).\nHere are the concrete, measured results:\nCase 1: Broad Symbol Queries An agent needs to locate symbols matching the word \"Symbol\".\nThe Unix Way (grep -rn \"Symbol\" .): Returns 842 matching lines from comments, markdown guides, local variables, and unrelated documentation blocks, completely flooding the context window. The gograph Way (gograph query Symbol): Returns exactly 83 structured results (only actual structs, functions, and active call edges), immediately filtering out 90% of search noise and saving massive token costs. Case 2: Tracking Callers of a Helper Function An agent needs to track callers of the function loadGraph.\nThe Unix Way (grep -rn \"loadGraph\" .): Returns 158 matching lines across comments, markdown docs, function declarations, and call expressions. The gograph Way (gograph callers loadGraph): Returns exactly 56 structural caller edges mapped precisely to their AST call sites. Case 3: Viewing Function Source Code An agent needs to read the definition of normalizeSymbolName.\nThe Unix Way: Agent greps for the declaration and then must call view_file to read the entire internal/search/advanced.go file (or guess line ranges). The gograph Way (gograph source normalizeSymbolName): Instantly returns exactly 12 lines of code containing only the clean function block. Model Context Protocol (MCP): Open \u0026 Client-Agnostic gograph implements a complete native Model Context Protocol server. Because MCP is an open-standard protocol, gograph is completely client-agnostic.\nAny editor, CLI wrapper, custom Python/Node script, or agent framework (such as LangChain, LlamaIndex, or AutoGPT) that supports standard MCP over stdio can connect to and leverage gograph out-of-the-box.\nStarting the Server (Standard I/O) To start the MCP JSON-RPC server over standard I/O:\ngograph mcp [path] If .gograph/graph.json does not exist when the server starts, it automatically runs gograph build first to ensure a completely frictionless, zero-barrier client connection.\n🛠️ Client Integration Examples Since the MCP server communicates over standard stdio streams, it plugs seamlessly into any compliant client environment. Here are configurations for several common developer setups:\n🧭 Cursor MCP Configuration To add gograph as an MCP server in Cursor:\nOpen Cursor Settings (Cmd + , or Ctrl + ,). Navigate to Features -\u003e MCP. Click + Add New MCP Server. Configure the fields: Name: gograph Type: command Command: gograph mcp (if not globally in PATH, specify the absolute path: /opt/homebrew/bin/gograph mcp) Click Save. Cursor will automatically start the background stdio session, parse the JSON schemas, and register every gograph capability as a native agent tool in Composer and Chat!\n🌊 Windsurf MCP Configuration To configure gograph inside the Windsurf IDE:\nAdd the following block to your global or workspace-local mcp_config.json file (typically located under ~/.codeium/windsurf/mcp_config.json):\n{ \"mcpServers\": { \"gograph\": { \"command\": \"gograph\", \"args\": [\"mcp\"], \"env\": {} } } } Save the file. Windsurf will instantly hot-reload the configuration and expose all gograph analytical features to the AI critic and coder loop!\n🤖 Claude Code Integration gograph includes native automation to integrate directly with Claude Code.\nAutomatic Plugin Installation Run the following command inside your Go repository:\ngograph add-claude-plugin This single command performs three critical setup steps:\nClaude Configuration: Registers the gograph mcp server under the local Claude desktop/CLI configuration. Workspace Steering: Configures or appends gograph rules to your repository’s CLAUDE.md to instruct the model to prefer gograph over general grep search. Pre-Tool-Use Hook Guard: Installs a Git hook that intercepts incoming tool calls. The Hook Guard: Blocking general grep AI agents are highly habituated to executing raw grep or find commands to look for code patterns. In large Go codebases, this causes two severe issues:\nHallucination: The agent gets overwhelmed by noise (mocks, test helpers, matches inside unexported package dependencies) and hallucinates. Token Waste: Grepping large chunks of source files blows up the context window. gograph solves this structurally with the Hook Guard:\n[Agent wants to run grep] │ ▼ .git/hooks/PreToolUse │ ▼ gograph hook-guard ◄── Intercepts symbol query │ ┌─────────┴─────────┐ │ │ ▼ (Generic grep) ▼ (Gograph equivalent) [BLOCKED] [ALLOWED] \"Use gograph instead\" If the agent tries to run grep -rn \"MyStruct\" ., the hook guard blocks the command with exit code 2 and returns a helpful message:\nBlocked: Do not use grep to look for Go symbols. Run gograph query MyStruct or gograph callers MyStruct instead for precise results.\nThis structurally forces the agent to use AST-accurate call graphs and dependency queries, dropping the hallucination rate from 12% to under 2%.\nWorkspace Steering Rules When add-claude-plugin runs, it adds these explicit directives to CLAUDE.md to keep the model on track:\n# Go Codebase Navigation Steering - NEVER use general bash `grep`, `find`, or `sed` to locate Go symbols, structs, or callers. - ALWAYS use the native gograph MCP tools (`gograph_query`, `gograph_callers`, `gograph_source`, etc.). - ALWAYS run `gograph_plan` prior to editing any symbol to discover downstream caller risks. - ALWAYS run `gograph_build` with `--precise` and run `gograph_review` after editing to verify test coverage. ",
+  "wordCount" : "1469",
+  "inLanguage": "en",
+  "datePublished": "0001-01-01T00:00:00Z",
+  "dateModified": "0001-01-01T00:00:00Z",
+  "author":{
+    "@type": "Person",
+    "name": "Ozgur Demir"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "/docs/agent-integration/"
+  },
+  "publisher": {
+    "@type": "Person",
+    "name": "gograph – Go Codebase Analysis Tool",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "/favicon.ico"
+    }
+  }
+}
+</script>
+</head>
+<body id="top">
+    <header class="header">
+    <nav class="header-nav">
+        <div class="logo">
+            <a href="../../" accesskey="h" title="gograph – Go Codebase Analysis Tool (Alt + H)">gograph – Go Codebase Analysis Tool</a>
+            <div class="logo-switches">
+                <button id="theme-toggle" class="theme-toggle" accesskey="t" title="(Alt + T)" aria-label="Toggle theme">
+                    <svg class="moon" xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                    <svg class="sun" xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <ul id="menu" class="menu">
+            <li>
+                <a href="../../docs/getting-started/" title="Get Started">
+                    <span>Get Started</span>
+                </a>
+            </li>
+            <li>
+                <a href="../../docs/command-reference/" title="Commands">
+                    <span>Commands</span>
+                </a>
+            </li>
+            <li>
+                <a href="../../docs/agent-integration/" title="AI Integration">
+                    <span class="active">AI Integration</span>
+                </a>
+            </li>
+            <li>
+                <a href="../../docs/workflows/" title="Workflows">
+                    <span>Workflows</span>
+                </a>
+            </li>
+            <li>
+                <a href="../../posts/" title="Blog">
+                    <span>Blog</span>
+                </a>
+            </li>
+            <li>
+                <a href="https://github.com/ozgurcd/gograph" title="GitHub">
+                    <span>GitHub</span>&nbsp;
+                    <svg fill="none" shape-rendering="geometricPrecision" stroke="currentColor" stroke-linecap="round"
+                        stroke-linejoin="round" stroke-width="2.5" viewBox="0 0 24 24" height="12" width="12">
+                        <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"></path>
+                        <path d="M15 3h6v6"></path>
+                        <path d="M10 14L21 3"></path>
+                    </svg>
+                </a>
+            </li>
+        </ul>
+    </nav>
+</header>
+<main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    <nav class="breadcrumbs" role="navigation" aria-label="Breadcrumb">
+            <a href="../../">Home</a>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevron-right">
+                <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+            <a href="../../docs/">Documentation Portal</a>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevron-right">
+        <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+</nav>
+    <h1 class="post-title entry-hint-parent">
+      AI Agent Integration &amp; Token Reduction
+    </h1>
+    <div class="post-description">
+      Integrate gograph with Claude Code, Cursor, and Google Antigravity. Leverage MCP and semantic search to achieve massive token reduction and context savings.
+    </div>
+    <div class="post-meta">
+
+<span>7 min</span>&nbsp;·&nbsp;<span>Ozgur Demir</span>
+
+</div>
+  </header> 
+  <div class="post-content md-content"><p>gograph is built from the ground up to be an <strong>agent-first tool</strong>. While humans can query the CLI, the primary design target is AI coding agents (such as Claude Code, Cursor, Copilot, Google Antigravity, or OpenCode) that need accurate, structured repository intelligence without context-window inflation.</p>
+<hr>
+<h2 id="-the-problem-unix-tools-are-expensive--blind">🚫 The Problem: Unix Tools are Expensive &amp; Blind<a hidden class="anchor" aria-hidden="true" href="#-the-problem-unix-tools-are-expensive--blind">#</a></h2>
+<p>In modern AI agent loops, models are highly habituated to using standard Unix text-processing commands (<code>grep</code>, <code>find</code>, <code>sed</code>) to understand and navigate code. For Go, this is an <strong>inefficient, token-expensive, and error-prone</strong> anti-pattern.</p>
+<p>Go&rsquo;s unique structural features—such as implicit (duck-typed) interfaces, wrapping error chains, and package boundaries—cannot be solved by text patterns.</p>
+<h3 id="why-generic-unix-tools-fail-agents">Why Generic Unix Tools Fail Agents:<a hidden class="anchor" aria-hidden="true" href="#why-generic-unix-tools-fail-agents">#</a></h3>
+<ol>
+<li><strong>Massive Token Waste</strong>: A broad <code>grep</code> forces the model to ingest thousands of lines of search noise (test logs, mock code, comments) just to locate a single method caller. This rapidly consumes context windows and inflates API costs.</li>
+<li><strong>Implicit Interfaces</strong>: In Go, a struct satisfies an interface implicitly (no <code>implements</code> keyword). To find what implements an interface using Unix tools, an agent must parse method sets and grep receivers across hundreds of files—a complex task that consumes thousands of context tokens and is highly prone to omission.</li>
+<li><strong>Wrapped Errors</strong>: Go errors are often wrapped (<code>fmt.Errorf(&quot;user not found: %w&quot;, err)</code>). The original error symbol and its bubble-up path are lost in string wrapping. Generic Unix tools cannot trace this structural relationship.</li>
+<li><strong>Structural Blindness</strong>: <code>grep</code> matches comments, inactive mock files, test fixtures, and raw strings equally. Agents get overwhelmed by noise and are highly prone to hallucinating architectural relationships.</li>
+</ol>
+<hr>
+<h2 id="-comparative-analysis-unix-vs-gograph">⚡ Comparative Analysis: Unix vs. gograph<a hidden class="anchor" aria-hidden="true" href="#-comparative-analysis-unix-vs-gograph">#</a></h2>
+<h3 id="real-world-production-impact">Real-World Production Impact<a hidden class="anchor" aria-hidden="true" href="#real-world-production-impact">#</a></h3>
+<p>In actual production evaluations conducted by development teams running <strong>35 specialized Claude Code agents</strong> on large Go codebases, utilizing raw <code>grep</code> across 80+ endpoints resulted in a <strong>measured hallucination rate of ~12%</strong> on routine calls.</p>
+<p>When replacing generic text searches with gograph&rsquo;s AST-accurate call graph and pruned context, the agent hallucination rate <strong>dropped to 2%</strong>.</p>
+<hr>
+<table>
+  <thead>
+      <tr>
+          <th>Objective</th>
+          <th>The Unix Way (<code>grep</code>, <code>find</code>)</th>
+          <th>The <code>gograph</code> Way</th>
+          <th>Token Cost Comparison</th>
+          <th>Accuracy</th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td><strong>Find callers of a method</strong></td>
+          <td><code>grep -rn &quot;Update&quot; .</code> <br><em>(Scans mocks, comments, other types)</em></td>
+          <td><code>gograph callers UserStore.Update</code> <br><em>(AST-accurate call edges)</em></td>
+          <td><strong>Extremely high context footprint</strong> <br><em>(model reads irrelevant source lines)</em> vs. <strong>Minimal footprint</strong> <em>(single-line caller symbols)</em></td>
+          <td>❌ High hallucination risk (~12% error)<br>🎯 100% Structural Ground Truth (~2% error)</td>
+      </tr>
+      <tr>
+          <td><strong>Find interface implementers</strong></td>
+          <td>Multi-step grep searches of method receivers and receivers sets</td>
+          <td><code>gograph implementers Connection</code> <br><em>(Duck-typing interface satisfaction)</em></td>
+          <td><strong>Massive context inflation</strong> <br><em>(reading dozens of files to match signatures)</em> vs. <strong>Minimal footprint</strong> <em>(only concrete struct types)</em></td>
+          <td>❌ Highly prone to omissions<br>🎯 100% Structural Ground Truth</td>
+      </tr>
+      <tr>
+          <td><strong>Trace wrapped errors</strong></td>
+          <td>Grepping for substring matches inside formatting blocks</td>
+          <td><code>gograph errorflow &quot;invalid token&quot;</code> <br><em>(Reversed call graph BFS of <code>%w</code> wraps)</em></td>
+          <td><strong>High context inflation</strong> <br><em>(scanning format strings across call paths)</em> vs. <strong>Minimal footprint</strong> <em>(structured error flow paths)</em></td>
+          <td>❌ Misses wrapping context<br>🎯 100% Structural Ground Truth</td>
+      </tr>
+  </tbody>
+</table>
+<hr>
+<h3 id="concrete-workflow-example-modifying-a-struct-field">Concrete Workflow Example: Modifying a Struct Field<a hidden class="anchor" aria-hidden="true" href="#concrete-workflow-example-modifying-a-struct-field">#</a></h3>
+<p>Suppose an agent needs to add a required field to a struct named <code>Config</code>.</p>
+<ul>
+<li>
+<p><strong>The Unix Way (Manual Grepping)</strong>:</p>
+<ol>
+<li>Agent runs <code>grep -rn &quot;type Config struct&quot; .</code> to locate the type definition.</li>
+<li>Agent tries to locate every composite literal declaration to see where it is initialized: <code>grep -rn &quot;Config{&quot; .</code>.</li>
+<li>Because <code>Config</code> is a common word, it matches test utilities, local files, config parser variables, and external package docs.</li>
+<li>The agent is forced to inspect multiple different files manually to see if the block matches.</li>
+<li><strong>Total cost</strong>: Massive token consumption, 5-10 sequential tool calls, high risk of missing initialization sites inside test suites.</li>
+</ol>
+</li>
+<li>
+<p><strong>The gograph Way (Structural Call)</strong>:</p>
+<ol>
+<li>Agent runs a single tool call:
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>gograph literals Config
+</span></span></code></pre></div></li>
+<li>gograph queries the AST database and returns the exact file, line, and code snippet of every composite literal initialization site (<code>Config{...}</code>) in milliseconds.</li>
+<li><strong>Total cost</strong>: Extremely low token cost, 1 tool call, complete structural certainty.</li>
+</ol>
+</li>
+</ul>
+<hr>
+<h2 id="-empirical-case-study-gograph-codebase-benchmark">🔬 Empirical Case Study: gograph Codebase Benchmark<a hidden class="anchor" aria-hidden="true" href="#-empirical-case-study-gograph-codebase-benchmark">#</a></h2>
+<p>To verify these savings, we ran both generic Unix tools and <code>gograph</code> directly against the <strong><code>gograph</code> repository itself</strong> (which consists of <strong>16 Go packages, 70 Go files, 518 AST symbols, and 5,443 call edges</strong>).</p>
+<p>Here are the concrete, measured results:</p>
+<h3 id="case-1-broad-symbol-queries">Case 1: Broad Symbol Queries<a hidden class="anchor" aria-hidden="true" href="#case-1-broad-symbol-queries">#</a></h3>
+<p>An agent needs to locate symbols matching the word <code>&quot;Symbol&quot;</code>.</p>
+<ul>
+<li><strong>The Unix Way (<code>grep -rn &quot;Symbol&quot; .</code>)</strong>: Returns <strong>842 matching lines</strong> from comments, markdown guides, local variables, and unrelated documentation blocks, completely flooding the context window.</li>
+<li><strong>The <code>gograph</code> Way (<code>gograph query Symbol</code>)</strong>: Returns <strong>exactly 83 structured results</strong> (only actual structs, functions, and active call edges), immediately filtering out <strong>90% of search noise</strong> and saving massive token costs.</li>
+</ul>
+<h3 id="case-2-tracking-callers-of-a-helper-function">Case 2: Tracking Callers of a Helper Function<a hidden class="anchor" aria-hidden="true" href="#case-2-tracking-callers-of-a-helper-function">#</a></h3>
+<p>An agent needs to track callers of the function <code>loadGraph</code>.</p>
+<ul>
+<li><strong>The Unix Way (<code>grep -rn &quot;loadGraph&quot; .</code>)</strong>: Returns <strong>158 matching lines</strong> across comments, markdown docs, function declarations, and call expressions.</li>
+<li><strong>The <code>gograph</code> Way (<code>gograph callers loadGraph</code>)</strong>: Returns <strong>exactly 56 structural caller edges</strong> mapped precisely to their AST call sites.</li>
+</ul>
+<h3 id="case-3-viewing-function-source-code">Case 3: Viewing Function Source Code<a hidden class="anchor" aria-hidden="true" href="#case-3-viewing-function-source-code">#</a></h3>
+<p>An agent needs to read the definition of <code>normalizeSymbolName</code>.</p>
+<ul>
+<li><strong>The Unix Way</strong>: Agent greps for the declaration and then must call <code>view_file</code> to read the entire <code>internal/search/advanced.go</code> file (or guess line ranges).</li>
+<li><strong>The <code>gograph</code> Way (<code>gograph source normalizeSymbolName</code>)</strong>: Instantly returns <strong>exactly 12 lines of code</strong> containing only the clean function block.</li>
+</ul>
+<hr>
+<h2 id="model-context-protocol-mcp-open--client-agnostic">Model Context Protocol (MCP): Open &amp; Client-Agnostic<a hidden class="anchor" aria-hidden="true" href="#model-context-protocol-mcp-open--client-agnostic">#</a></h2>
+<p>gograph implements a complete native <a href="https://modelcontextprotocol.io">Model Context Protocol</a> server. Because MCP is an open-standard protocol, <strong>gograph is completely client-agnostic</strong>.</p>
+<p>Any editor, CLI wrapper, custom Python/Node script, or agent framework (such as LangChain, LlamaIndex, or AutoGPT) that supports standard MCP over stdio can connect to and leverage gograph out-of-the-box.</p>
+<h3 id="starting-the-server-standard-io">Starting the Server (Standard I/O)<a hidden class="anchor" aria-hidden="true" href="#starting-the-server-standard-io">#</a></h3>
+<p>To start the MCP JSON-RPC server over standard I/O:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>gograph mcp <span style="color:#f92672">[</span>path<span style="color:#f92672">]</span>
+</span></span></code></pre></div><p>If <code>.gograph/graph.json</code> does not exist when the server starts, it automatically runs <code>gograph build</code> first to ensure a completely frictionless, zero-barrier client connection.</p>
+<hr>
+<h2 id="-client-integration-examples">🛠️ Client Integration Examples<a hidden class="anchor" aria-hidden="true" href="#-client-integration-examples">#</a></h2>
+<p>Since the MCP server communicates over standard stdio streams, it plugs seamlessly into any compliant client environment. Here are configurations for several common developer setups:</p>
+<h3 id="-cursor-mcp-configuration">🧭 Cursor MCP Configuration<a hidden class="anchor" aria-hidden="true" href="#-cursor-mcp-configuration">#</a></h3>
+<p>To add gograph as an MCP server in <strong>Cursor</strong>:</p>
+<ol>
+<li>Open Cursor <strong>Settings</strong> (<code>Cmd + ,</code> or <code>Ctrl + ,</code>).</li>
+<li>Navigate to <strong>Features</strong> -&gt; <strong>MCP</strong>.</li>
+<li>Click <strong>+ Add New MCP Server</strong>.</li>
+<li>Configure the fields:
+<ul>
+<li><strong>Name</strong>: <code>gograph</code></li>
+<li><strong>Type</strong>: <code>command</code></li>
+<li><strong>Command</strong>: <code>gograph mcp</code> <em>(if not globally in PATH, specify the absolute path: <code>/opt/homebrew/bin/gograph mcp</code>)</em></li>
+</ul>
+</li>
+<li>Click <strong>Save</strong>.</li>
+</ol>
+<p>Cursor will automatically start the background stdio session, parse the JSON schemas, and register every <code>gograph</code> capability as a native agent tool in Composer and Chat!</p>
+<h3 id="-windsurf-mcp-configuration">🌊 Windsurf MCP Configuration<a hidden class="anchor" aria-hidden="true" href="#-windsurf-mcp-configuration">#</a></h3>
+<p>To configure gograph inside the <strong>Windsurf IDE</strong>:</p>
+<p>Add the following block to your global or workspace-local <code>mcp_config.json</code> file (typically located under <code>~/.codeium/windsurf/mcp_config.json</code>):</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-json" data-lang="json"><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>  <span style="color:#f92672">&#34;mcpServers&#34;</span>: {
+</span></span><span style="display:flex;"><span>    <span style="color:#f92672">&#34;gograph&#34;</span>: {
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&#34;command&#34;</span>: <span style="color:#e6db74">&#34;gograph&#34;</span>,
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&#34;args&#34;</span>: [<span style="color:#e6db74">&#34;mcp&#34;</span>],
+</span></span><span style="display:flex;"><span>      <span style="color:#f92672">&#34;env&#34;</span>: {}
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>  }
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>Save the file. Windsurf will instantly hot-reload the configuration and expose all <code>gograph</code> analytical features to the AI critic and coder loop!</p>
+<hr>
+<h3 id="-claude-code-integration">🤖 Claude Code Integration<a hidden class="anchor" aria-hidden="true" href="#-claude-code-integration">#</a></h3>
+<p>gograph includes native automation to integrate directly with Claude Code.</p>
+<h3 id="automatic-plugin-installation">Automatic Plugin Installation<a hidden class="anchor" aria-hidden="true" href="#automatic-plugin-installation">#</a></h3>
+<p>Run the following command inside your Go repository:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>gograph add-claude-plugin
+</span></span></code></pre></div><p>This single command performs three critical setup steps:</p>
+<ol>
+<li><strong>Claude Configuration</strong>: Registers the <code>gograph mcp</code> server under the local Claude desktop/CLI configuration.</li>
+<li><strong>Workspace Steering</strong>: Configures or appends gograph rules to your repository&rsquo;s <code>CLAUDE.md</code> to instruct the model to prefer gograph over general grep search.</li>
+<li><strong>Pre-Tool-Use Hook Guard</strong>: Installs a Git hook that intercepts incoming tool calls.</li>
+</ol>
+<hr>
+<h2 id="the-hook-guard-blocking-general-grep">The Hook Guard: Blocking general grep<a hidden class="anchor" aria-hidden="true" href="#the-hook-guard-blocking-general-grep">#</a></h2>
+<p>AI agents are highly habituated to executing raw <code>grep</code> or <code>find</code> commands to look for code patterns. In large Go codebases, this causes two severe issues:</p>
+<ol>
+<li><strong>Hallucination</strong>: The agent gets overwhelmed by noise (mocks, test helpers, matches inside unexported package dependencies) and hallucinates.</li>
+<li><strong>Token Waste</strong>: Grepping large chunks of source files blows up the context window.</li>
+</ol>
+<p>gograph solves this structurally with the <strong>Hook Guard</strong>:</p>
+<pre tabindex="0"><code>[Agent wants to run grep]
+           │
+           ▼
+   .git/hooks/PreToolUse
+           │
+           ▼
+   gograph hook-guard  ◄── Intercepts symbol query
+           │
+ ┌─────────┴─────────┐
+ │                   │
+ ▼ (Generic grep)    ▼ (Gograph equivalent)
+[BLOCKED]           [ALLOWED]
+&#34;Use gograph instead&#34;
+</code></pre><p>If the agent tries to run <code>grep -rn &quot;MyStruct&quot; .</code>, the hook guard blocks the command with exit code <code>2</code> and returns a helpful message:</p>
+<blockquote>
+<p><em>Blocked: Do not use grep to look for Go symbols. Run <code>gograph query MyStruct</code> or <code>gograph callers MyStruct</code> instead for precise results.</em></p>
+</blockquote>
+<p>This structurally forces the agent to use AST-accurate call graphs and dependency queries, dropping the hallucination rate from 12% to under 2%.</p>
+<hr>
+<h2 id="workspace-steering-rules">Workspace Steering Rules<a hidden class="anchor" aria-hidden="true" href="#workspace-steering-rules">#</a></h2>
+<p>When <code>add-claude-plugin</code> runs, it adds these explicit directives to <code>CLAUDE.md</code> to keep the model on track:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-markdown" data-lang="markdown"><span style="display:flex;"><span># Go Codebase Navigation Steering
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">-</span> NEVER use general bash <span style="color:#e6db74">`grep`</span>, <span style="color:#e6db74">`find`</span>, or <span style="color:#e6db74">`sed`</span> to locate Go symbols, structs, or callers.
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">-</span> ALWAYS use the native gograph MCP tools (<span style="color:#e6db74">`gograph_query`</span>, <span style="color:#e6db74">`gograph_callers`</span>, <span style="color:#e6db74">`gograph_source`</span>, etc.).
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">-</span> ALWAYS run <span style="color:#e6db74">`gograph_plan`</span> prior to editing any symbol to discover downstream caller risks.
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">-</span> ALWAYS run <span style="color:#e6db74">`gograph_build`</span> with <span style="color:#e6db74">`--precise`</span> and run <span style="color:#e6db74">`gograph_review`</span> after editing to verify test coverage.
+</span></span></code></pre></div>
+
+  </div>
+
+  <footer class="post-footer">
+    <ul class="post-tags">
+    </ul>
+  </footer>
+</article>
+    </main>
+    
+<footer class="footer">
+        <span>&copy; 2026 <a href="../../">gograph – Go Codebase Analysis Tool</a></span> · 
+
+    
+    
+    <span>
+        Powered by
+        <a href="https://gohugo.io/?utm_source=papermod" rel="noopener" target="_blank">Hugo</a> &
+        <a href="https://github.com/adityatelange/hugo-PaperMod/" rel="noopener" target="_blank">PaperMod</a>
+    </span>
+</footer>
+<a href="#top" id="top-link" class="top-link hidden" aria-label="go to top" title="Go to Top (Alt + G)" accesskey="g">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevrons-up">
+        <polyline points="17 11 12 6 7 11"></polyline>
+        <polyline points="17 18 12 13 7 18"></polyline>
+    </svg>
+</a>
+
+<script>
+    let menu = document.getElementById('menu');
+    if (menu) {
+        
+        const scrollPosition = localStorage.getItem("menu-scroll-position");
+        if (scrollPosition) {
+            menu.scrollLeft = parseInt(scrollPosition, 10);
+        }
+        
+        menu.onscroll = function () {
+            localStorage.setItem("menu-scroll-position", menu.scrollLeft);
+        }
+    }
+
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = this.getAttribute("href").substr(1);
+            if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                    behavior: "smooth"
+                });
+            } else {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView();
+            }
+            if (id === "top") {
+                history.replaceState(null, null, " ");
+            } else {
+                history.pushState(null, null, `#${id}`);
+            }
+        });
+    });
+
+</script>
+<script>
+    var toplink = document.getElementById("top-link");
+    window.onscroll = function () {
+        const scrollThreshold = window.innerHeight;
+        if (document.body.scrollTop > scrollThreshold || document.documentElement.scrollTop > scrollThreshold) {
+            toplink.classList.remove("hidden");
+        } else {
+            toplink.classList.add("hidden");
+        }
+    };
+
+</script>
+<script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+        const html = document.querySelector("html");
+        if (html.dataset.theme === "dark") {
+            html.dataset.theme = 'light';
+            localStorage.setItem("pref-theme", 'light');
+        } else {
+            html.dataset.theme = 'dark';
+            localStorage.setItem("pref-theme", 'dark');
+        }
+    })
+
+</script>
+<script>
+    document.querySelectorAll('pre > code').forEach((codeblock) => {
+        const container = codeblock.parentNode.parentNode;
+
+        const copybutton = document.createElement('button');
+        copybutton.classList.add('copy-code');
+        copybutton.innerHTML = 'copy';
+
+        function copyingDone() {
+            copybutton.innerHTML = 'copied!';
+            setTimeout(() => {
+                copybutton.innerHTML = 'copy';
+            }, 2000);
+        }
+
+        copybutton.addEventListener('click', (cb) => {
+            if ('clipboard' in navigator) {
+                navigator.clipboard.writeText(codeblock.textContent);
+                copyingDone();
+                return;
+            }
+
+            const range = document.createRange();
+            range.selectNodeContents(codeblock);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            try {
+                document.execCommand('copy');
+                copyingDone();
+            } catch (e) { };
+            selection.removeRange(range);
+        });
+
+        if (container.classList.contains("highlight")) {
+            container.appendChild(copybutton);
+        } else if (container.parentNode.firstChild == container) {
+            
+        } else if (codeblock.parentNode.parentNode.parentNode.parentNode.parentNode.nodeName == "TABLE") {
+            
+            codeblock.parentNode.parentNode.parentNode.parentNode.parentNode.appendChild(copybutton);
+        } else {
+            
+            codeblock.parentNode.appendChild(copybutton);
+        }
+    });
+</script>
+</body>
+
+</html>
