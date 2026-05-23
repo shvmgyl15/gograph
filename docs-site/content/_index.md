@@ -100,3 +100,4 @@ Standard tooling — `grep`, `find`, language servers — answer file-level ques
 - Is this function **reachable** from any entry point, or is it dead code?
 
 These questions require a full in-memory call graph. gograph builds that graph and lets you query it directly from the terminal or from an AI agent via MCP.
+
