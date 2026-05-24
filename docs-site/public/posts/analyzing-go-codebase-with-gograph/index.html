@@ -1,24 +1,24 @@
 <!DOCTYPE html>
 <html lang="en" dir="auto" data-theme="auto">
 
-<head><meta charset="utf-8">
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script><meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<meta name="robots" content="index, follow">
+<meta name="robots" content="noindex, nofollow">
 <title>Analyzing a Go Codebase with gograph — Starting with Itself | gograph – Go Codebase Analysis Tool</title>
 <meta name="keywords" content="golang, go, call-graph, static-analysis, developer-tools, llm-tokens, mcp-server">
 <meta name="description" content="A deep-dive technical case study running gograph&#39;s static analysis engine on its own codebase. Discover how structural call-graph intelligence eliminates LLM token waste, tracks precise blast radii, and out-performs standard grep.">
 <meta name="author" content="Ozgur Demir">
-<link rel="canonical" href="../../posts/analyzing-go-codebase-with-gograph/">
+<link rel="canonical" href="//localhost:1313/posts/analyzing-go-codebase-with-gograph/">
 <link crossorigin="anonymous" href="../../assets/css/stylesheet.cd9298b33628769aa1bc1acebbbfd7aa11ce81dfe03484d479e1907760249a1d.css" integrity="sha256-zZKYszYodpqhvBrOu7/XqhHOgd/gNITUeeGQd2Akmh0=" rel="preload stylesheet" as="style">
-<link rel="icon" href="../../favicon.ico">
-<link rel="icon" type="image/png" sizes="16x16" href="../../favicon-16x16.png">
-<link rel="icon" type="image/png" sizes="32x32" href="../../favicon-32x32.png">
-<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
-<link rel="mask-icon" href="../../safari-pinned-tab.svg">
+<link rel="icon" href="//localhost:1313/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="//localhost:1313/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="//localhost:1313/favicon-32x32.png">
+<link rel="apple-touch-icon" href="//localhost:1313/apple-touch-icon.png">
+<link rel="mask-icon" href="//localhost:1313/safari-pinned-tab.svg">
 <meta name="theme-color" content="#2e2e33">
 <meta name="msapplication-TileColor" content="#2e2e33">
-<link rel="alternate" hreflang="en" href="../../posts/analyzing-go-codebase-with-gograph/">
+<link rel="alternate" hreflang="en" href="//localhost:1313/posts/analyzing-go-codebase-with-gograph/">
 <noscript>
     <style>
         #theme-toggle,
@@ -64,86 +64,13 @@
         document.querySelector("html").dataset.theme = 'light';
     }
 
-</script><meta property="og:url" content="/posts/analyzing-go-codebase-with-gograph/">
-  <meta property="og:site_name" content="gograph – Go Codebase Analysis Tool">
-  <meta property="og:title" content="Analyzing a Go Codebase with gograph — Starting with Itself">
-  <meta property="og:description" content="A deep-dive technical case study running gograph&#39;s static analysis engine on its own codebase. Discover how structural call-graph intelligence eliminates LLM token waste, tracks precise blast radii, and out-performs standard grep.">
-  <meta property="og:locale" content="en_us">
-  <meta property="og:type" content="article">
-    <meta property="article:section" content="posts">
-    <meta property="article:published_time" content="2026-05-23T00:00:00+00:00">
-    <meta property="article:modified_time" content="2026-05-23T00:00:00+00:00">
-    <meta property="article:tag" content="Golang">
-    <meta property="article:tag" content="Go">
-    <meta property="article:tag" content="Call-Graph">
-    <meta property="article:tag" content="Static-Analysis">
-    <meta property="article:tag" content="Developer-Tools">
-    <meta property="article:tag" content="Llm-Tokens">
-
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Analyzing a Go Codebase with gograph — Starting with Itself">
-  <meta name="twitter:description" content="A deep-dive technical case study running gograph&#39;s static analysis engine on its own codebase. Discover how structural call-graph intelligence eliminates LLM token waste, tracks precise blast radii, and out-performs standard grep.">
-
-
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position":  1 ,
-      "name": "Posts",
-      "item": "/posts/"
-    }
-    {
-      "@type": "ListItem",
-      "position":  1 ,
-      "name": "Analyzing a Go Codebase with gograph — Starting with Itself",
-      "item": "/posts/analyzing-go-codebase-with-gograph/"
-    }
-  ]
-}
-</script>
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BlogPosting",
-  "headline": "Analyzing a Go Codebase with gograph — Starting with Itself",
-  "name": "Analyzing a Go Codebase with gograph — Starting with Itself",
-  "description": "A deep-dive technical case study running gograph's static analysis engine on its own codebase. Discover how structural call-graph intelligence eliminates LLM token waste, tracks precise blast radii, and out-performs standard grep.",
-  "keywords": [
-    "golang", "go", "call-graph", "static-analysis", "developer-tools", "llm-tokens", "mcp-server"
-  ],
-  "articleBody": "1. The Static Context Dilemma in AI-Assisted Engineering Modern software engineering is increasingly co-authored by AI coding agents. However, developers face a systemic bottleneck: LLM Context Window Bloat and Hallucinations.\nWhen an agent needs to understand how a function is used, it typically defaults to one of two inefficient strategies:\nPrimitive Textual Grep: Running broad text searches that flood the context window with comments, test mocks, markdown references, and unrelated matches. Whole-File Dumps: Feeding entire raw source files to the LLM, burning thousands of tokens, increasing processing latency, and inducing model hallucinations. gograph was built to solve this. By constructing a localized, persistent Abstract Syntax Tree (AST) call graph, it equips both developers and AI agents with precise structural awareness. Rather than guessing, gograph allows queries like “find the exact callers of this method” or “extract only this function’s source code block” in milliseconds.\nTo demonstrate this structural intelligence in action, we ran gograph against its own Go codebase. The results reveal how a 70-file codebase resolves into a clean, queryable mathematical graph—and why static call-graph mapping is a major leap forward from simple string matching.\n2. The Test Subject: gograph Analyzing Itself We ran the indexer from the root of the gograph repository:\ngograph build . --precise The indexing completed in 350ms, producing a compact .gograph/graph.json snapshot:\nfound 70 Go files to parse packages: 16 files: 70 symbols: 518 calls: 5443 Within a third of a second, gograph successfully parsed 16 Go packages and mapped 518 distinct AST symbols (functions, struct types, interfaces, and methods) interconnected by 5,443 individual call edges.\nHere is how the structural layers of gograph coordinate under the hood:\n┌─────────────────────────────────────────────────────────────┐ │ gograph COMPILER │ └──────────────────────────────┬──────────────────────────────┘ │ 1. Parse ▼ ┌─────────────────────────────────────────────────────────────┐ │ Go Source Code │ └──────────────────────────────┬──────────────────────────────┘ │ 2. Scan ▼ ┌─────────────────────────────────────────────────────────────┐ │ AST Scanner \u0026 Parser │ └──────────────────────────────┬──────────────────────────────┘ │ ├──────────────────────────────┐ CHA Path (Precise) Fast-Path │ ▼ ▼ ┌─────────────────────────────────────────────────────────────┐ │ precise.TypeResolver │ └──────────────────────────────┬──────────────────────────────┘ │ ▼ ┌─────────────────────────────────────────────────────────────┐ │ graph.Compiler │ └──────────────────────────────┬──────────────────────────────┘ │ ▼ ┌─────────────────────────────────────────────────────────────┐ │ .gograph/graph.json │ └──────────────────────────────┬──────────────────────────────┘ │ ┌──────────────────────┴──────────────────────┐ ▼ ▼ ┌───────────────┐ ┌───────────────┐ │ CLI Tools │ │ MCP Server │ └───────────────┘ └───────┬───────┘ │ ▼ stdio ┌───────────────┐ │ AI Agents │ └───────────────┘ 3. Comparative Benchmark: Structural Intelligence vs. Primitive Grep To prove the tangible token savings and precision, we benchmarked standard Unix grep against gograph queries on the repository itself.\nObjective Primitive tool (grep / ripgrep) gograph Engine Token Reduction / Noise Reduction Track callers of loadGraph grep -rn \"loadGraph\" . 158 matching lines across comments, markdown docs, imports, and variables. gograph callers loadGraph Exactly 56 structural call sites mapped with file names and line numbers. Massive Noise Reduction Mapped only true structural callers, removing documentation and comments. Locate structural definitions grep -rn \"Symbol\" . 842 matching lines (highly noisy; catches every variable and type containing “Symbol”). gograph query Symbol Exactly 83 structured symbols matching type definitions and method declarations. Significant Noise Reduction Excluded variable assignments, string logs, and noise. Extract target code block cat internal/precise/normalize.go 180+ lines of the entire file dumped into the LLM context. gograph source normalizeSymbolName Exactly 12 lines of code returning only the isolated helper function. Significant Token Savings Served only the 12-line helper function instead of the full 180+ line file. 4. Deep-Dive: Core Commands \u0026 Real-World Codebase Insights Running gograph on itself surfaced structural dependencies and architectural properties that are completely hidden to a simple file viewer.\n4.1 Structural Blast Centers (gograph hotspot) We queried the most highly-coupled nodes in the graph to find where our highest maintenance risk lay:\ngograph hotspot --top 5 Rank Calls Symbol Name Source File ----------------------------------------------------------------- 1. 132 formatResults internal/mcp/server.go 2. 116 PrintJSON internal/cli/output.go 3. 112 loadGraph internal/cli/cli.go 4. 68 printResults internal/cli/cli.go 5. 66 sortResults internal/search/search.go Architectural Insight: Three of the top five hotspots are output-formatting utilities. In a CLI-first and MCP-first utility, the presentation layer acts as the primary “blast center.” Any change to the formatting signatures (formatResults or PrintJSON) carries a wide blast radius across nearly every command handler in the codebase.\n4.2 Tracking the Dependency Trail (gograph callers) We traced who invokes our core graph deserializer loadGraph to verify state management:\ngograph callers loadGraph The call graph mapped that loadGraph is called from:\nThe main CLI command execution router. The rebuild closure inside the MCP Server (internal/mcp/server.go). The repository snapshot baseline engine (internal/cli/baseline.go). Interestingly, NewServer in the MCP layer invokes rebuild across 25 different tool handlers. This proves that the MCP server operates as a long-lived state container, reloading the serialized graph directly from memory on every tool execution to ensure active code edits are immediately parsed.\n4.3 Auditing Unused Code (gograph orphans) We checked for dead, unreachable, or unexported methods that are safe to delete:\ngograph orphans No unreachable symbols found. Insight: Every exported and unexported symbol in the 70-file codebase has at least one active call edge or is registered as an entry-point router. This indicates a highly-pruned codebase with zero dead-weight structures.\n4.4 Calculating Refactor Impact (gograph plan) Before making a modification to internal/parser/ast.go, we evaluated the exact downstream impact:\ngograph plan ParseFile Change plan for ParseFile (internal/parser/ast.go) =================================================== [DIRECT IMPACT] - ParseDirectory (internal/parser/dir.go:42) - TestParser_Suite (internal/parser/parser_test.go:12) [TRANSITIVE IMPACT - LEVEL 2] - Build (internal/graph/builder.go:88) [TRANSITIVE IMPACT - LEVEL 3] - rebuild (internal/mcp/server.go:211) - Execute (internal/cli/build.go:34) Within milliseconds, the engine calculates the transitive closure of the call graph up to 3 levels deep. If we change the signature of ParseFile, we immediately know we must audit the MCP server’s rebuild function and the CLI Execute router.\n4.5 Tracing Error Flow Boundaries (gograph errorflow) One of the most complex tasks for an engineer (or AI agent) is tracking how an error propagates or where a specific error is wrapped and returned.\nFor instance, if we want to trace the origins and handling sites of an \"invalid arguments\" error inside gograph:\ngograph errorflow \"invalid arguments\" The output instantly isolates every single return, wrap, or check site for that error boundary:\nErrorFlow Report for \"invalid arguments\" ================================================== 2. Return / Wrap / Check Sites: - NewServer (internal/mcp/server.go:156) -\u003e error message: invalid arguments - NewServer (internal/mcp/server.go:177) -\u003e error message: invalid arguments ... - initNewTools (internal/mcp/server.go:1013) -\u003e error message: invalid arguments Why this is a major Token Saver: Reconstructing this error boundary map using textual searches (grep -rn \"invalid arguments\" .) returns a noisy deluge of logs, imports, test mock validations, and markdown strings. gograph uses structural AST matching to map only true functional error returns in less than 10ms, cutting out context window clutter entirely.\n4.6 Generating Architectural Narratives (gograph explain) Before editing or refactoring a symbol, we can ask gograph to synthesize its entire structural role and relationship to the rest of the codebase in a single line-optimized block:\ngograph explain normalizeSymbolName The output instantly prints:\n=== EXPLAIN: github.com/ozgurcd/gograph/internal/search::normalizeSymbolName === normalizeSymbolName is a function in package search (internal/search/advanced.go:12). It is called by 4 production caller(s). It delegates to 4 callee(s). Cyclomatic complexity: 3 (LOW). No direct test coverage. ARCHITECTURAL ROLE: Internal Utility. Token \u0026 Cognitive Savings: Re-compiling this narrative manually requires opening advanced.go, reading the function’s scope, scanning the package structure, counting external caller references with grep, and calculating McCabe Cyclomatic complexity. That process consumes hundreds of lines of file text. gograph serves the exact synthesized structural role in 6 lines of clean text.\n5. AI Agent Context Gating: Drastic Reductions in Token Usage The biggest leap in developer experience occurs when connecting gograph directly to an AI agent (such as Claude Code, OpenCode, Cursor, Windsurf, or Google Antigravity) via the Model Context Protocol (MCP).\nWhen an agent needs to locate a bug or draft a feature:\nIt queries the gograph mcp server over standard I/O. Rather than downloading or scanning the whole repository, the agent receives a highly pruned structural layout containing only the exact call chain, hotspots, and dependencies. The context window remains clean, pristine, and target-focused. Production Swarm Evaluation In production evaluations simulating specialized swarms of 35 concurrent Claude Code agents working on Go codebases with 80+ active HTTP endpoints:\nBaseline (Standard Grep/File Scans): The average hallucination rate (where agents guessed field names or method signatures) was ~12% due to noisy context windows. Enabled (gograph AST Mappings): By serving deterministic call boundaries and precise field definitions, the hallucination rate dropped down to ~2%. Context Savings: Mapped call paths resulted in significant reductions in token usage, dramatically lowering prompt costs and reducing response latency. 6. Try it Today 6.1 Installation Install the static analysis utility using Homebrew:\nbrew install ozgurcd/tap/gograph Alternatively, install directly from source:\ngo install github.com/ozgurcd/gograph@latest 6.2 Running an Analysis Initialize the graph repository and query your structures:\n# 1. Build the call graph (runs concurrent AST parser) gograph build . # 2. Find structural bottlenecks gograph hotspot --top 10 # 3. Mapped exact callers for any symbol gograph callers YourFunctionName # 4. View isolated source blocks without opening the file gograph source YourFunctionName 6.3 Continuous Integration To enforce structural integrity and prevent dead code, integrate gograph directly in your pre-commit hooks or GitHub Actions:\n- name: Run gograph structural gate run: | gograph build . --precise gograph gate --max-complexity 30 --max-coupling 15 By transitioning from primitive text matching to compile-grade AST call-graph awareness, gograph brings deterministic codebase navigation back to developers and AI agents alike.\n",
-  "wordCount" : "1529",
-  "inLanguage": "en",
-  "datePublished": "2026-05-23T00:00:00Z",
-  "dateModified": "2026-05-23T00:00:00Z",
-  "author":{
-    "@type": "Person",
-    "name": "Ozgur Demir"
-  },
-  "mainEntityOfPage": {
-    "@type": "WebPage",
-    "@id": "/posts/analyzing-go-codebase-with-gograph/"
-  },
-  "publisher": {
-    "@type": "Person",
-    "name": "gograph – Go Codebase Analysis Tool",
-    "logo": {
-      "@type": "ImageObject",
-      "url": "/favicon.ico"
-    }
-  }
-}
 </script>
 </head>
 <body id="top">
     <header class="header">
     <nav class="header-nav">
         <div class="logo">
-            <a href="../../" accesskey="h" title="gograph – Go Codebase Analysis Tool (Alt + H)">gograph – Go Codebase Analysis Tool</a>
+            <a href="//localhost:1313/" accesskey="h" title="gograph – Go Codebase Analysis Tool (Alt + H)">gograph – Go Codebase Analysis Tool</a>
             <div class="logo-switches">
                 <button id="theme-toggle" class="theme-toggle" accesskey="t" title="(Alt + T)" aria-label="Toggle theme">
                     <svg class="moon" xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24"
@@ -169,27 +96,27 @@
         </div>
         <ul id="menu" class="menu">
             <li>
-                <a href="../../docs/getting-started/" title="Get Started">
+                <a href="//localhost:1313/docs/getting-started/" title="Get Started">
                     <span>Get Started</span>
                 </a>
             </li>
             <li>
-                <a href="../../docs/command-reference/" title="Commands">
+                <a href="//localhost:1313/docs/command-reference/" title="Commands">
                     <span>Commands</span>
                 </a>
             </li>
             <li>
-                <a href="../../docs/agent-integration/" title="AI Integration">
+                <a href="//localhost:1313/docs/agent-integration/" title="AI Integration">
                     <span>AI Integration</span>
                 </a>
             </li>
             <li>
-                <a href="../../docs/workflows/" title="Workflows">
+                <a href="//localhost:1313/docs/workflows/" title="Workflows">
                     <span>Workflows</span>
                 </a>
             </li>
             <li>
-                <a href="../../posts/" title="Blog">
+                <a href="//localhost:1313/posts/" title="Blog">
                     <span>Blog</span>
                 </a>
             </li>
@@ -496,20 +423,20 @@
 
   <footer class="post-footer">
     <ul class="post-tags">
-      <li><a href="../../tags/golang/">Golang</a></li>
-      <li><a href="../../tags/go/">Go</a></li>
-      <li><a href="../../tags/call-graph/">Call-Graph</a></li>
-      <li><a href="../../tags/static-analysis/">Static-Analysis</a></li>
-      <li><a href="../../tags/developer-tools/">Developer-Tools</a></li>
-      <li><a href="../../tags/llm-tokens/">Llm-Tokens</a></li>
-      <li><a href="../../tags/mcp-server/">Mcp-Server</a></li>
+      <li><a href="//localhost:1313/tags/golang/">Golang</a></li>
+      <li><a href="//localhost:1313/tags/go/">Go</a></li>
+      <li><a href="//localhost:1313/tags/call-graph/">Call-Graph</a></li>
+      <li><a href="//localhost:1313/tags/static-analysis/">Static-Analysis</a></li>
+      <li><a href="//localhost:1313/tags/developer-tools/">Developer-Tools</a></li>
+      <li><a href="//localhost:1313/tags/llm-tokens/">Llm-Tokens</a></li>
+      <li><a href="//localhost:1313/tags/mcp-server/">Mcp-Server</a></li>
     </ul>
   </footer>
 </article>
     </main>
     
 <footer class="footer">
-        <span>&copy; 2026 <a href="../../">gograph – Go Codebase Analysis Tool</a></span> · 
+        <span>&copy; 2026 <a href="//localhost:1313/">gograph – Go Codebase Analysis Tool</a></span> · 
 
     
     
