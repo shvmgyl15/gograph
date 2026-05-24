@@ -169,14 +169,14 @@
     </h2>
   </header>
   <div class="entry-content">
-    <p>Why analyze gograph with gograph? The fastest way to understand what a Go codebase analysis tool actually reveals is to point it at something you already know well. So I ran gograph on its own source code.
-The numbers came back immediately:
-found 70 Go files to parse packages: 16 files: 70 symbols: 518 calls: 5443 518 symbols. 5443 calls. Indexed in under a second. Here is what the call graph actually showed.
+    <p>1. The Static Context Dilemma in AI-Assisted Engineering Modern software engineering is increasingly co-authored by AI coding agents. However, developers face a systemic bottleneck: LLM Context Window Bloat and Hallucinations.
+When an agent needs to understand how a function is used, it typically defaults to one of two inefficient strategies:
+Primitive Textual Grep: Running broad text searches that flood the context window with comments, test mocks, markdown references, and unrelated matches. Whole-File Dumps: Feeding entire raw source files to the LLM, burning thousands of tokens, increasing processing latency, and inducing model hallucinations. gograph was built to solve this. By constructing a localized, persistent Abstract Syntax Tree (AST) call graph, it equips both developers and AI agents with precise structural awareness. Rather than guessing, gograph allows queries like “find the exact callers of this method” or “extract only this function’s source code block” in milliseconds.
 ...</p>
   </div>
   <footer class="entry-footer">
 
-<span title='2026-05-23 00:00:00 +0000 UTC'>May 23, 2026</span>&nbsp;·&nbsp;<span>3 min</span>&nbsp;·&nbsp;<span>Ozgur Demir</span></footer>
+<span title='2026-05-23 00:00:00 +0000 UTC'>May 23, 2026</span>&nbsp;·&nbsp;<span>8 min</span>&nbsp;·&nbsp;<span>Ozgur Demir</span></footer>
   <a class="entry-link" aria-label="post link to Analyzing a Go Codebase with gograph — Starting with Itself" href="../../posts/analyzing-go-codebase-with-gograph/"></a>
 </article>
     </main>

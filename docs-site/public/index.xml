@@ -41,7 +41,7 @@
       <link>/posts/analyzing-go-codebase-with-gograph/</link>
       <pubDate>Sat, 23 May 2026 00:00:00 +0000</pubDate>
       <guid>/posts/analyzing-go-codebase-with-gograph/</guid>
-      <description>What happens when you run a Go call graph analysis tool on its own source code? Real output, real insights.</description>
+      <description>A deep-dive technical case study running gograph&amp;#39;s static analysis engine on its own codebase. Discover how structural call-graph intelligence eliminates LLM token waste, tracks precise blast radii, and out-performs standard grep.</description>
     </item>
   </channel>
 </rss>
