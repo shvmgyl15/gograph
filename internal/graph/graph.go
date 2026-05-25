@@ -145,6 +145,13 @@ const (
 	KindInterface SymbolKind = "interface"
 	KindVar       SymbolKind = "var"
 	KindConst     SymbolKind = "const"
+	// KindType covers type declarations whose underlying type is neither a
+	// struct nor an interface: type aliases (type Foo = Bar), named
+	// primitives (type StatusCode int), function types
+	// (type HandlerFunc func(...)), channel/map/slice types, etc.
+	// Without this, those declarations were silently dropped from the
+	// symbol table and became invisible to query/node/public/usages.
+	KindType SymbolKind = "type"
 )
 
 // SymbolNode represents a named symbol (function, method, struct, interface).

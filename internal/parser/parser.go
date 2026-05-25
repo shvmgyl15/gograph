@@ -193,6 +193,58 @@ func extractGenDecl(fset *token.FileSet, d *ast.GenDecl, relPath, pkgName, pkgIm
 					}
 					result.Symbols = append(result.Symbols, sym)
 				}
+				// Walk package-level initializer expressions for call edges.
+				// `var x = compute()` and `var y = registry{handler: h.method}`
+				// both run at package load time (alongside init() functions);
+				// any functions they invoke or function values they capture
+				// are live, but without these edges the reachability BFS in
+				// search.ReachableOrphans never reaches them. Attribute the
+				// edges to a synthetic "init" caller — that name is seeded as
+				// a root in advanced.go so the chain is reached from a real
+				// entry point.
+				for _, v := range vs.Values {
+					// Pass A: direct call expressions in the initializer.
+					ast.Inspect(v, func(n ast.Node) bool {
+						call, ok := n.(*ast.CallExpr)
+						if !ok {
+							return true
+						}
+						callee := calleeString(call)
+						callPos := fset.Position(call.Pos())
+						result.Calls = append(result.Calls, graph.CallEdge{
+							CallerName: "init",
+							CalleeRaw:  callee,
+							File:       relPath,
+							Line:       callPos.Line,
+						})
+						// Same function-value-as-arg handling as in function
+						// bodies (Bug 1) — initializers can also pass method
+						// values to constructors / registry calls.
+						for _, ref := range extractHandlerRefs(call) {
+							result.Calls = append(result.Calls, graph.CallEdge{
+								CallerName: "init",
+								CalleeRaw:  ref,
+								File:       relPath,
+								Line:       callPos.Line,
+							})
+						}
+						return true
+					})
+					// Pass B: function values captured by the initializer
+					// expression directly (struct/map literals carrying
+					// function fields, e.g. `var x = Config{OnEvent: foo}`,
+					// or bare-Ident handlers like `var defaultHandler = foo`).
+					var refs []string
+					collectFuncRefs(v, &refs)
+					for _, ref := range refs {
+						result.Calls = append(result.Calls, graph.CallEdge{
+							CallerName: "init",
+							CalleeRaw:  ref,
+							File:       relPath,
+							Line:       fset.Position(v.Pos()).Line,
+						})
+					}
+				}
 			}
 			continue
 		}
@@ -239,7 +291,15 @@ func extractGenDecl(fset *token.FileSet, d *ast.GenDecl, relPath, pkgName, pkgIm
 				}
 			}
 		default:
-			continue
+			// Type aliases (type Foo = Bar) and named types whose underlying
+			// type isn't a struct or interface (type StatusCode int, type
+			// HandlerFunc func(...) error, etc.) are all valid Go declarations
+			// that should appear as queryable symbols. Without this, `query
+			// JSONMap` returns nothing for `type JSONMap = map[string]any`
+			// and exported aliases vanish from `gograph public`. Record them
+			// as type symbols with the best-effort underlying type string in
+			// the Doc-adjacent slot via typeString().
+			kind = graph.KindType
 		}
 
 		pos := fset.Position(ts.Pos())
@@ -504,6 +564,30 @@ func extractFuncDecl(fset *token.FileSet, d *ast.FuncDecl, relPath, pkgName, pkg
 				Line:           callPos.Line,
 				ReturnUsage:    returnUsageMap[call.Pos()],
 			})
+
+			// Additionally, emit "potential call" edges for any function or
+			// method value passed as an argument to this call. Without these,
+			// reachability analysis loses entire chains of middleware-wrapped
+			// handlers, callbacks (jwt KeyFunc, MCP tool handlers, http
+			// middleware, table-driven test scenarios, etc.) because gograph
+			// has no way to know the callee will eventually invoke them.
+			//
+			// This is a deliberate, conservative over-approximation: a
+			// false-positive edge (treating a passed-but-never-invoked value
+			// as called) is strictly safer than a missing edge (treating live
+			// callback code as dead). The reuse of extractHandlerRefs keeps
+			// the recovery logic in one place — the helper recursively walks
+			// nested call expressions, so `wrap1(wrap2(h.method))` correctly
+			// yields an edge to `h.method`.
+			for _, ref := range extractHandlerRefs(call) {
+				result.Calls = append(result.Calls, graph.CallEdge{
+					CallerSymbolID: sym.ID,
+					CallerName:     callerName,
+					CalleeRaw:      ref,
+					File:           relPath,
+					Line:           callPos.Line,
+				})
+			}
 			return true
 		})
 
@@ -512,6 +596,29 @@ func extractFuncDecl(fset *token.FileSet, d *ast.FuncDecl, relPath, pkgName, pkg
 			assign, ok := n.(*ast.AssignStmt)
 			if !ok {
 				return true
+			}
+			// Function-value-as-RHS edge emission. Patterns covered:
+			//   encoderConfig.EncodeLevel = coloredLevelEncoder
+			//   opts.OnEvent = h.method
+			//   localFn := h.method
+			//   x, y := f, g
+			//   opts := Config{OnEvent: h.method}  // CompositeLit RHS
+			// All of these put a function value somewhere that will be
+			// invoked later by another code path. Emit a call edge from the
+			// enclosing function so reachability tracks the value through
+			// the assignment. See Bug 1 in the gograph audit.
+			for _, rhs := range assign.Rhs {
+				var refs []string
+				collectFuncRefs(rhs, &refs)
+				for _, ref := range refs {
+					result.Calls = append(result.Calls, graph.CallEdge{
+						CallerSymbolID: sym.ID,
+						CallerName:     callerName,
+						CalleeRaw:      ref,
+						File:           relPath,
+						Line:           fset.Position(assign.Pos()).Line,
+					})
+				}
 			}
 			// Only track actual assignments, not declarations (:=) for global mutations
 			isDecl := assign.Tok == token.DEFINE
@@ -714,17 +821,17 @@ func calleeString(call *ast.CallExpr) string {
 // any callable references found — method values (h.method), qualified
 // function references (pkg.Func), or bare function identifiers.
 //
-// Used by the HTTP-route extractor to recover the *real* handler from
-// middleware-wrapped registrations like:
+// Used by the HTTP-route extractor and by call-edge extraction to recover
+// the *real* handler/callback from indirection patterns like:
 //
-//	mux.HandleFunc("/p", guard(h.method))
-//	mux.HandleFunc("/p", wrap1(wrap2(h.method)))
+//	mux.HandleFunc("/p", guard(h.method))            // wrapper call
+//	mux.HandleFunc("/p", wrap1(wrap2(h.method)))     // nested wrappers
+//	register(opts{OnSuccess: h.method})              // function value in struct literal
+//	jwt.Parse(token, km.keyFunc)                     // method value as arg
 //
-// where the outer call (`guard`, `wrap1`) is auth/middleware wrapping and
-// the method value passed as an argument is what will actually handle the
-// request. Without this, the route extractor would record `"guard"` as
-// the handler and downstream orphan-reachability would never mark the
-// inner method as reachable from an HTTP entry point.
+// where the inner method value is what will actually be invoked later. Without
+// this, gograph would record only the outer call's name and downstream
+// reachability would never mark the inner method as reachable.
 //
 // Returned strings are in `receiver.method` or `pkg.func` form (best-
 // effort via exprName). They flow through search.normalizeSymbolName
@@ -732,35 +839,60 @@ func calleeString(call *ast.CallExpr) string {
 // method/function name for matching against symbol IDs.
 func extractHandlerRefs(call *ast.CallExpr) []string {
 	var refs []string
-	var walk func(ast.Expr)
-	walk = func(e ast.Expr) {
-		switch x := e.(type) {
-		case *ast.Ident:
-			// Bare function reference (e.g., `wrap(MyHandler)`).
-			// Skip nil/true/false/iota and other obvious non-callable
-			// identifiers; downstream normalization is loose but there
-			// is no value in recording known-non-functions.
-			switch x.Name {
-			case "nil", "true", "false", "iota":
-				return
-			}
-			refs = append(refs, x.Name)
-		case *ast.SelectorExpr:
-			// Method value or qualified function: h.customers, pkg.Foo.
-			if n := exprName(x); n != "" {
-				refs = append(refs, n)
-			}
-		case *ast.CallExpr:
-			// Nested wrapper: wrap1(wrap2(h.method)).
-			for _, a := range x.Args {
-				walk(a)
-			}
-		}
-	}
 	for _, a := range call.Args {
-		walk(a)
+		collectFuncRefs(a, &refs)
 	}
 	return refs
+}
+
+// collectFuncRefs walks an arbitrary expression and appends every
+// function/method-value reference it finds to `out`. It is the workhorse
+// behind extractHandlerRefs and is also used directly by AssignStmt and
+// composite-literal scanners to recover function values that reach
+// later-invoked sites through fields and assignments rather than direct
+// call arguments.
+//
+// Recurses through:
+//   - *ast.CallExpr      — nested wrappers like wrap1(wrap2(h.method))
+//   - *ast.CompositeLit  — struct/map/slice literals carrying function fields,
+//                           e.g. opts{OnEvent: h.method}
+//   - *ast.KeyValueExpr  — for each key-value pair, scan the value
+//   - *ast.UnaryExpr     — &Foo{...} pointer-to-literal
+//   - *ast.ParenExpr     — (h.method)
+//
+// Records:
+//   - *ast.Ident         — bare function reference (filters nil/true/false/iota)
+//   - *ast.SelectorExpr  — method value or qualified function (h.method, pkg.Foo)
+func collectFuncRefs(e ast.Expr, out *[]string) {
+	switch x := e.(type) {
+	case *ast.Ident:
+		switch x.Name {
+		case "nil", "true", "false", "iota", "":
+			return
+		}
+		*out = append(*out, x.Name)
+	case *ast.SelectorExpr:
+		if n := exprName(x); n != "" {
+			*out = append(*out, n)
+		}
+	case *ast.CallExpr:
+		for _, a := range x.Args {
+			collectFuncRefs(a, out)
+		}
+	case *ast.CompositeLit:
+		for _, elt := range x.Elts {
+			collectFuncRefs(elt, out)
+		}
+	case *ast.KeyValueExpr:
+		// Map/struct field — only the value side can be a function ref;
+		// the key is either a field name (Ident) or a constant (BasicLit).
+		collectFuncRefs(x.Value, out)
+	case *ast.UnaryExpr:
+		// &Foo{...} — recurse into operand.
+		collectFuncRefs(x.X, out)
+	case *ast.ParenExpr:
+		collectFuncRefs(x.X, out)
+	}
 }
 
 // exprName returns a best-effort single-identifier name for an expression.

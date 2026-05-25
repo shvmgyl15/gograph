@@ -339,10 +339,18 @@ func CalleesDepth(g *graph.Graph, name string, maxDepth int, includeTests bool) 
 	}
 
 	symByID := make(map[string]graph.SymbolNode)
-	symByName := make(map[string]string) // lowercase name → ID (best effort)
+	// Multiple symbols can share the same short name (e.g., two unrelated
+	// types both have a Validate method). Tracking by lowercase name was
+	// last-write-wins, silently dropping all but one when resolving a
+	// callee — the BFS then expanded into the wrong receiver's callees.
+	// Store every matching ID; expansion below uses all of them so the
+	// over-approximation goes in the safe direction (show what *could*
+	// be reached) instead of the wrong direction (show one arbitrary path).
+	symByName := make(map[string][]string)
 	for _, s := range g.Symbols {
 		symByID[s.ID] = s
-		symByName[strings.ToLower(s.Name)] = s.ID
+		key := strings.ToLower(s.Name)
+		symByName[key] = append(symByName[key], s.ID)
 	}
 
 	// Find the seed symbol IDs for name.
@@ -388,15 +396,20 @@ func CalleesDepth(g *graph.Graph, name string, maxDepth int, includeTests bool) 
 				CallSiteLine: c.Line,
 				Score:        10 - depth,
 			})
-			// Resolve callee to a symbol ID for the next frontier.
+			// Resolve callee to symbol IDs for the next frontier.
+			// Same-named symbols across different receivers/packages all
+			// expand — see the symByName comment above.
 			calleeLower := strings.ToLower(c.CalleeRaw)
-			// Try exact match, then short name (strip receiver prefix).
 			parts := strings.Split(calleeLower, ".")
 			shortName := parts[len(parts)-1]
-			if id, ok := symByName[calleeLower]; ok {
-				nextFrontier[id] = true
-			} else if id, ok := symByName[shortName]; ok {
-				nextFrontier[id] = true
+			if ids, ok := symByName[calleeLower]; ok {
+				for _, id := range ids {
+					nextFrontier[id] = true
+				}
+			} else if ids, ok := symByName[shortName]; ok {
+				for _, id := range ids {
+					nextFrontier[id] = true
+				}
 			}
 		}
 		if len(nextFrontier) == 0 {
@@ -713,8 +726,16 @@ func ImpactMultiple(g *graph.Graph, names []string, reason string, includeTests 
 		callerSymbols[s.ID] = s
 	}
 
+	// visitedSymbols tracks distinct caller symbols already enqueued so
+	// each one's own callers are searched exactly once. The previous
+	// implementation tracked lowercase names instead — if two different
+	// caller symbols happened to share a name (e.g., util.Process and
+	// worker.Process), the second one's caller-search was suppressed
+	// because the name was already "visited", silently truncating the
+	// blast-radius BFS.
 	var queue []string
 	visitedTerms := make(map[string]bool)
+	visitedSymbols := make(map[string]bool)
 	for _, name := range names {
 		nl := strings.ToLower(name)
 		queue = append(queue, nl)
@@ -748,10 +769,16 @@ func ImpactMultiple(g *graph.Graph, names []string, reason string, includeTests 
 							Score:  8,
 						})
 
-						nextTerm := strings.ToLower(sym.Name)
-						if !visitedTerms[nextTerm] {
-							visitedTerms[nextTerm] = true
-							queue = append(queue, nextTerm)
+						// Enqueue this caller's symbol so we find ITS callers
+						// next. Dedup by symbol ID so two same-named symbols
+						// each get their own caller-search pass.
+						if !visitedSymbols[sym.ID] {
+							visitedSymbols[sym.ID] = true
+							nextTerm := strings.ToLower(sym.Name)
+							if !visitedTerms[nextTerm] {
+								visitedTerms[nextTerm] = true
+								queue = append(queue, nextTerm)
+							}
 						}
 					}
 				}

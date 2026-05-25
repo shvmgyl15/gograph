@@ -154,7 +154,12 @@ func ReachableOrphans(g *graph.Graph) []Result {
 	roots := make(map[string]bool)
 
 	for _, s := range g.Symbols {
-		if s.Name == "main" {
+		// Entry points the Go runtime always invokes:
+		//   - main()  — program entry point
+		//   - init()  — runs at package load time, every package, every binary
+		//               (including test binaries; can appear multiple times per
+		//               package — Go runs them all)
+		if s.Name == "main" || s.Name == "init" {
 			roots[normalizeSymbolName(s.ID)] = true
 			roots[normalizeSymbolName(s.Name)] = true
 		}
@@ -164,6 +169,10 @@ func ReachableOrphans(g *graph.Graph) []Result {
 			roots[normalizeSymbolName(s.Name)] = true
 		}
 	}
+	// Package-level var/const initializer expressions are emitted by the
+	// parser as call edges with CallerName == "init" (the natural sibling
+	// to actual init() function bodies — both run at package load time).
+	// The "init" name above seeds those edges as roots.
 	for _, r := range g.Routes {
 		roots[normalizeSymbolName(r.Handler)] = true
 	}
