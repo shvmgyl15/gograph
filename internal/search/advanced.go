@@ -155,17 +155,17 @@ func ReachableOrphans(g *graph.Graph) []Result {
 
 	for _, s := range g.Symbols {
 		if s.Name == "main" {
-			roots[s.ID] = true
-			roots[s.Name] = true
+			roots[normalizeSymbolName(s.ID)] = true
+			roots[normalizeSymbolName(s.Name)] = true
 		}
 		if (s.Kind == graph.KindFunction || s.Kind == graph.KindMethod) &&
 			len(s.Name) > 0 && s.Name[0] >= 'A' && s.Name[0] <= 'Z' {
-			roots[s.ID] = true
-			roots[s.Name] = true
+			roots[normalizeSymbolName(s.ID)] = true
+			roots[normalizeSymbolName(s.Name)] = true
 		}
 	}
 	for _, r := range g.Routes {
-		roots[r.Handler] = true
+		roots[normalizeSymbolName(r.Handler)] = true
 	}
 
 	reachable := make(map[string]bool)
@@ -175,7 +175,9 @@ func ReachableOrphans(g *graph.Graph) []Result {
 
 	adj := make(map[string][]string)
 	for _, c := range g.Calls {
-		adj[c.CallerName] = append(adj[c.CallerName], c.CalleeRaw)
+		caller := normalizeSymbolName(c.CallerName)
+		callee := normalizeSymbolName(c.CalleeRaw)
+		adj[caller] = append(adj[caller], callee)
 	}
 
 	bfsQueue := make([]string, 0, len(roots))
@@ -195,7 +197,7 @@ func ReachableOrphans(g *graph.Graph) []Result {
 
 	incomingCount := make(map[string]int)
 	for _, c := range g.Calls {
-		incomingCount[c.CalleeRaw]++
+		incomingCount[normalizeSymbolName(c.CalleeRaw)]++
 	}
 
 	var results []Result
@@ -203,7 +205,7 @@ func ReachableOrphans(g *graph.Graph) []Result {
 		if s.Kind != graph.KindFunction && s.Kind != graph.KindMethod {
 			continue
 		}
-		if reachable[s.ID] || reachable[s.Name] {
+		if reachable[normalizeSymbolName(s.ID)] || reachable[normalizeSymbolName(s.Name)] {
 			continue
 		}
 		results = append(results, Result{
@@ -211,7 +213,7 @@ func ReachableOrphans(g *graph.Graph) []Result {
 			Name:   s.ID,
 			File:   s.File,
 			Line:   s.Line,
-			Detail: fmt.Sprintf("unreachable from any entry point (incoming calls: %d)", incomingCount[s.ID]+incomingCount[s.Name]),
+			Detail: fmt.Sprintf("unreachable from any entry point (incoming calls: %d)", incomingCount[normalizeSymbolName(s.ID)]+incomingCount[normalizeSymbolName(s.Name)]),
 			Score:  10,
 		})
 	}
