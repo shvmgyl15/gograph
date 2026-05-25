@@ -87,6 +87,7 @@ func TestAllCommandsRegistered(t *testing.T) {
 		"orphans",
 		"godobj",
 		"complexity",
+		"diagram",
 		"coupling",
 		"context",
 		"hotspot",
@@ -128,6 +129,7 @@ func TestAllCommandsRegistered(t *testing.T) {
 		"hook-guard",
 		"--json",
 		"--files-only",
+		"--mermaid",
 		// aliases
 		"help",
 		"--help",

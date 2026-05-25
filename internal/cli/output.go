@@ -11,6 +11,7 @@ import (
 // without threading a parameter through every call.
 var jsonMode bool
 var filesOnlyMode bool
+var mermaidMode bool
 
 // SchemaVersion is the stable JSON output schema version. Bump when the
 // envelope shape changes in a backwards-incompatible way.

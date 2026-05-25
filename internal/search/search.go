@@ -579,19 +579,62 @@ func Focus(g *graph.Graph, pkgName string) []Result {
 		}
 	}
 
-	// Add things that call into this package
+	// Collect outgoing calls (callees) — deduplicated by name, filtered to real call expressions.
+	// A real call expression either contains a dot (pkg.Func or method call) or starts with an
+	// uppercase letter (exported symbol) or is a known Go builtin. Raw expressions that are pure
+	// lowercase identifiers without a dot are almost always local variable names appearing as
+	// arguments, not actual callee targets — skip them to avoid noise.
+	goBuiltins := map[string]bool{
+		"append": true, "len": true, "cap": true, "make": true, "new": true,
+		"delete": true, "copy": true, "close": true, "panic": true, "recover": true,
+		"print": true, "println": true, "error": true, "string": true,
+	}
+	isLikelyCallee := func(raw string) bool {
+		if raw == "" {
+			return false
+		}
+		if strings.Contains(raw, ".") {
+			return true // pkg.Func or receiver.Method
+		}
+		if goBuiltins[raw] {
+			return true
+		}
+		// Unexported single-word names without a dot are almost always local variables.
+		if raw[0] >= 'a' && raw[0] <= 'z' {
+			return false
+		}
+		return true // Uppercase = exported function
+	}
+	type calleeKey struct{ name, caller string }
+	calleeCounts := make(map[string]int)   // callee name → total call count
+	calleeSites := make(map[string]string) // callee name → representative caller
+	callerCounts := make(map[calleeKey]bool)
 	for _, c := range g.Calls {
 		if pkgFiles[c.File] {
-			results = append(results, Result{Kind: "callee", Name: c.CalleeRaw, File: c.File, Line: c.Line, Detail: "called by " + c.CallerName, Score: 6})
+			if !isLikelyCallee(c.CalleeRaw) {
+				continue
+			}
+			calleeCounts[c.CalleeRaw]++
+			calleeSites[c.CalleeRaw] = c.CallerName
 		} else {
 			for _, pkg := range targetPkgs {
 				prefix := pkg.Name + "."
 				if strings.HasPrefix(c.CalleeRaw, prefix) {
-					results = append(results, Result{Kind: "caller", Name: c.CallerName, File: c.File, Line: c.Line, Detail: "calls " + c.CalleeRaw, Score: 5})
+					callerCounts[calleeKey{c.CallerName, c.File}] = true
 					break
 				}
 			}
 		}
+	}
+	for name, count := range calleeCounts {
+		detail := "called by " + calleeSites[name]
+		if count > 1 {
+			detail = fmt.Sprintf("%d calls, e.g. by %s", count, calleeSites[name])
+		}
+		results = append(results, Result{Kind: "callee", Name: name, Detail: detail, Score: 6})
+	}
+	for key := range callerCounts {
+		results = append(results, Result{Kind: "caller", Name: key.name, File: key.caller, Score: 5})
 	}
 
 	sortResults(results)

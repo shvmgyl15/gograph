@@ -43,9 +43,10 @@ func Run(args []string) int {
 		return 0
 	}
 
-	// Strip --json and --files-only from args before dispatch; set the package-level flag.
+	// Strip --json, --files-only, and --mermaid from args before dispatch; set the package-level flags.
 	jsonMode = false
 	filesOnlyMode = false
+	mermaidMode = false
 	filtered := args[:0]
 	for _, a := range args {
 		switch a {
@@ -60,11 +61,22 @@ func Run(args []string) int {
 			jsonMode = true
 		case "--files-only":
 			filesOnlyMode = true
+		case "--mermaid":
+			mermaidMode = true
 		default:
 			filtered = append(filtered, a)
 		}
 	}
 	args = filtered
+
+	// Bare `gograph --mermaid` (no subcommand) → architecture overview diagram.
+	if len(args) == 0 {
+		if mermaidMode {
+			return runDiagram(nil)
+		}
+		printHelp()
+		return 0
+	}
 
 	switch args[0] {
 	case "build":
@@ -129,6 +141,8 @@ func Run(args []string) int {
 		return runArity(args[1:])
 	case "complexity":
 		return runComplexity(args[1:])
+	case "diagram":
+		return runDiagram(args[1:])
 	case "coupling":
 		return runCoupling(args[1:])
 	case "context":
@@ -278,11 +292,13 @@ ERRORS — two different questions:
   errorflow <term>    how does this specific error reach the HTTP layer? (definition → return sites → entry point)
 
 ━━━ OUTPUT FORMAT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-All search/navigation commands support three output modes:
+All search/navigation commands support four output modes:
 
   (default)       [kind] Name — detail  (file:line)  — one result per line
   --json          {"ok":true,"cmd":"...","query":"...","count":N,"data":[...]}
   --files-only    flat deduplicated list of file paths — use for checklists
+  --mermaid       visual dependency/call diagrams in Mermaid format
+                  (supported by deps, dependents, coupling, callers, callees, path, impact, endpoint)
 
 Use --json when piping output to another tool or when you need structured data.
 Use --files-only when you only need to know which files are involved.
@@ -667,6 +683,10 @@ func runCallers(args []string) int {
 		}
 	}
 	term := strings.Join(termParts, " ")
+	if mermaidMode {
+		fmt.Println(search.CallersToMermaid(g, term, depth, includeTests))
+		return 0
+	}
 	var results []search.Result
 	if depth > 1 {
 		results = search.CallersDepth(g, term, depth, includeTests)
@@ -708,6 +728,10 @@ func runCallees(args []string) int {
 		}
 	}
 	term := strings.Join(termParts, " ")
+	if mermaidMode {
+		fmt.Println(search.CalleesToMermaid(g, term, depth, includeTests))
+		return 0
+	}
 	var results []search.Result
 	if depth > 1 {
 		results = search.CalleesDepth(g, term, depth, includeTests)
@@ -980,13 +1004,18 @@ func sortGraph(g *graph.Graph) {
 const helpText = `gograph — local AST-based Go repository context indexer for AI agents
 
 USAGE
-  gograph <command> [arguments] [--json]
+  gograph <command> [arguments] [--json] [--mermaid]
 
 GLOBAL FLAGS
   --json                     Output strictly in a machine-parseable JSON envelope.
                              Recommended for all automated agent usage.
   --files-only               Output only a flat, deduplicated list of file paths.
                              Great for extracting checklists without blowing up tokens.
+  --mermaid                  Output visual dependency/call diagrams in Mermaid format.
+                             Supported by: deps, dependents, coupling, callers, callees,
+                             path, impact, and endpoint.
+                             Bare form (no subcommand): gograph --mermaid → architecture
+                             overview diagram (shorthand for 'diagram').
 
 INDEXING
   build [path]               Walk and parse a Go repository. Generates graph.json
@@ -1079,6 +1108,17 @@ CODE QUALITY
   complexity [symbol]        Cyclomatic complexity per function, highest first.
                              Filter by symbol name substring. Labels: LOW / MEDIUM /
                              HIGH / VERY HIGH (McCabe thresholds: 5 / 10 / 20).
+  diagram [--group-by package|module|service|file] [--max-depth N] [--include-stdlib]
+                             Architecture overview diagram in Mermaid format.
+                             --group-by package (default): one node per import path.
+                             --group-by module: collapse to top-level dir group
+                               (internal, cmd, pkg…); external deps → module root.
+                             --group-by service: two-segment groups (internal/auth,
+                               cmd/server…) — between package and module granularity.
+                             --group-by file: file → imported package edges.
+                             --max-depth N: BFS N levels from entry packages (those
+                               nothing else imports). 0 = unlimited (default).
+                             Shorthand: gograph --mermaid (no subcommand).
   coupling [package]         Fan-in, fan-out, and instability per package.
                              Instability = FanOut / (FanIn + FanOut). Range [0,1].
   context <symbol>           Bundle node+source+callers+callees+tests+role in one call.
@@ -1218,6 +1258,10 @@ func runPath(args []string) int {
 	chain := search.Path(g, args[0], args[1], true)
 	if len(chain) == 0 {
 		fmt.Printf("No call path found from %q to %q.\n", args[0], args[1])
+		return 0
+	}
+	if mermaidMode {
+		fmt.Println(search.PathToMermaid(chain))
 		return 0
 	}
 	fmt.Printf("Call path: %s → %s\n", args[0], args[1])
@@ -1462,6 +1506,10 @@ func runCoupling(args []string) int {
 	if jsonMode {
 		return PrintJSON(okEnvelope("coupling", term, results, len(results)))
 	}
+	if mermaidMode {
+		fmt.Println(search.CouplingToMermaid(g, term, opts))
+		return 0
+	}
 	if len(results) == 0 {
 		if term != "" {
 			fmt.Printf("No packages found matching %q.\n", term)
@@ -1480,6 +1528,45 @@ func runCoupling(args []string) int {
 		}
 		fmt.Printf("%-55s  %6d  %6d  %s\n", r.Package, r.FanOut, r.FanIn, instStr)
 	}
+	return 0
+}
+
+// runDiagram generates a high-level architecture overview diagram of the repository.
+func runDiagram(args []string) int {
+	groupBy := "package"
+	maxDepth := 0
+	includeStdlib := false
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--include-stdlib":
+			includeStdlib = true
+		case a == "--group-by" && i+1 < len(args):
+			i++
+			groupBy = args[i]
+		case strings.HasPrefix(a, "--group-by="):
+			groupBy = strings.TrimPrefix(a, "--group-by=")
+		case a == "--max-depth" && i+1 < len(args):
+			i++
+			maxDepth, _ = strconv.Atoi(args[i])
+		case strings.HasPrefix(a, "--max-depth="):
+			maxDepth, _ = strconv.Atoi(strings.TrimPrefix(a, "--max-depth="))
+		}
+	}
+	g, err := loadGraph(".")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	diagram := search.DiagramToMermaid(g, groupBy, maxDepth, includeStdlib)
+	// Count nodes by counting label definitions (lines containing `["`).
+	nodeCount := strings.Count(diagram, "[\"")
+	if nodeCount > 30 {
+		fmt.Fprintf(os.Stderr, "warning: diagram has %d nodes — may be hard to read.\n", nodeCount)
+		fmt.Fprintf(os.Stderr, "  Try --max-depth 2, a coarser --group-by level, or:\n")
+		fmt.Fprintf(os.Stderr, "  gograph focus <package>   for a per-package file view\n")
+	}
+	fmt.Println(diagram)
 	return 0
 }
 
@@ -1717,6 +1804,10 @@ func runDeps(args []string) int {
 	if jsonMode {
 		return PrintJSON(okEnvelope("deps", pkg, result, len(result.Direct)+len(result.Transitive)))
 	}
+	if mermaidMode {
+		fmt.Println(search.DepsToMermaid(g, result))
+		return 0
+	}
 	fmt.Printf("Package: %s\n\nDirect imports (%d):\n", result.Package, len(result.Direct))
 	for _, imp := range result.Direct {
 		fmt.Printf("  %s\n", imp)
@@ -1748,6 +1839,10 @@ func runDependents(args []string) int {
 	results := search.Dependents(g, pkg)
 	if jsonMode {
 		return PrintJSON(okEnvelope("dependents", pkg, results, len(results)))
+	}
+	if mermaidMode {
+		fmt.Println(search.DependentsToMermaid(pkg, results))
+		return 0
 	}
 	return printResults("dependents", pkg, results, fmt.Sprintf("No packages found that import %q.", pkg))
 }
@@ -1970,8 +2065,13 @@ func runImpact(args []string) int {
 		return runImpactSince(g, args[1])
 	}
 
-	results := search.Impact(g, strings.Join(args, " "), true)
-	return printResults("impact", strings.Join(args, " "), results, fmt.Sprintf("No callers found in blast radius of %q.", args[0]))
+	term := strings.Join(args, " ")
+	if mermaidMode {
+		fmt.Println(search.ImpactToMermaid(g, term, true))
+		return 0
+	}
+	results := search.Impact(g, term, true)
+	return printResults("impact", term, results, fmt.Sprintf("No callers found in blast radius of %q.", args[0]))
 }
 
 // runImpactUncommitted parses git diff to find modified symbols, then computes their blast radius.
@@ -1986,6 +2086,10 @@ func runImpactUncommitted(g *graph.Graph) int {
 		return printResults("impact", "--uncommitted", nil, "No uncommitted modified symbols found in the graph.")
 	}
 
+	if mermaidMode {
+		fmt.Println(search.ImpactMultipleToMermaid(g, modifiedSymbolNames, true))
+		return 0
+	}
 	reason := fmt.Sprintf("downstream impact of uncommitted changes (%d symbols)", len(modifiedSymbolNames))
 	results := search.ImpactMultiple(g, modifiedSymbolNames, reason, true)
 	return printResults("impact", "--uncommitted", results, "No callers found in blast radius of uncommitted changes.")
@@ -2005,6 +2109,10 @@ func runImpactSince(g *graph.Graph, ref string) int {
 	names := make([]string, 0, len(changes.Symbols))
 	for _, s := range changes.Symbols {
 		names = append(names, s.Name)
+	}
+	if mermaidMode {
+		fmt.Println(search.ImpactMultipleToMermaid(g, names, true))
+		return 0
 	}
 	reason := fmt.Sprintf("downstream impact of changes since %s (%d symbols)", ref, len(names))
 	results := search.ImpactMultiple(g, names, reason, true)
@@ -2368,6 +2476,9 @@ func runEndpoint(args []string) int {
 		if a == "--include-tests" {
 			includeTests = true
 		}
+		if a == "--mermaid" {
+			mermaidMode = true
+		}
 		if a == "--depth" && i+1 < len(args) {
 			if n, err := strconv.Atoi(args[i+1]); err == nil {
 				depth = n
@@ -2399,6 +2510,11 @@ func runEndpoint(args []string) int {
 		fmt.Println("")
 		fmt.Println("To find the handler name for a route, run: gograph routes")
 		return 1
+	}
+
+	if mermaidMode {
+		fmt.Println(search.EndpointToMermaid(slices))
+		return 0
 	}
 
 	if jsonMode {
