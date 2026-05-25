@@ -19,7 +19,7 @@ release:
 	golangci-lint run ./...
 	@echo "Bumping patch version, committing, and tagging..."
 	bump2version patch --allow-dirty
-	git push origin master --tags
+	git push origin main --tags
 
 # install only copies whatever is already in bin/ — no implicit build.
 install:
