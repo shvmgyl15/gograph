@@ -58,6 +58,17 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 	)
 
 	addTool := func(tool mcp.Tool, handler func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)) {
+		// Override mark3labs/mcp-go defaults because gograph tools are purely static analysis (read-only and safe)
+		readOnly := true
+		destructive := false
+		idempotent := true
+		openWorld := false
+
+		tool.Annotations.ReadOnlyHint = &readOnly
+		tool.Annotations.DestructiveHint = &destructive
+		tool.Annotations.IdempotentHint = &idempotent
+		tool.Annotations.OpenWorldHint = &openWorld
+
 		s.AddTool(tool, handler)
 		if ExposeToolsForTesting != nil {
 			ExposeToolsForTesting[tool.Name] = handler
