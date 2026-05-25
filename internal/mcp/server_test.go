@@ -87,6 +87,32 @@ func TestMCPResponseSerialization(t *testing.T) {
 	}
 }
 
+func TestAllToolAnnotations(t *testing.T) {
+	g := &graph.Graph{}
+	s := mcppkg.NewServer(g, mockRebuild(g), mockBuildGraph())
+
+	tools := s.ListTools()
+	if len(tools) == 0 {
+		t.Fatal("no tools registered")
+	}
+
+	for name, st := range tools {
+		ann := st.Tool.Annotations
+		if ann.ReadOnlyHint == nil || !*ann.ReadOnlyHint {
+			t.Errorf("tool %q: ReadOnlyHint must be true, got %v", name, ann.ReadOnlyHint)
+		}
+		if ann.DestructiveHint == nil || *ann.DestructiveHint {
+			t.Errorf("tool %q: DestructiveHint must be false, got %v", name, ann.DestructiveHint)
+		}
+		if ann.IdempotentHint == nil || !*ann.IdempotentHint {
+			t.Errorf("tool %q: IdempotentHint must be true, got %v", name, ann.IdempotentHint)
+		}
+		if ann.OpenWorldHint == nil || *ann.OpenWorldHint {
+			t.Errorf("tool %q: OpenWorldHint must be false, got %v", name, ann.OpenWorldHint)
+		}
+	}
+}
+
 func TestGographAPI_Validation(t *testing.T) {
 	handlers := setupHandlers(t, &graph.Graph{})
 	apiHandler, ok := handlers["gograph_api"]
