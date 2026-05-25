@@ -118,12 +118,29 @@ func ParseFile(fset *token.FileSet, path, relPath, pkgImportPath string) (*FileR
 							inlineBody = buf.String()
 						}
 					case *ast.CallExpr:
-						// Factory / curried handler pattern, e.g.:
+						// Factory / curried / middleware-wrapped handler patterns:
 						//   router.POST("/path", HandleBulkCreateUsers(jobSvc, auditSvc))
-						// The argument is a call expression whose result is a HandlerFunc.
-						// typeString returns "_" for CallExpr — instead extract the
-						// function name being called so the symbol is traceable.
-						handler = calleeString(h)
+						//   mux.HandleFunc("/path", guard(h.method))
+						//   mux.HandleFunc("/path", wrap1(wrap2(h.method)))
+						//
+						// Prefer the *inner* handler reference (the method value or
+						// function the wrapper will eventually invoke) over the outer
+						// wrapper's name. The orphan-reachability BFS in
+						// search.ReachableOrphans seeds entry-point roots from
+						// HTTPRoute.Handler; if we record the wrapper name here, the
+						// real handler (e.g. (*AdminHandler).customers) appears
+						// unreachable because the BFS never reaches it through the
+						// opaque wrapper closure.
+						//
+						// Fall back to the outer call's name only when no inner
+						// callable reference can be recovered (e.g. the handler is
+						// itself the call's *result*, not an argument — the factory
+						// pattern above).
+						if inner := extractHandlerRefs(h); len(inner) > 0 {
+							handler = inner[0]
+						} else {
+							handler = calleeString(h)
+						}
 					default:
 						handler = typeString(call.Args[1])
 					}
@@ -691,6 +708,59 @@ func calleeString(call *ast.CallExpr) string {
 	default:
 		return "<complex call>"
 	}
+}
+
+// extractHandlerRefs walks a CallExpr's arguments recursively and returns
+// any callable references found — method values (h.method), qualified
+// function references (pkg.Func), or bare function identifiers.
+//
+// Used by the HTTP-route extractor to recover the *real* handler from
+// middleware-wrapped registrations like:
+//
+//	mux.HandleFunc("/p", guard(h.method))
+//	mux.HandleFunc("/p", wrap1(wrap2(h.method)))
+//
+// where the outer call (`guard`, `wrap1`) is auth/middleware wrapping and
+// the method value passed as an argument is what will actually handle the
+// request. Without this, the route extractor would record `"guard"` as
+// the handler and downstream orphan-reachability would never mark the
+// inner method as reachable from an HTTP entry point.
+//
+// Returned strings are in `receiver.method` or `pkg.func` form (best-
+// effort via exprName). They flow through search.normalizeSymbolName
+// during orphan analysis, which strips them down to the bare
+// method/function name for matching against symbol IDs.
+func extractHandlerRefs(call *ast.CallExpr) []string {
+	var refs []string
+	var walk func(ast.Expr)
+	walk = func(e ast.Expr) {
+		switch x := e.(type) {
+		case *ast.Ident:
+			// Bare function reference (e.g., `wrap(MyHandler)`).
+			// Skip nil/true/false/iota and other obvious non-callable
+			// identifiers; downstream normalization is loose but there
+			// is no value in recording known-non-functions.
+			switch x.Name {
+			case "nil", "true", "false", "iota":
+				return
+			}
+			refs = append(refs, x.Name)
+		case *ast.SelectorExpr:
+			// Method value or qualified function: h.customers, pkg.Foo.
+			if n := exprName(x); n != "" {
+				refs = append(refs, n)
+			}
+		case *ast.CallExpr:
+			// Nested wrapper: wrap1(wrap2(h.method)).
+			for _, a := range x.Args {
+				walk(a)
+			}
+		}
+	}
+	for _, a := range call.Args {
+		walk(a)
+	}
+	return refs
 }
 
 // exprName returns a best-effort single-identifier name for an expression.
