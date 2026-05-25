@@ -1600,13 +1600,26 @@ func printContextResult(result *search.ContextResult, limit int) {
 // runHotspot ranks functions by incoming call count.
 func runHotspot(args []string) int {
 	top := 10
-	for i := 0; i < len(args)-1; i++ {
-		if args[i] == "--top" {
+	includeTests := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--top":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, "--top requires a value")
+				return 1
+			}
 			if _, err := fmt.Sscanf(args[i+1], "%d", &top); err != nil {
 				fmt.Fprintf(os.Stderr, "invalid --top value: %q\n", args[i+1])
 				return 1
 			}
 			i++
+		case "--include-tests":
+			// Count call edges from *_test.go files. Default-off because
+			// test infrastructure tends to dominate hotspot rankings in
+			// test-heavy codebases (e.g. baseReq with 100+ callers from
+			// table-driven tests). Production-fan-in is more useful for
+			// "where is this codebase concentrated" questions.
+			includeTests = true
 		}
 	}
 	g, err := loadGraph(".")
@@ -1617,7 +1630,7 @@ func runHotspot(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	results := search.Hotspot(g, top)
+	results := search.Hotspot(g, top, includeTests)
 	if jsonMode {
 		return PrintJSON(okEnvelope("hotspot", "", results, len(results)))
 	}

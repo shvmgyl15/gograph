@@ -145,22 +145,102 @@ func Endpoint(g *graph.Graph, query string, depth int, includeTests bool) []Endp
 	return slices
 }
 
-// matchRoutes finds HTTPRoute entries matching the query string.
-// If includeTests is false, routes registered in *_test.go files are excluded.
+// matchRoutes finds HTTPRoute entries matching the query string, using a
+// precedence ladder to avoid silently-wrong results from substring matching.
+//
+// Without the ladder, `gograph endpoint Me` would match `h.customers`
+// (because "me" is a substring of "customers") and return the wrong route
+// — a sharp footgun for users who pass short symbol names.
+//
+// Precedence (return at the first tier that matches):
+//
+//	1. Exact handler match:                handler == query
+//	2. Exact method-suffix on handler:     handler ends with "." + query
+//	3. Exact route-path match:             method+path == query
+//	4. Route-path prefix/suffix match:     leaf path equality after splitting
+//	5. Substring match (legacy fallback):  prior behaviour
+//
+// Only the substring tier can produce confusing matches; the earlier tiers
+// either return precise hits or skip cleanly. Multiple matches within the
+// same tier are all returned; we never mix tiers.
 func matchRoutes(g *graph.Graph, query string, includeTests bool) []graph.HTTPRoute {
 	q := strings.ToLower(strings.TrimSpace(query))
-	var out []graph.HTTPRoute
+	if q == "" {
+		return nil
+	}
+
+	// Precompute the testable routes once.
+	var routes []graph.HTTPRoute
 	for _, r := range g.Routes {
 		if !includeTests && isTestFile(r.File) {
 			continue
 		}
+		routes = append(routes, r)
+	}
+
+	// Tier 1: exact handler match. `endpoint h.Me` finds h.Me directly.
+	var t1 []graph.HTTPRoute
+	for _, r := range routes {
+		if strings.ToLower(r.Handler) == q {
+			t1 = append(t1, r)
+		}
+	}
+	if len(t1) > 0 {
+		return t1
+	}
+
+	// Tier 2: handler ends in "." + query. `endpoint Me` finds `h.Me` here,
+	// not the catastrophic "me-inside-customers" substring match. We also
+	// accept the bare method name with no receiver: handler == query.
+	var t2 []graph.HTTPRoute
+	suffix := "." + q
+	for _, r := range routes {
+		h := strings.ToLower(r.Handler)
+		if h == q || strings.HasSuffix(h, suffix) {
+			t2 = append(t2, r)
+		}
+	}
+	if len(t2) > 0 {
+		return t2
+	}
+
+	// Tier 3: exact route (method+path) match. `endpoint "POST /api/users"`.
+	var t3 []graph.HTTPRoute
+	for _, r := range routes {
+		full := strings.ToLower(r.Method + " " + r.Path)
+		if full == q || strings.ToLower(r.Path) == q {
+			t3 = append(t3, r)
+		}
+	}
+	if len(t3) > 0 {
+		return t3
+	}
+
+	// Tier 4: route-path leaf match. `endpoint "/users"` against `/api/v1/users`.
+	var t4 []graph.HTTPRoute
+	for _, r := range routes {
+		segs := strings.Split(strings.ToLower(r.Path), "/")
+		if len(segs) > 0 && segs[len(segs)-1] == strings.TrimPrefix(q, "/") {
+			t4 = append(t4, r)
+		}
+	}
+	if len(t4) > 0 {
+		return t4
+	}
+
+	// Tier 5: substring fallback. Preserves the original loose-match
+	// behaviour for users who explicitly want it. Will still return
+	// "wrong" answers for ambiguous short queries — but only after the
+	// earlier tiers have all failed.
+	var t5 []graph.HTTPRoute
+	for _, r := range routes {
 		routeStr := strings.ToLower(r.Method + " " + r.Path)
 		handlerStr := strings.ToLower(r.Handler)
 		if strings.Contains(routeStr, q) || strings.Contains(handlerStr, q) {
-			out = append(out, r)
+			t5 = append(t5, r)
 		}
 	}
-	return out
+	return t5
 }
 
 // isInlineHandler reports whether the handler string is an inline closure label

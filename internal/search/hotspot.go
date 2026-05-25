@@ -20,10 +20,19 @@ type HotspotResult struct {
 // The higher the count, the more central this symbol is to the codebase.
 // Results are sorted descending by IncomingCalls.
 // top limits the result count; pass 0 for all results.
-func Hotspot(g *graph.Graph, top int) []HotspotResult {
+//
+// includeTests controls whether call edges from *_test.go files are
+// counted. When false (the default callsite passes false), the result
+// reflects production-call fan-in and is not skewed by test helpers
+// (which can dominate rankings — `baseReq`, `newTestSvc`, etc. — in
+// test-heavy codebases). When true, every edge counts.
+func Hotspot(g *graph.Graph, top int, includeTests bool) []HotspotResult {
 	// Count how many times each raw callee name appears in call edges.
 	incomingRaw := make(map[string]int)
 	for _, c := range g.Calls {
+		if !includeTests && isTestFile(c.File) {
+			continue
+		}
 		incomingRaw[c.CalleeRaw]++
 	}
 

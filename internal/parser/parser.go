@@ -211,12 +211,14 @@ func extractGenDecl(fset *token.FileSet, d *ast.GenDecl, relPath, pkgName, pkgIm
 						}
 						callee := calleeString(call)
 						callPos := fset.Position(call.Pos())
-						result.Calls = append(result.Calls, graph.CallEdge{
-							CallerName: "init",
-							CalleeRaw:  callee,
-							File:       relPath,
-							Line:       callPos.Line,
-						})
+						if callee != "" {
+							result.Calls = append(result.Calls, graph.CallEdge{
+								CallerName: "init",
+								CalleeRaw:  callee,
+								File:       relPath,
+								Line:       callPos.Line,
+							})
+						}
 						// Same function-value-as-arg handling as in function
 						// bodies (Bug 1) — initializers can also pass method
 						// values to constructors / registry calls.
@@ -556,14 +558,21 @@ func extractFuncDecl(fset *token.FileSet, d *ast.FuncDecl, relPath, pkgName, pkg
 				})
 			}
 
-			result.Calls = append(result.Calls, graph.CallEdge{
-				CallerSymbolID: sym.ID,
-				CallerName:     callerName,
-				CalleeRaw:      callee,
-				File:           relPath,
-				Line:           callPos.Line,
-				ReturnUsage:    returnUsageMap[call.Pos()],
-			})
+			if callee != "" {
+				// Skip edges for calls whose Fun expression we couldn't
+				// resolve to any useful name. Previously calleeString
+				// returned the literal "<complex call>" for these and
+				// that string surfaced verbatim in callees/concurrency
+				// output, polluting every report with parser jargon.
+				result.Calls = append(result.Calls, graph.CallEdge{
+					CallerSymbolID: sym.ID,
+					CallerName:     callerName,
+					CalleeRaw:      callee,
+					File:           relPath,
+					Line:           callPos.Line,
+					ReturnUsage:    returnUsageMap[call.Pos()],
+				})
+			}
 
 			// Additionally, emit "potential call" edges for any function or
 			// method value passed as an argument to this call. Without these,
@@ -812,8 +821,54 @@ func calleeString(call *ast.CallExpr) string {
 			return fn.Sel.Name
 		}
 		return obj + "." + fn.Sel.Name
+	case *ast.CallExpr:
+		// Curried/returned-function invocation: getFunc()() — recurse to
+		// extract the innermost callable name. The outer call's result is
+		// the callee here; if we can identify what it returns, that's the
+		// useful symbol to attribute.
+		return calleeString(fn)
+	case *ast.IndexExpr:
+		// Generic function instantiation as callee: Foo[int]() or
+		// fnMap[key](). For instantiation, fn.X is the function reference;
+		// for map/slice indexing, fn.X is the container and we can't
+		// statically know the value. Either way, fn.X is the best we have.
+		switch x := fn.X.(type) {
+		case *ast.Ident:
+			return x.Name
+		case *ast.SelectorExpr:
+			return exprName(x)
+		}
+		return ""
+	case *ast.IndexListExpr:
+		// Generic function with multiple type parameters: Foo[A, B]().
+		switch x := fn.X.(type) {
+		case *ast.Ident:
+			return x.Name
+		case *ast.SelectorExpr:
+			return exprName(x)
+		}
+		return ""
+	case *ast.TypeAssertExpr:
+		// Type-asserted call: x.(*T).Method() — fn is the type assertion;
+		// the method selector is one level out and already handled by the
+		// SelectorExpr case above. If we land here it means the assertion
+		// itself is being invoked (function-typed assertion), which is
+		// rare and unresolvable without type info — return empty.
+		return ""
+	case *ast.ParenExpr:
+		// (someExpr)() — strip parens and recurse.
+		return calleeString(&ast.CallExpr{Fun: fn.X})
+	case *ast.FuncLit:
+		// Immediately-invoked function literal: func(){...}(). No symbol
+		// name to attribute; return empty so the edge is dropped rather
+		// than polluting downstream output with a placeholder.
+		return ""
 	default:
-		return "<complex call>"
+		// Unknown shape — return empty so the caller can decide to skip the
+		// edge. Returning a placeholder like "<complex call>" caused that
+		// literal to leak verbatim into user-facing output (callees,
+		// concurrency, etc.).
+		return ""
 	}
 }
 

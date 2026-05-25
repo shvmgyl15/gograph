@@ -1237,18 +1237,23 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 	hotspotTool := mcp.NewTool("gograph_hotspot",
 		mcp.WithDescription("Rank functions by incoming call count (fan-in). Shows the most-depended-on code — study these first before making structural changes."),
 		mcp.WithNumber("top", mcp.Description("Number of results to return (default: 10, 0 = all)")),
+		mcp.WithBoolean("include_tests", mcp.Description("Include call edges from *_test.go files. Default false — production fan-in only, otherwise test helpers (baseReq, newTestFoo, etc.) tend to dominate rankings in test-heavy codebases.")),
 	)
 	addTool(hotspotTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
 		top := 10
+		includeTests := false
 		if args, ok := request.Params.Arguments.(map[string]any); ok {
 			if n, ok := args["top"].(float64); ok {
 				top = int(n)
 			}
+			if b, ok := args["include_tests"].(bool); ok {
+				includeTests = b
+			}
 		}
-		results := search.Hotspot(g, top)
+		results := search.Hotspot(g, top, includeTests)
 		data, err := json.MarshalIndent(results, "", "  ")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil

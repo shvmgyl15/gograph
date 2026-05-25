@@ -113,7 +113,7 @@ func buildHotspotGraph() *graph.Graph {
 
 func TestHotspot_RankedByIncomingCalls(t *testing.T) {
 	g := buildHotspotGraph()
-	results := search.Hotspot(g, 0)
+	results := search.Hotspot(g, 0, true)
 
 	if len(results) == 0 {
 		t.Fatal("expected hotspot results, got none")
@@ -129,7 +129,7 @@ func TestHotspot_RankedByIncomingCalls(t *testing.T) {
 
 func TestHotspot_TopLimit(t *testing.T) {
 	g := buildHotspotGraph()
-	results := search.Hotspot(g, 1)
+	results := search.Hotspot(g, 1, true)
 	if len(results) != 1 {
 		t.Errorf("expected 1 result with top=1, got %d", len(results))
 	}
@@ -137,8 +137,8 @@ func TestHotspot_TopLimit(t *testing.T) {
 
 func TestHotspot_TopZeroReturnsAll(t *testing.T) {
 	g := buildHotspotGraph()
-	all := search.Hotspot(g, 0)
-	capped := search.Hotspot(g, 100)
+	all := search.Hotspot(g, 0, true)
+	capped := search.Hotspot(g, 100, true)
 	if len(all) != len(capped) {
 		t.Errorf("top=0 and top=100 should return same count: %d vs %d", len(all), len(capped))
 	}
@@ -146,7 +146,7 @@ func TestHotspot_TopZeroReturnsAll(t *testing.T) {
 
 func TestHotspot_MostCalledIsFirst(t *testing.T) {
 	g := buildHotspotGraph()
-	results := search.Hotspot(g, 0)
+	results := search.Hotspot(g, 0, true)
 	if len(results) == 0 {
 		t.Fatal("no results")
 	}
@@ -162,7 +162,7 @@ func TestHotspot_MostCalledIsFirst(t *testing.T) {
 
 func TestHotspot_EmptyGraph(t *testing.T) {
 	g := &graph.Graph{}
-	results := search.Hotspot(g, 10)
+	results := search.Hotspot(g, 10, true)
 	if len(results) != 0 {
 		t.Errorf("expected 0 results for empty graph, got %d", len(results))
 	}
@@ -178,7 +178,7 @@ func TestHotspot_OnlyFunctionsAndMethods(t *testing.T) {
 			{CallerName: "x", CalleeRaw: "MyStruct", File: "b.go", Line: 1},
 		},
 	}
-	results := search.Hotspot(g, 0)
+	results := search.Hotspot(g, 0, true)
 	// Structs and interfaces should not appear as hotspot candidates.
 	if len(results) != 0 {
 		t.Errorf("expected 0 results (structs/interfaces excluded), got %d: %+v", len(results), results)
