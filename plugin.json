@@ -2,7 +2,7 @@
   "name": "gograph",
   "display_name": "Gograph — Go Repository Intelligence",
   "description": "AST-aware Go code analysis for AI agents. Provides blast radius analysis, call graph traversal, interface resolution, architectural boundary enforcement, and static policy checks. Replaces grep-based file exploration with precise, token-efficient semantic queries over your Go repository.",
-  "version": "1.4.63",
+  "version": "1.4.64",
   "author": "ozgurcd",
   "repository": "https://github.com/ozgurcd/gograph",
   "homepage": "https://github.com/ozgurcd/gograph",
