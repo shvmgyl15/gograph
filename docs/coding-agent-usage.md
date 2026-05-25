@@ -73,7 +73,7 @@ gograph changes                  # new/modified/deleted symbols since last build
 gograph changes --git <ref>      # symbols in files changed since a git ref (MODIFIED only; e.g. --git main, --git HEAD~5, --git v1.4.50)
 gograph errorflow "parse failed" --no-tests  # trace error path to entry points, excluding test references
 gograph trace "parse failed"     # alias for errorflow (kept for compatibility)
-gograph mutate "User.Status"     # find functions that mutate a specific struct field
+gograph mutate "User.Status"     # find functions that mutate a specific struct field (covers direct assignments, IncDec/augmented (++, +=), and indirect mutations through method calls: atomic.*/sync.Map/sync.Mutex stdlib mutators, user-defined wrapper methods detected by SSA, and channel sends. Indirect detection requires --precise build. Results carry `via=<method>` in Detail when indirect.)
 gograph arity --min 5            # find functions with many arguments (long parameter list smell)
 gograph skeleton                 # output the whole repository's API signatures (bodies stripped)
 gograph constructors <struct>    # find factory functions returning a named struct
@@ -739,7 +739,7 @@ Numbers vary by repo, but the order-of-magnitude win is consistent: structural q
 ## Limitations the agent should know about
 
 - **Go only.** No multi-language parsing.
-- **Call edges are best-effort text form** from the AST — no type resolution, so overloaded names and method receivers may collide. Treat `callers`/`callees` results as a starting point, not ground truth.
+- **Call edges are best-effort text form** from the AST — no type resolution, so overloaded names and method receivers may collide. Treat `callers`/`callees` results as a starting point, not ground truth. **Workaround:** when you need to disambiguate same-named methods/functions, pass a fully-qualified symbol ID instead of a short name. E.g. `gograph callers 'github.com/foo/bar/internal/auth::(*Service).Validate'` matches that exact method only; the short form `gograph callers Validate` falls back to fuzzy substring matching across every "Validate" in the codebase. The same FQ-ID syntax works for `callees`, `impact`, and `path` (both endpoints). Requires `--precise` mode at build time.
 - **No cross-repo / module-external edges.** External dependencies are extracted from `go.mod` to summarize the tech stack, but call edges into third-party packages are not resolved.
 - **Snapshot, not live.** The graph reflects the state at the last `gograph build` run. Re-run after structural edits.
 

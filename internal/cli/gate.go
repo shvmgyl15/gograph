@@ -18,10 +18,59 @@ type GateConfig struct {
 	MaxNewCouplingEdges *int     `yaml:"max_new_coupling_edges"`
 }
 
-func runGate() int {
+// gateConfigTemplate is the scaffold written by `gograph gate init`. Each
+// threshold is commented to explain what it gates and how to tune it,
+// with conservative default values that won't trip on a typical codebase.
+// Users can delete any line to disable that gate, or tighten the numbers
+// to enforce stricter quality bars.
+const gateConfigTemplate = `# .gograph.yml — quality gates enforced by 'gograph gate'.
+# Each setting below is OPTIONAL: omit a line to disable that gate.
+# Run 'gograph gate' from a working tree where 'gograph build .' has
+# already produced .gograph/graph.json.
+
+# max_complexity: fail if any function's cyclomatic complexity exceeds N.
+# Calibrate by running 'gograph complexity' once and reading the top score;
+# pick a number a bit above that to allow tactical exceptions, then tighten
+# over time. 30 is a common "danger zone" threshold.
+max_complexity: 30
+
+# max_instability: fail if any package's instability metric exceeds N
+# (range 0.0-1.0; 1.0 = imports many, imported by none = leaf consumer).
+# 0.9 catches packages that are wildly out of balance without rejecting
+# normal top-level "main" or "cmd/..." packages.
+max_instability: 0.95
+
+# max_god_object_methods: fail if any struct has more than N methods
+# (god-object smell). 20 catches obvious offenders without flagging
+# legitimate large APIs.
+max_god_object_methods: 20
+
+# allow_new_orphans: when false, gate fails if the orphan count grows
+# vs. the saved baseline (set up with 'gograph snapshot save baseline').
+# Use to prevent adding dead code over time.
+allow_new_orphans: false
+
+# max_new_coupling_edges: fail if the number of new import edges (vs.
+# baseline) exceeds N. Use to slow uncontrolled package coupling growth.
+max_new_coupling_edges: 10
+`
+
+func runGate(args []string) int {
+	// Subcommand: 'gate init' writes the template config file and exits.
+	if len(args) > 0 && args[0] == "init" {
+		return runGateInit()
+	}
+
 	configPath := ".gograph.yml"
 	data, err := os.ReadFile(configPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Fprintln(os.Stderr, "error: .gograph.yml not found in current directory.")
+			fmt.Fprintln(os.Stderr, "")
+			fmt.Fprintln(os.Stderr, "Run 'gograph gate init' to scaffold a template config with")
+			fmt.Fprintln(os.Stderr, "conservative defaults and a comment explaining each threshold.")
+			return 1
+		}
 		fmt.Fprintf(os.Stderr, "error reading .gograph.yml: %v\n", err)
 		return 1
 	}
@@ -74,7 +123,7 @@ func runGate() int {
 	if cfg.MaxInstability != nil {
 		worstScore := 0.0
 		worstName := ""
-		coupling := search.Coupling(g, "")
+		coupling := search.Coupling(g, "", search.CouplingOptions{IncludeStdlib: true})
 		for _, c := range coupling {
 			if c.Instability > worstScore {
 				worstScore = c.Instability
@@ -159,4 +208,38 @@ func runGate() int {
 	}
 	fmt.Printf("GATE FAILED — %d violations\n", violations)
 	return 1
+}
+
+// runGateInit scaffolds a .gograph.yml template in the current directory.
+// Refuses to overwrite an existing file — the user should `--force` or
+// edit by hand. Conservative defaults; the template documents each
+// threshold so users can tune without consulting external docs.
+func runGateInit() int {
+	configPath := ".gograph.yml"
+	if _, err := os.Stat(configPath); err == nil {
+		fmt.Fprintf(os.Stderr, "error: %s already exists in the current directory.\n", configPath)
+		fmt.Fprintln(os.Stderr, "Refusing to overwrite. Edit the existing file or remove it first.")
+		return 1
+	} else if !os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "error checking for %s: %v\n", configPath, err)
+		return 1
+	}
+	// Permissions 0644: readable by user/group/other, writable only by owner.
+	// This is a project-level config file checked into git; world-readable
+	// is appropriate.
+	if err := os.WriteFile(configPath, []byte(gateConfigTemplate), 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "error writing %s: %v\n", configPath, err)
+		return 1
+	}
+	fmt.Printf("Wrote %s with conservative quality-gate defaults.\n", configPath)
+	fmt.Println("")
+	fmt.Println("Next steps:")
+	fmt.Println("  1. Review the template — each threshold is commented.")
+	fmt.Println("  2. Tune values to your codebase (run 'gograph complexity',")
+	fmt.Println("     'gograph coupling', 'gograph godobj' to see current numbers).")
+	fmt.Println("  3. (Optional) Save a baseline for orphan/coupling-edge gating:")
+	fmt.Println("     gograph snapshot save baseline")
+	fmt.Println("  4. Run the gate:")
+	fmt.Println("     gograph gate")
+	return 0
 }

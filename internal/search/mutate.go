@@ -19,12 +19,20 @@ func Mutate(g *graph.Graph, query string) []Result {
 	var results []Result
 	for _, m := range g.Mutations {
 		if strings.ToLower(m.Field) == field {
+			detail := "mutates field " + m.Field
+			// Indirect mutations carry Via — the name of the mutating
+			// method or "chan<-" for sends. Surface it so the reader can
+			// tell `s.field = x` from `s.field.Store(x)` without opening
+			// the file.
+			if m.Via != "" {
+				detail = "mutates field " + m.Field + " via " + m.Via
+			}
 			results = append(results, Result{
 				Kind:   "mutation",
 				Name:   m.Function,
 				File:   m.File,
 				Line:   m.Line,
-				Detail: "mutates field " + m.Field,
+				Detail: detail,
 				Score:  1,
 			})
 		}

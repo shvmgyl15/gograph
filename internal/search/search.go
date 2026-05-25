@@ -148,11 +148,32 @@ func Node(g *graph.Graph, name string) []Result {
 // Callers returns functions/methods that contain a call expression matching name.
 // Each result includes call-site provenance (CallSiteFile, CallSiteLine) pointing
 // to the exact line of the call expression, not just the enclosing function.
+//
+// When name is a fully-qualified symbol ID (contains "::"), callees are matched
+// exactly against CallEdge.CalleeSymbolID — this disambiguates (*A).Validate
+// from (*B).Validate when both exist. Short names (e.g. "Validate") fall back
+// to case-insensitive substring matching against CalleeRaw, preserving the
+// fuzzy UX users rely on for casual queries.
 func Callers(g *graph.Graph, name string, includeTests bool) []Result {
 	nl := strings.ToLower(name)
+	fqQuery := isFullyQualifiedID(name)
 	callerSymbols := make(map[string]graph.SymbolNode)
 	for _, s := range g.Symbols {
 		callerSymbols[s.ID] = s
+	}
+
+	// Match: FQ-ID exact match on CalleeSymbolID OR substring on CalleeRaw.
+	// When the query is FQ, we still allow CalleeRaw substring as a fallback
+	// in case the AST edge lacks CalleeSymbolID (legacy/basic-build edges) —
+	// the bare-name component of the FQ ID is used so the substring still
+	// roughly targets the right symbol. The visibility this gives the user
+	// is "I asked for the exact symbol but you only have edges by name; here
+	// are the name-matches — note they may be conflated."
+	matchesCallee := func(c graph.CallEdge) bool {
+		if fqQuery && c.CalleeSymbolID == name {
+			return true
+		}
+		return strings.Contains(strings.ToLower(c.CalleeRaw), nl)
 	}
 
 	// Collect all matching call edges (one per unique call site).
@@ -166,7 +187,7 @@ func Callers(g *graph.Graph, name string, includeTests bool) []Result {
 		if !includeTests && isTestFile(c.File) {
 			continue
 		}
-		if strings.Contains(strings.ToLower(c.CalleeRaw), nl) {
+		if matchesCallee(c) {
 			k := siteKey{c.CallerSymbolID, c.File, c.Line}
 			if seen[k] {
 				continue
@@ -208,10 +229,20 @@ func Callers(g *graph.Graph, name string, includeTests bool) []Result {
 }
 
 // Callees returns call expressions found inside the given function/method name.
+//
+// When name is a fully-qualified symbol ID (contains "::"), the caller seed
+// is matched exactly against SymbolNode.ID — disambiguates same-named
+// functions/methods across types or packages. Short names fall back to
+// fuzzy substring matching (preserves the casual-query UX).
 func Callees(g *graph.Graph, name string, includeTests bool) []Result {
 	nl := strings.ToLower(name)
+	fqQuery := isFullyQualifiedID(name)
 	matchedIDs := make(map[string]bool)
 	for _, s := range g.Symbols {
+		if fqQuery && s.ID == name {
+			matchedIDs[s.ID] = true
+			continue
+		}
 		sname := strings.ToLower(s.Name)
 		full := strings.ToLower(fmt.Sprintf("(%s).%s", s.Receiver, s.Name))
 		if sname == nl || strings.Contains(full, nl) || strings.Contains(sname, nl) {
@@ -257,6 +288,13 @@ func Callees(g *graph.Graph, name string, includeTests bool) []Result {
 // CallersDepth traverses the caller graph up to depth hops above name.
 // depth=1 is equivalent to Callers. Results carry a "depth N" prefix in Detail
 // so callers can group output by level. maxDepth is clamped to [1, 10].
+//
+// Frontier tracking is done by symbol identity (both full ID and normalised
+// short name) rather than name alone. When precise/CHA edges carry
+// CalleeSymbolID, the BFS uses exact-ID matching to step backwards from
+// (*A).Validate without leaking into (*B).Validate's caller tree (Bug 6).
+// Name-keyed entries are kept in the frontier as a fallback for legacy
+// edges that lack CalleeSymbolID.
 func CallersDepth(g *graph.Graph, name string, maxDepth int, includeTests bool) []Result {
 	if maxDepth <= 1 {
 		return Callers(g, name, includeTests)
@@ -265,20 +303,27 @@ func CallersDepth(g *graph.Graph, name string, maxDepth int, includeTests bool) 
 		maxDepth = 10
 	}
 
-	// Build reverse index: callee name (lower) → caller symbol IDs at that site.
 	type edge struct {
-		callerID   string
-		callerName string
-		file       string
-		line       int
-		callee     string
+		callerID       string
+		callerName     string
+		file           string
+		line           int
+		calleeNameLow  string
+		calleeSymbolID string
 	}
 	var allEdges []edge
 	for _, c := range g.Calls {
 		if !includeTests && isTestFile(c.File) {
 			continue
 		}
-		allEdges = append(allEdges, edge{c.CallerSymbolID, c.CallerName, c.File, c.Line, strings.ToLower(c.CalleeRaw)})
+		allEdges = append(allEdges, edge{
+			c.CallerSymbolID,
+			c.CallerName,
+			c.File,
+			c.Line,
+			strings.ToLower(c.CalleeRaw),
+			c.CalleeSymbolID,
+		})
 	}
 
 	symByID := make(map[string]graph.SymbolNode)
@@ -286,15 +331,31 @@ func CallersDepth(g *graph.Graph, name string, maxDepth int, includeTests bool) 
 		symByID[s.ID] = s
 	}
 
-	// frontier holds the lowercase symbol names to expand at each level.
-	frontier := map[string]bool{strings.ToLower(name): true}
+	// Frontier is a multi-key set: full SymbolNode.ID entries match exact
+	// CalleeSymbolID hits; lowercase short-name entries match CalleeRaw
+	// substring as fallback. Seeding both forms so an FQ query
+	// ("pkg::(*S).Validate") seeds the ID, and a short query ("Validate")
+	// seeds the name.
+	frontier := make(map[string]bool)
+	nl := strings.ToLower(name)
+	frontier[nl] = true
+	if isFullyQualifiedID(name) {
+		frontier[name] = true
+	}
 	seen := make(map[string]bool) // seen caller symbol IDs across all depths
 	var results []Result
 
 	for depth := 1; depth <= maxDepth; depth++ {
 		nextFrontier := make(map[string]bool)
 		for _, e := range allEdges {
-			if !frontier[e.callee] {
+			// Match priority: exact ID > short-name substring.
+			matched := false
+			if e.calleeSymbolID != "" && frontier[e.calleeSymbolID] {
+				matched = true
+			} else if frontier[e.calleeNameLow] {
+				matched = true
+			}
+			if !matched {
 				continue
 			}
 			if seen[e.callerID] {
@@ -311,11 +372,18 @@ func CallersDepth(g *graph.Graph, name string, maxDepth int, includeTests bool) 
 				Name:         e.callerName,
 				File:         file,
 				Line:         line,
-				Detail:       fmt.Sprintf("depth %d — calls %s", depth, e.callee),
+				Detail:       fmt.Sprintf("depth %d — calls %s", depth, e.calleeNameLow),
 				CallSiteFile: e.file,
 				CallSiteLine: e.line,
 				Score:        10 - depth,
 			})
+			// Push BOTH forms of the caller into the next frontier so the
+			// next hop matches edges keyed by either CalleeSymbolID (exact)
+			// or CalleeRaw (name). Prefer the full ID for exactness; the
+			// short name keeps the fuzzy fallback intact.
+			if e.callerID != "" {
+				nextFrontier[e.callerID] = true
+			}
 			nextFrontier[strings.ToLower(e.callerName)] = true
 		}
 		if len(nextFrontier) == 0 {
@@ -330,6 +398,13 @@ func CallersDepth(g *graph.Graph, name string, maxDepth int, includeTests bool) 
 
 // CalleesDepth traverses the callee graph up to depth hops below name.
 // depth=1 is equivalent to Callees. maxDepth is clamped to [1, 10].
+//
+// When the precise/CHA pass has populated CalleeSymbolID on an edge, the
+// next frontier uses that ID directly — exact identity, no name conflation.
+// For legacy edges without CalleeSymbolID, the BFS falls back to the
+// previous behaviour: resolve callee name to all SymbolNode.ID values that
+// share that short name. The fallback is intentionally over-approximating
+// (false positives over false negatives) for unresolved dynamic dispatch.
 func CalleesDepth(g *graph.Graph, name string, maxDepth int, includeTests bool) []Result {
 	if maxDepth <= 1 {
 		return Callees(g, name, includeTests)
@@ -353,10 +428,16 @@ func CalleesDepth(g *graph.Graph, name string, maxDepth int, includeTests bool) 
 		symByName[key] = append(symByName[key], s.ID)
 	}
 
-	// Find the seed symbol IDs for name.
+	// Find the seed symbol IDs for name. FQ-ID queries match exactly;
+	// short names use the fuzzy substring path (existing UX).
 	nl := strings.ToLower(name)
+	fqQuery := isFullyQualifiedID(name)
 	seedIDs := make(map[string]bool)
 	for _, s := range g.Symbols {
+		if fqQuery && s.ID == name {
+			seedIDs[s.ID] = true
+			continue
+		}
 		sname := strings.ToLower(s.Name)
 		full := strings.ToLower(fmt.Sprintf("(%s).%s", s.Receiver, s.Name))
 		if sname == nl || strings.Contains(full, nl) || strings.Contains(sname, nl) {
@@ -397,8 +478,20 @@ func CalleesDepth(g *graph.Graph, name string, maxDepth int, includeTests bool) 
 				Score:        10 - depth,
 			})
 			// Resolve callee to symbol IDs for the next frontier.
-			// Same-named symbols across different receivers/packages all
+			// Prefer the precise CalleeSymbolID (exact identity, no
+			// conflation). Fall back to name-resolution for legacy edges:
+			// same-named symbols across different receivers/packages all
 			// expand — see the symByName comment above.
+			if c.CalleeSymbolID != "" {
+				if _, isKnown := symByID[c.CalleeSymbolID]; isKnown {
+					nextFrontier[c.CalleeSymbolID] = true
+					continue
+				}
+				// CalleeSymbolID points at a symbol we don't have in the
+				// table (stdlib, third-party). Treat as a leaf — no
+				// expansion needed; the edge itself is already in results.
+				continue
+			}
 			calleeLower := strings.ToLower(c.CalleeRaw)
 			parts := strings.Split(calleeLower, ".")
 			shortName := parts[len(parts)-1]
@@ -720,67 +813,102 @@ func Impact(g *graph.Graph, name string, includeTests bool) []Result {
 }
 
 // ImpactMultiple calculates blast radius for multiple root symbols simultaneously.
+//
+// The BFS frontier is a mixed set of full SymbolNode.ID values (exact-identity
+// match against CalleeSymbolID — no name conflation) and lowercase short
+// names (substring match against CalleeRaw — legacy fallback for edges
+// without CalleeSymbolID). Each newly-discovered caller is queued by its
+// own SymbolNode.ID so its uplink search is performed once per symbol, even
+// when many symbols share the same short name.
 func ImpactMultiple(g *graph.Graph, names []string, reason string, includeTests bool) []Result {
 	callerSymbols := make(map[string]graph.SymbolNode)
 	for _, s := range g.Symbols {
 		callerSymbols[s.ID] = s
 	}
 
-	// visitedSymbols tracks distinct caller symbols already enqueued so
-	// each one's own callers are searched exactly once. The previous
-	// implementation tracked lowercase names instead — if two different
-	// caller symbols happened to share a name (e.g., util.Process and
-	// worker.Process), the second one's caller-search was suppressed
-	// because the name was already "visited", silently truncating the
-	// blast-radius BFS.
-	var queue []string
-	visitedTerms := make(map[string]bool)
-	visitedSymbols := make(map[string]bool)
+	// idFrontier holds SymbolNode.ID values to match exactly against
+	// CalleeSymbolID. termFrontier holds lowercase substrings to match
+	// against CalleeRaw. Both are checked on every edge — order doesn't
+	// matter because we dedup on caller symbol identity.
+	type frontierItem struct {
+		id   string // empty for short-name items
+		term string // lowercase substring for short-name items
+	}
+	var queue []frontierItem
+	visitedIDs := make(map[string]bool)    // FQ-ID terms we've already searched
+	visitedTerms := make(map[string]bool)  // short-name terms we've already searched
+	visitedSymbols := make(map[string]bool) // caller symbols we've already requeued
+
 	for _, name := range names {
-		nl := strings.ToLower(name)
-		queue = append(queue, nl)
-		visitedTerms[nl] = true
+		if isFullyQualifiedID(name) {
+			if !visitedIDs[name] {
+				visitedIDs[name] = true
+				queue = append(queue, frontierItem{id: name})
+			}
+		} else {
+			nl := strings.ToLower(name)
+			if !visitedTerms[nl] {
+				visitedTerms[nl] = true
+				queue = append(queue, frontierItem{term: nl})
+			}
+		}
 	}
 
 	var results []Result
 	seenIDs := make(map[string]bool)
 
 	for len(queue) > 0 {
-		term := queue[0]
+		item := queue[0]
 		queue = queue[1:]
 
 		for _, c := range g.Calls {
 			if !includeTests && isTestFile(c.File) {
 				continue
 			}
-			if strings.Contains(strings.ToLower(c.CalleeRaw), term) {
-				callerID := c.CallerSymbolID
-				if !seenIDs[callerID] {
-					seenIDs[callerID] = true
+			matched := false
+			if item.id != "" {
+				if c.CalleeSymbolID == item.id {
+					matched = true
+				}
+			} else if strings.Contains(strings.ToLower(c.CalleeRaw), item.term) {
+				matched = true
+			}
+			if !matched {
+				continue
+			}
+			callerID := c.CallerSymbolID
+			if seenIDs[callerID] {
+				continue
+			}
+			seenIDs[callerID] = true
 
-					sym, ok := callerSymbols[callerID]
-					if ok {
-						results = append(results, Result{
-							Kind:   "impact",
-							Name:   sym.Name,
-							File:   sym.File,
-							Line:   sym.Line,
-							Detail: reason,
-							Score:  8,
-						})
+			sym, ok := callerSymbols[callerID]
+			if !ok {
+				continue
+			}
+			results = append(results, Result{
+				Kind:   "impact",
+				Name:   sym.Name,
+				File:   sym.File,
+				Line:   sym.Line,
+				Detail: reason,
+				Score:  8,
+			})
 
-						// Enqueue this caller's symbol so we find ITS callers
-						// next. Dedup by symbol ID so two same-named symbols
-						// each get their own caller-search pass.
-						if !visitedSymbols[sym.ID] {
-							visitedSymbols[sym.ID] = true
-							nextTerm := strings.ToLower(sym.Name)
-							if !visitedTerms[nextTerm] {
-								visitedTerms[nextTerm] = true
-								queue = append(queue, nextTerm)
-							}
-						}
-					}
+			// Enqueue this caller's identity (preferred) AND short name
+			// (fallback for callers of THIS symbol that recorded only the
+			// name on their edges). Each enqueue is gated by its own visited
+			// set so two same-named symbols don't suppress one another.
+			if !visitedSymbols[sym.ID] {
+				visitedSymbols[sym.ID] = true
+				if !visitedIDs[sym.ID] {
+					visitedIDs[sym.ID] = true
+					queue = append(queue, frontierItem{id: sym.ID})
+				}
+				nextTerm := strings.ToLower(sym.Name)
+				if !visitedTerms[nextTerm] {
+					visitedTerms[nextTerm] = true
+					queue = append(queue, frontierItem{term: nextTerm})
 				}
 			}
 		}
@@ -910,20 +1038,73 @@ func Embeds(g *graph.Graph, structName string) []Result {
 }
 
 // Public shows only the exported symbols of a package.
-func Public(g *graph.Graph, pkgName string) []Result {
+func Public(g *graph.Graph, pkgQuery string) []Result {
+	// pkgQuery can be any of:
+	//   - basename:       "service"
+	//   - relative path:  "./internal/service"  or  "internal/service"
+	//   - import path:    "identuum.ai/internal/service"
+	// Previously only the basename matched; the other three forms returned
+	// "No exported symbols found" even when the package was present in the
+	// graph. Normalise the query and match against every form a symbol can
+	// reasonably be identified by.
+	q := strings.TrimPrefix(pkgQuery, "./")
+	q = strings.TrimSuffix(q, "/")
+	qLower := strings.ToLower(q)
+	qBasename := qLower
+	if i := strings.LastIndex(qLower, "/"); i >= 0 {
+		qBasename = qLower[i+1:]
+	}
+
+	matchesPackage := func(s graph.SymbolNode) bool {
+		pkgLower := strings.ToLower(s.PackageName)
+		if pkgLower == qLower {
+			return true // basename match: query was "service" and pkg name is "service"
+		}
+		if pkgLower != qBasename {
+			return false
+		}
+		// Query is a path of some kind ("internal/service",
+		// "identuum.ai/internal/service", "./internal/service"). The
+		// package's short name matches the query's last segment; confirm
+		// via the file's containing directory so we don't conflate two
+		// same-named packages in different directories.
+		//
+		// File paths in graph.json are repo-relative (e.g.
+		// "internal/service/admin.go"). The query may carry a module
+		// prefix (e.g. "identuum.ai/internal/...") or not. Treating each
+		// as a suffix of the other handles both cases:
+		//   - query "internal/service" vs fileDir "internal/service"      → equal
+		//   - query "identuum.ai/internal/service" vs "internal/service"  → query suffix
+		//   - query "service" already handled above (basename match)
+		fileDir := strings.ToLower(strings.ReplaceAll(s.File, "\\", "/"))
+		if i := strings.LastIndex(fileDir, "/"); i >= 0 {
+			fileDir = fileDir[:i]
+		}
+		if fileDir == qLower {
+			return true
+		}
+		if strings.HasSuffix(qLower, "/"+fileDir) || strings.HasSuffix(fileDir, "/"+qLower) {
+			return true
+		}
+		return false
+	}
+
 	var results []Result
 	for _, s := range g.Symbols {
-		// Basic check: is the package name correct, and does it start with a capital letter?
-		if s.PackageName == pkgName && len(s.Name) > 0 && s.Name[0] >= 'A' && s.Name[0] <= 'Z' {
-			results = append(results, Result{
-				Kind:   string(s.Kind),
-				Name:   s.Name,
-				File:   s.File,
-				Line:   s.Line,
-				Detail: s.Signature,
-				Score:  10,
-			})
+		if !matchesPackage(s) {
+			continue
 		}
+		if len(s.Name) == 0 || s.Name[0] < 'A' || s.Name[0] > 'Z' {
+			continue
+		}
+		results = append(results, Result{
+			Kind:   string(s.Kind),
+			Name:   s.Name,
+			File:   s.File,
+			Line:   s.Line,
+			Detail: s.Signature,
+			Score:  10,
+		})
 	}
 	sortResults(results)
 	return results

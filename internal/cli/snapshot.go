@@ -92,7 +92,7 @@ func calculateSnapshot(g *graph.Graph, name string) *Snapshot {
 	}
 
 	// AvgInstability
-	coupling := search.Coupling(g, "")
+	coupling := search.Coupling(g, "", search.CouplingOptions{IncludeStdlib: true})
 	if len(coupling) > 0 {
 		var total float64
 		for _, c := range coupling {

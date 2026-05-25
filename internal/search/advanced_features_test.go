@@ -188,7 +188,7 @@ func buildCouplingGraph() *graph.Graph {
 
 func TestCoupling_FanOut(t *testing.T) {
 	g := buildCouplingGraph()
-	results := search.Coupling(g, "")
+	results := search.Coupling(g, "", search.CouplingOptions{IncludeStdlib: true})
 
 	find := func(pkg string) *search.PackageCoupling {
 		for i := range results {
@@ -218,7 +218,7 @@ func TestCoupling_FanOut(t *testing.T) {
 
 func TestCoupling_FanIn(t *testing.T) {
 	g := buildCouplingGraph()
-	results := search.Coupling(g, "")
+	results := search.Coupling(g, "", search.CouplingOptions{IncludeStdlib: true})
 
 	find := func(pkg string) *search.PackageCoupling {
 		for i := range results {
@@ -250,7 +250,7 @@ func TestCoupling_FanIn(t *testing.T) {
 
 func TestCoupling_Instability(t *testing.T) {
 	g := buildCouplingGraph()
-	results := search.Coupling(g, "")
+	results := search.Coupling(g, "", search.CouplingOptions{IncludeStdlib: true})
 
 	find := func(pkg string) *search.PackageCoupling {
 		for i := range results {
@@ -292,7 +292,7 @@ func TestCoupling_Instability(t *testing.T) {
 
 func TestCoupling_SortedByInstability(t *testing.T) {
 	g := buildCouplingGraph()
-	results := search.Coupling(g, "")
+	results := search.Coupling(g, "", search.CouplingOptions{IncludeStdlib: true})
 
 	for i := 1; i < len(results); i++ {
 		if results[i].Instability > results[i-1].Instability {
@@ -304,7 +304,7 @@ func TestCoupling_SortedByInstability(t *testing.T) {
 
 func TestCoupling_FilterByTerm(t *testing.T) {
 	g := buildCouplingGraph()
-	results := search.Coupling(g, "auth")
+	results := search.Coupling(g, "auth", search.CouplingOptions{IncludeStdlib: true})
 
 	if len(results) == 0 {
 		t.Fatal("expected at least one result for 'auth'")
@@ -318,7 +318,7 @@ func TestCoupling_FilterByTerm(t *testing.T) {
 
 func TestCoupling_EmptyGraph(t *testing.T) {
 	g := &graph.Graph{}
-	results := search.Coupling(g, "")
+	results := search.Coupling(g, "", search.CouplingOptions{IncludeStdlib: true})
 	if len(results) != 0 {
 		t.Errorf("expected 0 results for empty graph, got %d", len(results))
 	}
@@ -326,7 +326,7 @@ func TestCoupling_EmptyGraph(t *testing.T) {
 
 func TestCoupling_NoMatch(t *testing.T) {
 	g := buildCouplingGraph()
-	results := search.Coupling(g, "nonexistentpackage")
+	results := search.Coupling(g, "nonexistentpackage", search.CouplingOptions{IncludeStdlib: true})
 	if len(results) != 0 {
 		t.Errorf("expected 0 results for non-existent package, got %d", len(results))
 	}
@@ -341,7 +341,7 @@ func TestCoupling_NoDuplicateFanOut(t *testing.T) {
 			{FromPackage: "pkg/auth", ImportPath: "pkg/db"}, // duplicate
 		},
 	}
-	results := search.Coupling(g, "auth")
+	results := search.Coupling(g, "auth", search.CouplingOptions{IncludeStdlib: true})
 	if len(results) == 0 {
 		t.Fatal("expected a result for pkg/auth")
 	}

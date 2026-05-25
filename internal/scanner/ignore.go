@@ -17,6 +17,14 @@ var ignoredDirs = map[string]bool{
 	"dist":         true,
 	"build":        true,
 	".terraform":   true,
+	// testdata is a Go-tool convention (cmd/go ignores it for builds and
+	// vet). Per the spec, directories named "testdata" hold ancillary
+	// fixture files for tests; their Go files are loaded explicitly by
+	// test code, not built as part of the project. Including them in
+	// gograph's graph pollutes every report — most visibly, fixture
+	// routes appear in `gograph routes` and fixture symbols appear in
+	// orphans/callees as cross-codebase noise.
+	"testdata": true,
 }
 
 // ShouldIgnoreDir reports whether the directory with the given base name should

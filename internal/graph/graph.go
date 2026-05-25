@@ -38,12 +38,31 @@ type GraphBaseline struct {
 	CouplingEdges int `json:"coupling_edges"`
 }
 
-// MutationEdge represents an assignment to a struct field.
+// MutationEdge represents a mutation of a struct field. Two kinds:
+//
+//	Direct  — Via is empty. The function contains a literal assignment to
+//	          a selector like  s.field = x  or  *p = v . This is the
+//	          original behaviour (Function/Field/File/Line).
+//
+//	Indirect — Via is set. The function calls a *method* known to mutate
+//	           its receiver, and the call site's receiver was a field
+//	           selector on the enclosing function's own receiver
+//	           (e.g.  s.counter.Increment()  where Increment() writes
+//	           to counter's internal state). Via holds the bare name of
+//	           the mutating method ("Increment"), so the output can show
+//	           "field 'counter' mutated via Increment at line 12" — the
+//	           caller can tell apart direct assignments from indirect
+//	           mutations through wrapper APIs (atomic.*, sync.Map, etc.).
+//
+// File/Line always point at the mutation site itself, not at the method
+// definition. Indirect mutations are populated by the precise/SSA pass;
+// non-precise builds only see direct assignments.
 type MutationEdge struct {
 	Field    string `json:"field"`
 	Function string `json:"function"`
 	File     string `json:"file"`
 	Line     int    `json:"line"`
+	Via      string `json:"via,omitempty"`
 }
 
 // LiteralEdge records a composite-literal initialization site for a named struct
@@ -185,6 +204,19 @@ type CallEdge struct {
 	CallerSymbolID string `json:"caller_symbol_id"`
 	CallerName     string `json:"caller_name"`
 	CalleeRaw      string `json:"callee_raw"`
+	// CalleeSymbolID is the *resolved* fully-qualified symbol ID of the
+	// callee (e.g. "github.com/foo/bar/internal/auth::(*Service).Validate"),
+	// populated by the precise/CHA pass when type info uniquely resolves
+	// the call target. Empty when:
+	//   - gograph was built without --precise
+	//   - the callee is in stdlib or a non-source package the type-checker
+	//     didn't load
+	//   - the call site is dynamic (interface method, function value, etc.)
+	//     and CHA couldn't pin a single concrete target
+	// Consumers should prefer CalleeSymbolID for exact symbol matching
+	// (eliminates the (*A).M vs (*B).M name-conflation footgun) and fall
+	// back to CalleeRaw for legacy or unresolvable edges.
+	CalleeSymbolID string `json:"callee_symbol_id,omitempty"`
 	File           string `json:"file"`
 	Line           int    `json:"line"`
 	// ReturnUsage describes how the caller consumes the return value.

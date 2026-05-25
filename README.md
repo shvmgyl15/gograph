@@ -81,6 +81,7 @@ gograph callees "InitServer"               # See what InitServer calls (direct, 
 gograph callees "InitServer" --depth 2     # 2 hops down (callees of callees)
 gograph callers "ValidateToken"            # See what functions call ValidateToken (direct)
 gograph callers "ValidateToken" --depth 3  # 3 hops up (callers-of-callers-of-callers)
+gograph callers 'github.com/me/app/internal/auth::(*Service).Validate'  # Pass a fully-qualified symbol ID for exact match (no same-name conflation). Works for callees/impact/path too. Requires --precise build.
 gograph complexity                # Cyclomatic complexity for all functions (highest first)
 gograph complexity "Run"          # Complexity for a specific function
 gograph concurrency               # Map all goroutines, channels, mutexes, and sync primitives
@@ -145,7 +146,7 @@ gograph globals "internal/auth"   # Find pkg-level vars, consts, and functions m
 gograph hotspot                   # Top 10 most-called functions (where to focus first)
 gograph hotspot --top 20          # Expand to top 20
 gograph mocks "AuthService"       # Alias for: gograph implementers "AuthService" --test-only
-gograph mutate "User.Status"      # Find functions that mutate a specific struct field
+gograph mutate "User.Status"      # Find functions that mutate a specific struct field (direct assignments, ++/+=, and indirect mutations via atomic.*, sync.Map, sync.Mutex, channel sends, and user-defined wrapper methods. Requires --precise build for indirect detection.)
 gograph plan "ValidateToken"      # Generate an operational change plan (callers, tests, risk profile) before editing a symbol
 gograph plan "ValidateToken" --with-context  # Plan + full context for every inspect_first symbol (replaces plan + N×context)
 gograph plan --uncommitted        # Generate a change plan for all currently uncommitted modified symbols

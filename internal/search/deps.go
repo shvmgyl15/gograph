@@ -41,19 +41,37 @@ func Deps(g *graph.Graph, pkg string, transitive bool) *DepsResult {
 	}
 
 	// Find the canonical short name for the queried package.
-	// Accept both exact short-name match and import-path suffix match.
+	// Accept exact short-name match, full import-path match, and import-path
+	// suffix match. When matching by import path, derive the canonical short
+	// name from the matched import path (its last segment) — NOT from
+	// imp.FromPackage, which is the *importing* side of the edge and would
+	// return a wildly wrong package for a path-style query.
+	pathBasename := func(s string) string {
+		if i := strings.LastIndex(s, "/"); i >= 0 {
+			return s[i+1:]
+		}
+		return s
+	}
 	target := ""
+	// Tier 1: exact short-name match against any directly-discovered importer.
 	for pkgName := range directMap {
 		if strings.ToLower(pkgName) == pl {
 			target = pkgName
 			break
 		}
 	}
-	// Also search by import path suffix (e.g. "internal/cli" matches "cli").
+	// Tier 2: exact-or-suffix match against any recorded import path.
+	// When matched, take the canonical short name from the import path's
+	// last segment. Both the importing and the imported side are considered
+	// (FromPackage is the importing side; ImportPath is the imported side).
 	if target == "" {
 		for _, imp := range g.Imports {
-			if strings.HasSuffix(strings.ToLower(imp.ImportPath), "/"+pl) ||
-				strings.ToLower(imp.FromPackage) == pl {
+			ipLower := strings.ToLower(imp.ImportPath)
+			if ipLower == pl || strings.HasSuffix(ipLower, "/"+pl) {
+				target = pathBasename(imp.ImportPath)
+				break
+			}
+			if strings.ToLower(imp.FromPackage) == pl {
 				target = imp.FromPackage
 				break
 			}

@@ -168,7 +168,16 @@ func RunChecks(p *CheckParams) (*CheckReport, error) {
 			} else {
 				for _, r := range results {
 					meta := map[string]any{"rule": r.Kind} // r.Kind stores the rule type, e.g., "invalid_import"
-					addFinding("boundaries", r.Name, r.File, "", r.Line, lvl, meta)
+					// r.Name is just the layer name (e.g. "internal_cli");
+					// r.Detail carries the human-readable explanation
+					// ("layer 'X' illegally imports 'Y'"). Prefer Detail
+					// for the warning message; fall back to Name if no
+					// Detail was set so we never surface an empty string.
+					msg := r.Detail
+					if msg == "" {
+						msg = r.Name
+					}
+					addFinding("boundaries", msg, r.File, r.Name, r.Line, lvl, meta)
 				}
 			}
 		}

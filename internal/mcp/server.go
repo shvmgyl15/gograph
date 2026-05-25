@@ -1408,18 +1408,32 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 	couplingTool := mcp.NewTool("gograph_coupling",
 		mcp.WithDescription("Show fan-in, fan-out, and instability per package. Instability = FanOut / (FanIn + FanOut). Range [0,1]: 0 = stable, 1 = unstable. Optionally filter by package name."),
 		mcp.WithString("package", mcp.Description("Optional package name substring to filter results")),
+		mcp.WithBoolean("include_stdlib", mcp.Description("Include standard-library packages in the report. Default false — users asking 'how coupled is my code?' rarely care about stdlib coupling.")),
+		mcp.WithBoolean("internal_only", mcp.Description("Restrict the report to the project's own packages (anything starting with the module path from go.mod). Strictly stronger than excluding stdlib — also excludes third-party deps.")),
 	)
 	addTool(couplingTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
 			g = newG
 		}
 		term := ""
+		opts := search.CouplingOptions{}
 		if args, ok := request.Params.Arguments.(map[string]any); ok {
 			if p, ok := args["package"].(string); ok {
 				term = p
 			}
+			if b, ok := args["include_stdlib"].(bool); ok {
+				opts.IncludeStdlib = b
+			}
+			if b, ok := args["internal_only"].(bool); ok && b {
+				// CLI reads go.mod from cwd; MCP server runs server-side
+				// so cwd is whichever directory the user invoked gograph
+				// from. Re-read here for consistency.
+				if mod := search.ReadModulePath("."); mod != "" {
+					opts.ModuleOnly = mod
+				}
+			}
 		}
-		results := search.Coupling(g, term)
+		results := search.Coupling(g, term, opts)
 		data, err := json.MarshalIndent(results, "", "  ")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -1555,7 +1569,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_mutate
 	mutateTool := mcp.NewTool("gograph_mutate",
-		mcp.WithDescription("Find functions that mutate a specific struct field. Useful for tracking down unintended state changes."),
+		mcp.WithDescription("Find functions that mutate a specific struct field. Covers direct assignments (s.f = x), IncDec/augmented (s.f++, s.f += 1), and indirect mutations through method calls — atomic.*/sync.Map/sync.Mutex/sync.RWMutex/sync.WaitGroup/sync.Once stdlib mutators, user-defined wrapper methods that write to receiver fields (detected via SSA), and channel sends (s.ch <- x). Indirect rows carry a 'via' marker in their detail. ++/+= and indirect-mutation detection require a --precise build."),
 		mcp.WithString("field", mcp.Required(), mcp.Description("The field name to search for mutations (e.g., 'Status')")),
 	)
 	addTool(mutateTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

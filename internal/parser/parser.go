@@ -797,6 +797,18 @@ func compositeLitTypeName(lit *ast.CompositeLit) string {
 }
 
 // receiverString converts an AST receiver type expression to a short string.
+//
+// Handles four forms a method receiver can take:
+//   - *ast.Ident          — non-generic receiver:    func (c Cache) ...
+//   - *ast.StarExpr       — pointer:                 func (c *Cache) ...
+//   - *ast.IndexExpr      — single-param generic:    func (c *List[T]) ...
+//   - *ast.IndexListExpr  — multi-param generic:     func (c *Cache[K, V]) ...
+//
+// Without the IndexListExpr case, multi-param generic methods fell through
+// to the %T default and produced symbol IDs like
+// "pkg::(**ast.IndexListExpr).Get" — gibberish that broke gograph's symbol
+// table for any modern Go codebase using parametric data structures
+// (Bug 9.A — discovered via synthetic test repo when Bug 6 closed).
 func receiverString(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.StarExpr:
@@ -804,6 +816,8 @@ func receiverString(expr ast.Expr) string {
 	case *ast.Ident:
 		return t.Name
 	case *ast.IndexExpr:
+		return receiverString(t.X)
+	case *ast.IndexListExpr:
 		return receiverString(t.X)
 	default:
 		return fmt.Sprintf("%T", expr)

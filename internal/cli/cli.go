@@ -176,7 +176,7 @@ func Run(args []string) int {
 	case "check":
 		return runCheck(args[1:])
 	case "gate":
-		return runGate()
+		return runGate(args[1:])
 	case "snapshot":
 		return runSnapshot(args[1:])
 	case "add-claude-plugin":
@@ -243,6 +243,10 @@ FINDING THINGS — three different scopes:
 CALL GRAPH — two different depths:
   callers/callees <sym> [--depth N]   bounded: 1 hop (default) up to 10 — use for focused exploration
   impact <sym>                         unbounded: full BFS to ALL transitive callers — can be large on hotspots
+  <sym> can be a short name ("Validate" — fuzzy substring match) OR a fully-qualified
+    ID ("pkg/path::(*Service).Validate" — exact match, no same-name conflation). Use
+    the FQ form to disambiguate overloads/duplicates. Requires --precise build for
+    full effect. Works for callers, callees, impact, and path (both endpoints).
 
 SYMBOL UNDERSTANDING — two different outputs:
   context <sym>   structured data: node + source + callers + callees + tests — fast, token-efficient
@@ -361,7 +365,7 @@ fixtures <pkg>       : test helper structs and functions in test files
 globals <pkg>        : package-level vars, consts, and functions mutating them
 hotspot [--top N]    : functions ranked by incoming call count — study these first
 mocks <iface>        : alias for 'implementers --test-only' (kept for compatibility)
-mutate <field>       : functions that mutate a specific struct field
+mutate <field>       : functions that mutate a specific struct field — covers direct assignments, ++/+= (--precise only), and indirect mutations via method calls (atomic.*/sync.Map/sync.Mutex/channels/user wrappers; --precise only). Indirect rows show via=<method>.
 plan <sym>           : change plan — callers, tests, SQL/env/route risk, public API impact
 plan <sym> --with-context : plan + full context for every inspect_first symbol (saves N follow-up context calls)
 plan --uncommitted   : change plan for all currently uncommitted modified symbols
@@ -1015,6 +1019,14 @@ SEARCH & NAVIGATION
   embeds <struct>            Find which structs embed the given struct.
   imports <pkg>              Find all files importing a given package path.
   mutate <field>             Find functions that mutate a specific struct field.
+                             Catches direct assignments (s.f = x), IncDec/augmented
+                             (s.f++, s.f += 1), and indirect mutations through
+                             method calls — atomic.*/sync.Map/sync.Mutex/sync.RWMutex
+                             /sync.WaitGroup/sync.Once stdlib mutators, user-defined
+                             wrapper methods that write to receiver fields (detected
+                             via SSA), and channel sends (s.ch <- x). Indirect rows
+                             show "via <method-name>" in Detail. The ++/+= and
+                             indirect-mutation cases require a --precise build.
   arity [--min 5]            Find functions with many arguments (long parameter list smell).
   skeleton                   Output the whole repository's API signatures with bodies stripped.
 
@@ -1026,6 +1038,10 @@ CALL GRAPH
   impact --since <ref>       Blast radius of all symbols changed since a git ref (e.g. main, HEAD~5).
                              Composes changes --git <ref> + impact into one call.
   path <from> <to>           Shortest call chain between two symbols (BFS).
+                             For callers/callees/impact/path: the symbol argument can be a short
+                             name ("Validate" — fuzzy substring) OR a fully-qualified ID
+                             ("pkg/path::(*S).Validate" — exact match, no same-name conflation).
+                             Use the FQ form to disambiguate overloads. Requires --precise build.
   trace <err_str>            Find the origin of an error and trace backwards to entry points.
   orphans                    Functions with 0 explicit incoming calls in the call graph.
                              Useful for spotting potentially unused code.
@@ -1411,8 +1427,28 @@ func runComplexity(args []string) int {
 // runCoupling shows package fan-in, fan-out, and instability metrics.
 func runCoupling(args []string) int {
 	term := ""
-	if len(args) > 0 {
-		term = args[0]
+	opts := search.CouplingOptions{}
+	for _, a := range args {
+		switch a {
+		case "--include-stdlib":
+			// Keep stdlib packages in the report. Default is to exclude
+			// them — users asking about *their* code's coupling almost
+			// never care about fmt/strings/etc. coupling.
+			opts.IncludeStdlib = true
+		case "--internal-only":
+			// Restrict the report to the current project's own packages
+			// (anything starting with the module path from go.mod). When
+			// set, this is strictly stronger than the default filter:
+			// it also excludes third-party dependencies (github.com/...,
+			// golang.org/..., etc.).
+			if mod := search.ReadModulePath("."); mod != "" {
+				opts.ModuleOnly = mod
+			}
+		default:
+			if !strings.HasPrefix(a, "--") && term == "" {
+				term = a
+			}
+		}
 	}
 	g, err := loadGraph(".")
 	if err != nil {
@@ -1422,7 +1458,7 @@ func runCoupling(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	results := search.Coupling(g, term)
+	results := search.Coupling(g, term, opts)
 	if jsonMode {
 		return PrintJSON(okEnvelope("coupling", term, results, len(results)))
 	}

@@ -20,6 +20,18 @@ func normalizeSymbolName(name string) string {
 	return strings.ToLower(name)
 }
 
+// isFullyQualifiedID reports whether the user-supplied query looks like a
+// full SymbolNode.ID — recognisable by the "::" separator the parser uses
+// between an import path and the symbol's bare name
+// (e.g. "github.com/foo/bar::(*Service).Validate"). Query commands use this
+// to switch from fuzzy substring matching against bare names to exact
+// matching against CalleeSymbolID/CallerSymbolID. The short-name UX is
+// preserved: "Validate" still works as before; "pkg::(*S).Validate"
+// disambiguates between methods that happen to share a short name.
+func isFullyQualifiedID(s string) bool {
+	return strings.Contains(s, "::")
+}
+
 // Path finds the shortest call chain from symbol `from` to symbol `to` using
 // BFS over the call graph edges. It returns the chain as a slice of Result
 // values ordered from source to destination. An empty slice means no path was
@@ -29,19 +41,48 @@ func normalizeSymbolName(name string) string {
 func Path(g *graph.Graph, from, to string, includeTests bool) []Result {
 	fl := normalizeSymbolName(from)
 	tl := normalizeSymbolName(to)
+	fromFQ := isFullyQualifiedID(from)
+	toFQ := isFullyQualifiedID(to)
 
-	matchesFrom := func(s string) bool { return strings.Contains(strings.ToLower(s), fl) }
-	matchesTo := func(s string) bool { return strings.Contains(strings.ToLower(s), tl) }
+	// Matchers accept either a CallerName/CalleeRaw (substring) OR a full
+	// SymbolNode.ID (exact, when the user gave an FQ query). Path treats
+	// from/to symmetrically — both can be FQ to disambiguate same-named
+	// methods, or short for the legacy fuzzy UX.
+	//
+	// IMPORTANT: matchesToName must NOT fire when the user gave an FQ
+	// destination. normalizeSymbolName strips an FQ down to its bare name
+	// ("pkg::(*A).Validate" → "validate"), and falling back to a substring
+	// match on that would terminate on the first node containing "validate"
+	// regardless of receiver — defeating the whole point of FQ disambiguation.
+	matchesFromName := func(s string) bool {
+		if fromFQ {
+			return false
+		}
+		return strings.Contains(strings.ToLower(s), fl)
+	}
+	matchesToName := func(s string) bool {
+		if toFQ {
+			return false
+		}
+		return strings.Contains(strings.ToLower(s), tl)
+	}
+	matchesToID := func(id string) bool { return toFQ && id != "" && id == to }
 
-	// Build case-insensitive adjacency list
+	// Build adjacency keyed by caller NAME (legacy) and by CallerSymbolID
+	// (precise). The BFS below walks both maps so an edge is reachable
+	// whether the node was added by name or by ID.
 	adj := make(map[string][]graph.CallEdge)
 	adjLower := make(map[string][]graph.CallEdge)
+	adjByID := make(map[string][]graph.CallEdge)
 	for _, c := range g.Calls {
 		if !includeTests && isTestFile(c.File) {
 			continue
 		}
 		adj[c.CallerName] = append(adj[c.CallerName], c)
 		adjLower[strings.ToLower(c.CallerName)] = append(adjLower[strings.ToLower(c.CallerName)], c)
+		if c.CallerSymbolID != "" {
+			adjByID[c.CallerSymbolID] = append(adjByID[c.CallerSymbolID], c)
+		}
 	}
 
 	// Seed BFS from all nodes matching "from".
@@ -52,9 +93,17 @@ func Path(g *graph.Graph, from, to string, includeTests bool) []Result {
 	}
 	var queue []state
 	for _, c := range g.Calls {
-		if matchesFrom(c.CallerName) && !visited[c.CallerName] {
+		seedByName := matchesFromName(c.CallerName)
+		seedByID := fromFQ && c.CallerSymbolID == from
+		if (seedByName || seedByID) && !visited[c.CallerName] {
 			visited[c.CallerName] = true
 			queue = append(queue, state{node: c.CallerName})
+		}
+		// When the FROM query is an FQ ID, also seed by that exact ID so
+		// the BFS can walk via adjByID without name conflation.
+		if seedByID && !visited[c.CallerSymbolID] {
+			visited[c.CallerSymbolID] = true
+			queue = append(queue, state{node: c.CallerSymbolID})
 		}
 	}
 	for _, s := range g.Symbols {
@@ -64,9 +113,48 @@ func Path(g *graph.Graph, from, to string, includeTests bool) []Result {
 				node = s.ID[idx+1:]
 			}
 		}
-		if matchesFrom(node) && !visited[node] {
+		if matchesFromName(node) && !visited[node] {
 			visited[node] = true
 			queue = append(queue, state{node: node})
+		}
+		if fromFQ && s.ID == from && !visited[s.ID] {
+			visited[s.ID] = true
+			queue = append(queue, state{node: s.ID})
+		}
+	}
+
+	// enqueueEdge appends a follow-on state to the queue for an outgoing
+	// edge. It also visits the edge's CalleeSymbolID (when present) so a
+	// later iteration can pick the node up via adjByID and walk forward
+	// exactly — no name conflation across symbols that share a short name.
+	enqueueEdge := func(cur state, edge graph.CallEdge) {
+		nextNode := edge.CalleeRaw
+		if strings.Contains(nextNode, ".") {
+			normalized := normalizeSymbolName(nextNode)
+			parts := strings.Split(normalized, ".")
+			nextNode = parts[len(parts)-1]
+		}
+		newPath := make([]graph.CallEdge, len(cur.path)+1)
+		copy(newPath, cur.path)
+		newPath[len(cur.path)] = edge
+
+		if !visited[nextNode] {
+			visited[nextNode] = true
+			if _, exists := adj[nextNode]; exists || strings.Contains(nextNode, "(") {
+				visited[edge.CalleeRaw] = true
+			}
+			queue = append(queue, state{node: nextNode, path: newPath})
+			if _, exists := adj[nextNode]; !exists {
+				queue = append(queue, state{node: edge.CalleeRaw, path: newPath})
+			}
+		}
+		// Also enqueue the precise CalleeSymbolID as a node so the next
+		// hop can walk adjByID exactly — this is the Bug 6 fix: a chain
+		// reaching (*A).Validate will not accidentally continue into
+		// (*B).Validate's callees on the next hop.
+		if edge.CalleeSymbolID != "" && !visited[edge.CalleeSymbolID] {
+			visited[edge.CalleeSymbolID] = true
+			queue = append(queue, state{node: edge.CalleeSymbolID, path: newPath})
 		}
 	}
 
@@ -74,7 +162,16 @@ func Path(g *graph.Graph, from, to string, includeTests bool) []Result {
 		cur := queue[0]
 		queue = queue[1:]
 
-		if matchesTo(cur.node) && len(cur.path) > 0 {
+		// Termination: either the current node name matches (legacy fuzzy
+		// match) OR the last edge's CalleeSymbolID matches an FQ to-query.
+		matched := matchesToName(cur.node)
+		if !matched && len(cur.path) > 0 {
+			last := cur.path[len(cur.path)-1]
+			if matchesToID(last.CalleeSymbolID) {
+				matched = true
+			}
+		}
+		if matched && len(cur.path) > 0 {
 			var chain []Result
 			for _, edge := range cur.path {
 				chain = append(chain, Result{
@@ -99,25 +196,14 @@ func Path(g *graph.Graph, from, to string, includeTests bool) []Result {
 		}
 
 		for _, edge := range adj[cur.node] {
-			nextNode := edge.CalleeRaw
-			if strings.Contains(nextNode, ".") {
-				normalized := normalizeSymbolName(nextNode)
-				parts := strings.Split(normalized, ".")
-				nextNode = parts[len(parts)-1]
-			}
-			if !visited[nextNode] {
-				visited[nextNode] = true
-				if _, exists := adj[nextNode]; exists || strings.Contains(nextNode, "(") {
-					visited[edge.CalleeRaw] = true
-				}
-				newPath := make([]graph.CallEdge, len(cur.path)+1)
-				copy(newPath, cur.path)
-				newPath[len(cur.path)] = edge
-				queue = append(queue, state{node: nextNode, path: newPath})
-				if _, exists := adj[nextNode]; !exists {
-					queue = append(queue, state{node: edge.CalleeRaw, path: newPath})
-				}
-			}
+			enqueueEdge(cur, edge)
+		}
+		// ID-keyed adjacency: when cur.node is a SymbolNode.ID (because a
+		// previous hop seeded it via edge.CalleeSymbolID), walking via
+		// adjByID gives exact-identity expansion — no conflation with
+		// other symbols sharing the short name.
+		for _, edge := range adjByID[cur.node] {
+			enqueueEdge(cur, edge)
 		}
 		for _, edge := range adjLower[strings.ToLower(cur.node)] {
 			nextNode := edge.CalleeRaw
@@ -177,20 +263,55 @@ func ReachableOrphans(g *graph.Graph) []Result {
 		roots[normalizeSymbolName(r.Handler)] = true
 	}
 
+	// Seed reachable set with all roots — both the normalised-name form
+	// (legacy fallback for edges that lack CalleeSymbolID) AND the full
+	// symbol ID. The ID-keyed entry is what lets the BFS step through
+	// CalleeSymbolID without name conflation (Bug 6).
 	reachable := make(map[string]bool)
 	for r := range roots {
 		reachable[r] = true
 	}
-
-	adj := make(map[string][]string)
-	for _, c := range g.Calls {
-		caller := normalizeSymbolName(c.CallerName)
-		callee := normalizeSymbolName(c.CalleeRaw)
-		adj[caller] = append(adj[caller], callee)
+	for _, s := range g.Symbols {
+		if s.Kind != graph.KindFunction && s.Kind != graph.KindMethod {
+			continue
+		}
+		if !reachable[normalizeSymbolName(s.Name)] && !reachable[normalizeSymbolName(s.ID)] {
+			continue
+		}
+		// Symbol is a root by name; also seed its ID so BFS via
+		// CalleeSymbolID can reach things only it specifically calls.
+		reachable[s.ID] = true
 	}
 
-	bfsQueue := make([]string, 0, len(roots))
-	for r := range roots {
+	// Adjacency from caller-key → list of callee-keys. We index by two
+	// keys per side so the BFS works whether edges have CalleeSymbolID
+	// (precise mode) or only CalleeRaw (basic mode). On the caller side
+	// CallerSymbolID is preferred; CalleeSymbolID is preferred on the
+	// callee side. Empty fields fall back to the normalised name —
+	// matches the legacy behaviour for unresolved edges.
+	adj := make(map[string][]string)
+	for _, c := range g.Calls {
+		var callerKeys []string
+		if c.CallerSymbolID != "" {
+			callerKeys = append(callerKeys, c.CallerSymbolID)
+		}
+		callerKeys = append(callerKeys, normalizeSymbolName(c.CallerName))
+
+		var calleeKey string
+		if c.CalleeSymbolID != "" {
+			// Exact resolution: no conflation risk. (*A).Validate stays
+			// distinct from (*B).Validate — the whole point of Bug 6.
+			calleeKey = c.CalleeSymbolID
+		} else {
+			calleeKey = normalizeSymbolName(c.CalleeRaw)
+		}
+		for _, ck := range callerKeys {
+			adj[ck] = append(adj[ck], calleeKey)
+		}
+	}
+
+	bfsQueue := make([]string, 0, len(reachable))
+	for r := range reachable {
 		bfsQueue = append(bfsQueue, r)
 	}
 	for len(bfsQueue) > 0 {
@@ -214,7 +335,11 @@ func ReachableOrphans(g *graph.Graph) []Result {
 		if s.Kind != graph.KindFunction && s.Kind != graph.KindMethod {
 			continue
 		}
-		if reachable[normalizeSymbolName(s.ID)] || reachable[normalizeSymbolName(s.Name)] {
+		// Three reachability checks per symbol:
+		//   - exact ID (matches CalleeSymbolID-based BFS hits)
+		//   - normalised ID (matches name-based roots/edges)
+		//   - normalised name (legacy short-name fallback)
+		if reachable[s.ID] || reachable[normalizeSymbolName(s.ID)] || reachable[normalizeSymbolName(s.Name)] {
 			continue
 		}
 		results = append(results, Result{

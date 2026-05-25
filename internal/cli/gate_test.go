@@ -48,7 +48,7 @@ max_new_coupling_edges: 5
 		t.Fatalf("write yml: %v", err)
 	}
 
-	if code := runGate(); code != 0 {
+	if code := runGate(nil); code != 0 {
 		t.Fatalf("expected gate to pass, got exit code %d", code)
 	}
 }
@@ -87,7 +87,7 @@ max_new_coupling_edges: 5
 		t.Fatalf("write yml: %v", err)
 	}
 
-	if code := runGate(); code != 1 {
+	if code := runGate(nil); code != 1 {
 		t.Fatalf("expected gate to fail, got exit code %d", code)
 	}
 }
@@ -132,7 +132,7 @@ max_new_coupling_edges: 5
 		t.Fatalf("write yml: %v", err)
 	}
 
-	if code := runGate(); code != 1 {
+	if code := runGate(nil); code != 1 {
 		t.Fatalf("expected gate to fail, got exit code %d", code)
 	}
 }

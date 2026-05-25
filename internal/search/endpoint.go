@@ -6,6 +6,31 @@ import (
 	"github.com/ozgurcd/gograph/internal/graph"
 )
 
+// httpVerbs is the set of HTTP method names recognised at the start of a
+// user-supplied `endpoint "VERB PATH"` query. Used by matchRoutes tier 3
+// to split off a verb prefix and compare it against the recorded route's
+// Method field (which may itself be a verb like "GET" for verb-specific
+// routers, or a generic registration name like "HandleFunc").
+var httpVerbs = map[string]bool{
+	"get": true, "post": true, "put": true, "delete": true,
+	"patch": true, "head": true, "options": true, "connect": true,
+	"trace": true,
+}
+
+// genericVerb reports whether a recorded route Method is a generic
+// registration call (net/http.ServeMux style) that doesn't pin a specific
+// HTTP verb at parse time. When the user's query specifies a verb (e.g.
+// "POST /api/x") and the recorded Method is generic, accept the route on
+// path equality alone — otherwise valid hits get rejected for "wrong verb"
+// when the verb is in fact unknowable from the AST.
+func genericVerb(m string) bool {
+	switch strings.ToLower(m) {
+	case "handle", "handlefunc", "any":
+		return true
+	}
+	return false
+}
+
 // EndpointSlice is the full vertical slice for one HTTP endpoint.
 type EndpointSlice struct {
 	Route       string `json:"route"`
@@ -205,10 +230,36 @@ func matchRoutes(g *graph.Graph, query string, includeTests bool) []graph.HTTPRo
 	}
 
 	// Tier 3: exact route (method+path) match. `endpoint "POST /api/users"`.
+	// Two query forms accepted: "VERB PATH" or just "PATH". When the query
+	// has a verb but the recorded Method is a non-verb-specific registration
+	// (HandleFunc, Handle, Any — common for net/http.ServeMux and similar),
+	// match on path equality alone — the verb is unknowable at parse time
+	// for those router styles and rejecting on verb mismatch loses real hits.
+	var qVerb, qPath string
+	if i := strings.Index(q, " "); i > 0 {
+		head := strings.TrimSpace(q[:i])
+		if httpVerbs[head] {
+			qVerb = head
+			qPath = strings.TrimSpace(q[i+1:])
+		}
+	}
+	if qPath == "" {
+		qPath = q
+	}
 	var t3 []graph.HTTPRoute
 	for _, r := range routes {
-		full := strings.ToLower(r.Method + " " + r.Path)
-		if full == q || strings.ToLower(r.Path) == q {
+		mLower := strings.ToLower(r.Method)
+		pLower := strings.ToLower(r.Path)
+		full := mLower + " " + pLower
+		// Direct full-string match (legacy behaviour).
+		if full == q {
+			t3 = append(t3, r)
+			continue
+		}
+		// Path-equality match. Acceptable when (a) the query had no verb,
+		// or (b) the query verb matches the recorded Method, or (c) the
+		// recorded Method is generic registration (HandleFunc/Handle/Any).
+		if pLower == qPath && (qVerb == "" || mLower == qVerb || genericVerb(mLower)) {
 			t3 = append(t3, r)
 		}
 	}
