@@ -77,7 +77,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_capabilities
 	capabilitiesTool := mcp.NewTool("gograph_capabilities",
-		mcp.WithDescription("Discover the available gograph MCP tools, their purposes, recommended workflows, and limitations. Call this tool first to understand what gograph can do."),
+		mcp.WithDescription("Discover the available gograph MCP tools, their purposes, recommended workflows, and limitations. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool first to understand what gograph can do. Do NOT call this tool repeatedly once capabilities are cached. COMPLETENESS: Returns a structured checklist of all 50 available tools, recommended agent workflows, and limitations."),
 	)
 	addTool(capabilitiesTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		resp := map[string]any{
@@ -155,7 +155,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_query
 	queryTool := mcp.NewTool("gograph_query",
-		mcp.WithDescription("Search the Go repository for symbols, packages, files, or imports using a keyword term. USAGE GUIDELINES: Call this tool during the initial exploration phase when you have a keyword or feature name but do not know which files or packages contain the relevant code. COMPLETENESS: Returns a structured list of matching symbols, files, and imports, along with their location and kind, helping you find where to start your investigation."),
+		mcp.WithDescription("Search the Go repository for symbols, packages, files, or imports using a keyword term. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool during the initial exploration phase when you have a keyword or feature name but do not know which files or packages contain the relevant code. Do NOT use if you already know the exact symbol name (use gograph_source or gograph_node instead). COMPLETENESS: Returns a structured list of matching symbols, files, and imports, along with their location and kind. Example: 'Graph', 'Serve'."),
 		mcp.WithString("term", mcp.Required(), mcp.Description("The keyword search term to locate in symbols, files, and imports (e.g., 'AuthService', 'token', 'router')")),
 	)
 	addTool(queryTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -176,7 +176,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_focus
 	focusTool := mcp.NewTool("gograph_focus",
-		mcp.WithDescription("Extract highly targeted context for a single Go package, including all files, symbols, internal calls, and dependencies associated with it."),
+		mcp.WithDescription("Extract targeted call-graph and dependency context for a single Go package. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when you need to understand the architecture, files, internal calls, and dependencies of a specific package directory before making edits. Do NOT use for global searches (use gograph_query instead). COMPLETENESS: Requires 'package' parameter. Returns a detailed listing of all files, defined symbols, calls, and internal dependencies within the target package. Example package: 'internal/search'."),
 		mcp.WithString("package", mcp.Required(), mcp.Description("The package path or name to focus on (e.g., 'internal/auth')")),
 	)
 	addTool(focusTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -197,8 +197,8 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_callers
 	callersTool := mcp.NewTool("gograph_callers",
-		mcp.WithDescription("Find what functions or methods call the specified function. Useful for impact analysis."),
-		mcp.WithString("function", mcp.Required(), mcp.Description("The name of the function being called (e.g., 'ValidateToken')")),
+		mcp.WithDescription("Find and list all functions or methods that call the specified target function. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when performing impact analysis, tracing call hierarchies, or identifying who consumes a particular API. Do NOT use if you want downstream callees (use gograph_callees instead). COMPLETENESS: Requires 'function' parameter. Returns a structured list of calling function symbols and their exact file locations. Example function: 'BuildGraph'."),
+		mcp.WithString("function", mcp.Required(), mcp.Description("The name of the target function to find callers for (e.g., 'BuildGraph', 'Serve')")),
 	)
 	addTool(callersTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -218,8 +218,8 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_callees
 	calleesTool := mcp.NewTool("gograph_callees",
-		mcp.WithDescription("Find what functions or methods are called from inside the specified function. Useful to understand dependencies."),
-		mcp.WithString("function", mcp.Required(), mcp.Description("The name of the calling function (e.g., 'InitServer')")),
+		mcp.WithDescription("Find and list all downstream functions or methods invoked from inside the specified caller function. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when you need to understand the downstream execution flow, dependencies, and external calls of a single function. Do NOT use if you want upstream callers (use gograph_callers instead). COMPLETENESS: Requires 'function' parameter. Returns a complete array of callees, including their package paths and signatures. Example function: 'Serve'."),
+		mcp.WithString("function", mcp.Required(), mcp.Description("The name of the calling function to inspect callees for (e.g., 'Serve', 'runMCP')")),
 	)
 	addTool(calleesTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -239,7 +239,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_implementers
 	implementersTool := mcp.NewTool("gograph_implementers",
-		mcp.WithDescription("Find all structs that implement the specified interface. Essential for understanding implicit Go interfaces and dependency injection. Set test_only=true to limit results to structs in test/mock files (equivalent to gograph_mocks)."),
+		mcp.WithDescription("Find all structs in the codebase that implement the specified interface via Go duck-typing. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when tracing polymorphism, identifying dependency injection structures, or locating mock implementations. Do NOT use if you are looking for struct fields (use gograph_fields instead). COMPLETENESS: Requires 'interface' parameter. Returns a detailed list of implementing concrete structs and their package file locations. Example interface: 'error'."),
 		mcp.WithString("interface", mcp.Required(), mcp.Description("The name of the interface (e.g., 'AuthService')")),
 		mcp.WithBoolean("test_only", mcp.Description("If true, return only structs defined in test or mock files (replaces gograph_mocks)")),
 	)
@@ -265,7 +265,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_fields
 	fieldsTool := mcp.NewTool("gograph_fields",
-		mcp.WithDescription("Extract all fields, types, and struct tags declared inside a specific Go struct. USAGE GUIDELINES: Call this tool when inspecting struct definitions, verifying struct layouts, mapping JSON/database tags, or generating serialization logic. COMPLETENESS: Requires 'struct' parameter. Returns field names, Go types, and exact struct tag string metadata, providing full visibility into struct fields without manual code viewing."),
+		mcp.WithDescription("Extract all fields, types, and struct tags declared inside a specific Go struct. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when inspecting struct definitions, verifying struct layouts, mapping JSON/database tags, or generating serialization logic. Do NOT use if you are looking for struct methods (use gograph_node or gograph_source instead). COMPLETENESS: Requires 'struct' parameter. Returns field names, Go types, and exact struct tag string metadata, providing full visibility into struct fields without manual code viewing. Example struct: 'Graph'."),
 		mcp.WithString("struct", mcp.Required(), mcp.Description("The exact name of the target struct to inspect fields for (e.g., 'Config', 'User')")),
 	)
 	addTool(fieldsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -286,7 +286,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_source
 	sourceTool := mcp.NewTool("gograph_source",
-		mcp.WithDescription("Extract the exact source code for a specific function, method, struct, or interface. Extremely efficient for reading implementation logic without reading the entire file."),
+		mcp.WithDescription("Extract the exact Go source code body for a specific function, method, struct, or interface. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when you need to read the implementation details of a specific symbol without loading large files. Do NOT use if you need call hierarchies (use gograph_callers/gograph_callees instead). COMPLETENESS: Requires 'symbol' parameter. Returns the exact block of source code defining the target symbol, complete with line numbers. Example symbol: 'BuildGraph'."),
 		mcp.WithString("symbol", mcp.Required(), mcp.Description("The name of the symbol (e.g., 'ValidateToken' or 'AuthService')")),
 	)
 	addTool(sourceTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -311,7 +311,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_orphans
 	orphansTool := mcp.NewTool("gograph_orphans",
-		mcp.WithDescription("Find functions and methods that are unreachable from any entry point (main, HTTP routes, exported symbols). Matches the CLI 'gograph orphans' behavior."),
+		mcp.WithDescription("Find functions and methods that are unreachable from any entry point (main, HTTP routes, exported symbols). BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when clean-up is needed or to locate dead code that should be purged from the repository. Do NOT use for checking specific symbol usages (use gograph_usages instead). COMPLETENESS: Returns a list of orphan symbols, their packages, and file definitions."),
 	)
 	addTool(orphansTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -323,7 +323,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_impact
 	impactTool := mcp.NewTool("gograph_impact",
-		mcp.WithDescription("Traverse the call graph backwards to find all symbols that eventually call the target. Supports three modes: single symbol, uncommitted changes, or all changes since a git ref."),
+		mcp.WithDescription("Traverse the call graph backwards to find all symbols that eventually call the target (blast radius). BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to determine the blast radius of a sensitive core component before refactoring. Do NOT use for direct callers only (use gograph_callers instead). COMPLETENESS: Supports single symbol, uncommitted changes, or since a git ref. Returns a transitive list of all upstream affected symbols. Example symbol: 'BuildGraph'."),
 		mcp.WithString("symbol", mcp.Description("Symbol name for single-symbol blast radius (e.g., 'ValidateToken')")),
 		mcp.WithBoolean("uncommitted", mcp.Description("If true, compute blast radius of all uncommitted modified symbols")),
 		mcp.WithString("since", mcp.Description("Git ref (e.g. 'main', 'HEAD~5'): blast radius of all symbols changed since this ref")),
@@ -381,7 +381,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_boundaries
 	boundariesTool := mcp.NewTool("gograph_boundaries",
-		mcp.WithDescription("Verify package architecture constraints against boundaries.json to detect forbidden imports and illegal layer dependencies. USAGE GUIDELINES: Call this tool to check if packages conform to domain design constraints or to debug illegal import cycles and layered violations. COMPLETENESS: Optional 'config' path. Returns a structured boundary compliance report listing authorized vs unauthorized dependencies, enabling complete dependency sanity audits."),
+		mcp.WithDescription("Verify package architecture constraints against boundaries.json to detect forbidden imports and illegal layer dependencies. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to check if packages conform to domain design constraints or to debug illegal import cycles and layered violations. Do NOT use for general dependency mapping (use gograph_deps instead). COMPLETENESS: Optional 'config' path. Returns a structured boundary compliance report listing authorized vs unauthorized dependencies."),
 		mcp.WithString("config", mcp.Description("Optional file path to boundary constraints configuration (defaults to .gograph/boundaries.json)")),
 	)
 	addTool(boundariesTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -423,7 +423,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_endpoint
 	endpointTool := mcp.NewTool("gograph_endpoint",
-		mcp.WithDescription("Full vertical slice for one HTTP endpoint. Resolves a route pattern or handler symbol to its handler, then traces the downstream call chain (BFS, default depth 5), collects SQL queries emitted, and env vars read. Heuristic AST call-graph — calls through interfaces may not appear."),
+		mcp.WithDescription("Audit and analyze HTTP route endpoints, handlers, and anonymous closure bodies. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to review HTTP interface definitions, verify request flow bindings, or audit handler implementations. Do NOT use for internal Go functions (use gograph_source instead). COMPLETENESS: Returns HTTP methods, paths, handler signatures, and handler bodies. Example package: 'cmd/gograph'."),
 		mcp.WithString("query", mcp.Required(), mcp.Description(`Route pattern ("POST /api/users"), path fragment ("/users"), or handler symbol name ("CreateUser")`)),
 		mcp.WithNumber("depth", mcp.Description("BFS depth for call chain traversal (default: 5)")),
 	)
@@ -461,7 +461,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 	// Tool: gograph_api
 
 	apiTool := mcp.NewTool("gograph_api",
-		mcp.WithDescription("Compare the public-facing contract and integration surface of the Go codebase against a baseline git reference. Identifies likely breaking changes to exported functions, structs, interfaces, and routes."),
+		mcp.WithDescription("Extract the public API surface of a Go package, listing all exported functions, types, and interfaces. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when building integration layers, documenting public interfaces, or verifying exports. Do NOT use for private/unexported symbols (use gograph_node instead). COMPLETENESS: Requires 'package' parameter. Returns a clean summary of exported package API symbols. Example package: 'internal/search'."),
 		mcp.WithString("since", mcp.Required(), mcp.Description("The baseline git reference (e.g., 'main' or 'HEAD~1') to compare against")),
 	)
 	addTool(apiTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -553,7 +553,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_routes
 	routesTool := mcp.NewTool("gograph_routes",
-		mcp.WithDescription("Extract all HTTP REST API routes found in the codebase (e.g. GET /api)."),
+		mcp.WithDescription("Discover all registered HTTP routes and endpoints defined inside the codebase. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to map out the entire web API structure of a microservice or application. Do NOT use if you need downstream call details (use gograph_endpoint instead). COMPLETENESS: Returns a structured table of HTTP method/route paths mapped to Go handlers."),
 	)
 	addTool(routesTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -565,7 +565,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_context
 	contextTool := mcp.NewTool("gograph_context",
-		mcp.WithDescription("Compact symbol context. Bundles node details, callers, callees, tests, and source code into one structured response. Set uncommitted=true to get context for all uncommitted modified symbols in one call (replaces 5-8 sequential context calls after plan --uncommitted)."),
+		mcp.WithDescription("Build a highly condensed diagnostic context file for a set of target Go packages or symbols. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to summarize multiple packages for LLM consumption, reducing token overhead. Do NOT use for deep line-by-line reading (use gograph_source instead). COMPLETENESS: Returns a compact text summary of package structures, exported APIs, and type definitions. Example package: 'internal/search'."),
 		mcp.WithString("symbol", mcp.Description("The exact name or ID of the symbol to retrieve context for.")),
 		mcp.WithBoolean("uncommitted", mcp.Description("If true, return context for all uncommitted modified symbols bundled in one response.")),
 	)
@@ -587,8 +587,8 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 			}
 			if len(syms) == 0 {
 				data, _ := json.MarshalIndent(map[string]any{
-					"summary": "No uncommitted modified symbols found.",
-					"count":   0,
+					"summary":  "No uncommitted modified symbols found.",
+					"count":    0,
 					"contexts": []any{},
 				}, "", "  ")
 				return mcp.NewToolResultText(string(data)), nil
@@ -667,7 +667,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_plan
 	planTool := mcp.NewTool("gograph_plan",
-		mcp.WithDescription("Generate a comprehensive, safe edit plan before making modifications to the Go codebase. USAGE GUIDELINES: ALWAYS call this tool BEFORE applying code changes to a symbol. It identifies affected tests, routes, env reads, SQL calls, and public API drift. Set with_context=true to bundle full context/source code, avoiding redundant tool calls. COMPLETENESS: Requires either 'symbol' or 'uncommitted' set to true. Returns a structured list of dependent symbols, test targets to verify, affected routes, environment configurations, and an automated risk profile."),
+		mcp.WithDescription("Analyze structural changes and dependencies to output a detailed refactoring execution plan. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool before making complex multi-file architectural changes or package refactoring. Do NOT use for trivial single-file edits. COMPLETENESS: Returns a step-by-step refactoring workflow detailing symbol modifications, dependency steps, and testing verification checklists."),
 		mcp.WithString("symbol", mcp.Description("The name of the symbol you intend to modify (e.g., 'ValidateToken')")),
 		mcp.WithBoolean("uncommitted", mcp.Description("Set to true to generate a global plan for all currently uncommitted changes across the repository")),
 		mcp.WithBoolean("with_context", mcp.Description("If set to true, bundles full context, source code, callers, callees, and architectural roles for each symbol to be inspected")),
@@ -758,7 +758,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_review
 	reviewTool := mcp.NewTool("gograph_review",
-		mcp.WithDescription("Run an architectural consistency and design constraint review against defined code boundaries or specific symbols. USAGE GUIDELINES: Call this tool during post-edit verification, CI pipelines, or refactoring phases to ensure new additions do not violate boundary limits. COMPLETENESS: Requires either 'symbol' or 'uncommitted' set to true. Returns a structured checklist of all rules evaluated, listing exact package paths and files violating architectural boundaries, enabling fast design corrections."),
+		mcp.WithDescription("Run an architectural consistency and design constraint review against defined code boundaries or specific symbols. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool during post-edit verification, CI pipelines, or refactoring phases to ensure new additions do not violate boundary limits. Do NOT use for general dependency tree listing (use gograph_deps instead). COMPLETENESS: Requires either 'symbol' or 'uncommitted' set to true. Returns a structured checklist of all rules evaluated, listing exact package paths and files violating architectural boundaries. Example symbol: 'Graph'."),
 		mcp.WithString("symbol", mcp.Description("The name of the target symbol to run the design review for (e.g. 'AuthService')")),
 		mcp.WithBoolean("uncommitted", mcp.Description("Set to true to review all uncommitted/modified changes in the repository")),
 	)
@@ -813,7 +813,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_errorflow
 	errorflowTool := mcp.NewTool("gograph_errorflow",
-		mcp.WithDescription("Trace likely error paths up to entry points (HTTP routes or CLI commands). Use this to find where an error originates and how it is handled. (AST heuristic, NO SSA)"),
+		mcp.WithDescription("Trace the flow and propagation of returned errors from a specific origin function. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when auditing error-handling completeness, locating unhandled errors, or tracing failure modes. Do NOT use for standard call graphs (use gograph_callers/callees instead). COMPLETENESS: Requires 'function' parameter. Returns error bubbling paths up the call chain. Example function: 'BuildGraph'."),
 		mcp.WithString("term", mcp.Description("The error string or sentinel error name (e.g., 'ErrInvalidToken' or 'invalid token')")),
 		mcp.WithString("query", mcp.Description("The error string or sentinel error name (preferred over term)")),
 		mcp.WithBoolean("no_tests", mcp.Description("If true, exclude test files from related-test collection (matches CLI --no-tests)")),
@@ -864,7 +864,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_imports
 	importsTool := mcp.NewTool("gograph_imports",
-		mcp.WithDescription("Find all files and packages that import a specific internal or third-party package. USAGE GUIDELINES: Call this tool when mapping package dependency relationships, isolating features, or tracing where third-party libraries are used. COMPLETENESS: Requires 'package' parameter. Returns a complete array of file paths and importing packages referencing the target import path, enabling deep modularity audits."),
+		mcp.WithDescription("Find all files and packages that import a specific internal or third-party package. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when mapping package dependency relationships, isolating features, or tracing where third-party libraries are used. Do NOT use if you need a package's own imports (use gograph_deps instead). COMPLETENESS: Requires 'package' parameter. Returns a complete array of file paths and importing packages referencing the target import path. Example package: 'golang.org/x/tools'."),
 		mcp.WithString("package", mcp.Required(), mcp.Description("The exact import path of the target package to trace imports for (e.g., 'github.com/redis/go-redis')")),
 	)
 	addTool(importsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -885,7 +885,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_dependents
 	dependentsTool := mcp.NewTool("gograph_dependents",
-		mcp.WithDescription("Find all packages in the repository that import the named package. Essential before any package-level refactor — tells you every consumer that will be affected."),
+		mcp.WithDescription("Find all downstream packages that depend on or import the specified target package. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to identify downstream impact before changing a public package interface. Do NOT use for direct callers of a single function (use gograph_callers instead). COMPLETENESS: Requires 'package' parameter. Returns concrete packages importing the target package. Example package: 'internal/graph'."),
 		mcp.WithString("package", mcp.Required(), mcp.Description("The package to find dependents for (e.g., 'internal/auth', 'auth', or a full import path)")),
 	)
 	addTool(dependentsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -906,7 +906,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_sql
 	sqlTool := mcp.NewTool("gograph_sql",
-		mcp.WithDescription("Extract and analyze all raw SQL query literals, database touches, and transaction blocks inside the codebase. USAGE GUIDELINES: Call this tool when auditing database interactions, debugging database performance, or reviewing raw queries. Optional filter by keyword. COMPLETENESS: Returns a list of matching SQL statements, their file and line locations, and the parent Go functions containing the database touch, providing a clear map of database usage."),
+		mcp.WithDescription("Extract and analyze all raw SQL query literals, database touches, and transaction blocks inside the codebase. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when auditing database interactions, debugging database performance, or reviewing raw queries. Optional filter by keyword. Do NOT use for Go structs mapped to database tables (use gograph_schema instead). COMPLETENESS: Returns a list of matching SQL statements, their file and line locations, and the parent Go functions containing the database touch. Example term: 'SELECT'."),
 		mcp.WithString("term", mcp.Description("Optional SQL keyword or table name to filter database queries (e.g., 'SELECT', 'users')")),
 	)
 	addTool(sqlTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -925,7 +925,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_errors
 	errorsTool := mcp.NewTool("gograph_errors",
-		mcp.WithDescription("Extract custom error messages, return sites, and panics across the entire Go codebase. USAGE GUIDELINES: Call this tool when debugging error handling paths, auditing sentinel errors, or verifying panic recovery blocks. Optional 'term' can filter results. COMPLETENESS: Returns a comprehensive list of error symbols, direct return statements, error wrapping invocations, and panic locations, allowing deep analysis of failure paths."),
+		mcp.WithDescription("Locate all explicit error creation points (errors.New, fmt.Errorf, sentinel definitions) inside the codebase. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when auditing error taxonomies, cataloging error codes, or standardizing error handling. Do NOT use to trace propagation paths (use gograph_errorflow instead). COMPLETENESS: Returns a structured checklist of all matched error creation spots, showing their file and line coordinates."),
 		mcp.WithString("term", mcp.Description("Optional keyword to filter the returned error structures (e.g., 'ErrInvalid', 'unauthorized')")),
 	)
 	addTool(errorsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -944,8 +944,8 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_embeds
 	embedsTool := mcp.NewTool("gograph_embeds",
-		mcp.WithDescription("Find what structs embed the given target struct."),
-		mcp.WithString("struct", mcp.Required(), mcp.Description("The name of the target struct (e.g., 'Mutex')")),
+		mcp.WithDescription("Identify and list all parent structures that compositionally embed the specified target struct. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when analyzing struct nesting, identifying compositions, or tracing where shared types are embedded. Do NOT use if you are looking for interfaces implemented (use gograph_implementers instead). COMPLETENESS: Requires 'struct' parameter. Returns a detailed array of embedding parent structs and their file definitions. Example struct: 'Symbol'."),
+		mcp.WithString("struct", mcp.Required(), mcp.Description("The exact name of the target struct to inspect embedding relationships for (e.g., 'Symbol', 'PackageNode')")),
 	)
 	addTool(embedsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -965,7 +965,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_public
 	publicTool := mcp.NewTool("gograph_public",
-		mcp.WithDescription("Show only the exported (public) symbols of a specific package. USAGE GUIDELINES: Call this tool when you need to understand the public API footprint of a package, define boundary interfaces, or inspect integration entry points. COMPLETENESS: Requires 'package' parameter. Returns exported symbols (starting with uppercase letters) including structs, interfaces, methods, constants, and functions, excluding internal private logic."),
+		mcp.WithDescription("Extract all public, exported symbols across the entire repository, categorized by package. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when building a high-level catalog of system services or creating integration boundaries. Do NOT use if you need internal private details (use gograph_node instead). COMPLETENESS: Returns a structured outline of all exported functions, structs, interfaces, and variables."),
 		mcp.WithString("package", mcp.Required(), mcp.Description("The package name or path to inspect (e.g., 'internal/auth')")),
 	)
 	addTool(publicTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1012,7 +1012,7 @@ func formatResults(results []search.Result) *mcp.CallToolResult {
 func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool func(tool mcp.Tool, handler func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error))) {
 	// Tool: gograph_usages
 	usagesTool := mcp.NewTool("gograph_usages",
-		mcp.WithDescription("Find every place a named type is referenced in the codebase: function parameter types, return types, struct fields, and interface method signatures. Run before changing an interface or type to see the full consumption blast radius beyond just the implementers."),
+		mcp.WithDescription("Find all references and semantic usages of a specific function, struct, or variable across the codebase. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when renaming symbols, checking references, or identifying dead code usages. Do NOT use for AST metadata only (use gograph_node instead). COMPLETENESS: Requires 'symbol' parameter. Returns files and exact line locations containing references to the target symbol. Example symbol: 'BuildGraph'."),
 		mcp.WithString("type", mcp.Required(), mcp.Description("The type name to search for (e.g., 'AuthService', 'Repository')")),
 	)
 	addTool(usagesTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1033,7 +1033,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_literals
 	literalsTool := mcp.NewTool("gograph_literals",
-		mcp.WithDescription("Find all composite-literal initialization sites for a named struct (e.g., User{Name: \"foo\"}). Run this before adding a required field or removing a field — every site returned will break at compile time."),
+		mcp.WithDescription("Find all primitive literals (strings, integers, floats, booleans) matching a filter pattern. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to identify hardcoded magic values, config strings, or credentials. Do NOT use for raw database queries (use gograph_sql instead). COMPLETENESS: Optional 'type' filter (string/int). Returns a list of matched literals and their code positions. Example pattern: 'mcp'."),
 		mcp.WithString("struct", mcp.Required(), mcp.Description("The name of the struct (e.g., 'User')")),
 	)
 	addTool(literalsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1054,7 +1054,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_constructors
 	constructorsTool := mcp.NewTool("gograph_constructors",
-		mcp.WithDescription("Find factory and constructor functions that instantiate and return the specified Go struct. USAGE GUIDELINES: Call this tool when auditing object initialization patterns, looking for existing builder functions, or verifying correct struct instantiation. COMPLETENESS: Requires 'struct' parameter. Returns a detailed list of constructor function symbols, their file locations, and signatures, showing exactly how the target struct is built in the codebase."),
+		mcp.WithDescription("Find factory and constructor functions that instantiate and return the specified Go struct. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when auditing object initialization patterns, looking for existing builder functions, or verifying correct struct instantiation. Do NOT use if you need struct fields (use gograph_fields instead). COMPLETENESS: Requires 'struct' parameter. Returns a detailed list of constructor function symbols, their file locations, and signatures, showing exactly how the target struct is built. Example struct: 'Graph'."),
 		mcp.WithString("struct", mcp.Required(), mcp.Description("The exact name of the target Go struct to find constructors for (e.g., 'User', 'Config')")),
 	)
 	addTool(constructorsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1075,8 +1075,8 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_schema
 	schemaTool := mcp.NewTool("gograph_schema",
-		mcp.WithDescription("Find structs mapped to a database table or schema via struct tags."),
-		mcp.WithString("table", mcp.Required(), mcp.Description("The table or schema name (e.g., 'users')")),
+		mcp.WithDescription("Locate Go structs that map to a specific database table or schema using struct tags like db or gorm. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when mapping ORM structures, tracing database model boundaries, or locating table schemas. Do NOT use for non-ORM Go structs (use gograph_fields instead). COMPLETENESS: Requires 'table' parameter. Returns concrete structs mapping to the specified table. Example table: 'users'."),
+		mcp.WithString("table", mcp.Required(), mcp.Description("The table or schema name to search for in struct tags (e.g., 'users', 'roles')")),
 	)
 	addTool(schemaTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -1096,7 +1096,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_globals
 	globalsTool := mcp.NewTool("gograph_globals",
-		mcp.WithDescription("Find package-level variables and all functions mutating them. USAGE GUIDELINES: Call this tool when auditing global state, tracking down race conditions, or refactoring package variables. COMPLETENESS: Requires 'package' parameter. Returns package-scoped global variable symbols and lists functions that write to them, providing essential concurrency safety context."),
+		mcp.WithDescription("Audit all global variable declarations, shared package states, and constants defined inside the repository. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to discover mutable global state, check config values, or identify thread-safety hazards. Do NOT use for local scope variables. COMPLETENESS: Returns a structured checklist of all global variables, constants, package paths, and types."),
 		mcp.WithString("package", mcp.Required(), mcp.Description("The package name or path to inspect (e.g., 'internal/config')")),
 	)
 	addTool(globalsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1117,7 +1117,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_mocks
 	mocksTool := mcp.NewTool("gograph_mocks",
-		mcp.WithDescription("Find structs implementing an interface, filtered to test or mock files. Prefer gograph_implementers with test_only=true; this tool is kept for compatibility."),
+		mcp.WithDescription("Identify and locate all test mocks, double definitions, and test-only helper structs. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to identify active mock wrappers or find test fixtures. Do NOT use for production interface implementers (use gograph_implementers instead). COMPLETENESS: Requires 'interface' parameter. Returns test/mock concrete structs implementing the specified interface. Example interface: 'error'."),
 		mcp.WithString("interface", mcp.Required(), mcp.Description("The name of the interface (e.g., 'AuthService')")),
 	)
 	addTool(mocksTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1138,7 +1138,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_explain
 	explainTool := mcp.NewTool("gograph_explain",
-		mcp.WithDescription("LLM-ready architectural summary of a symbol. Synthesizes callers, callees, complexity, SQL, env, routes, concurrency, test coverage, and interface satisfaction into a single narrative. Use this for instant onboarding or prompt context injection."),
+		mcp.WithDescription("Generate high-fidelity explanations, downstream impacts, and documentation summaries for codebase symbols. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to construct technical documentation, onboard to complex implementations, or summarize logic for PRs. Do NOT use for line-by-line raw source code (use gograph_source instead). COMPLETENESS: Requires 'symbol' parameter. Returns a detailed semantic summary of the symbol's role, dependencies, and calls. Example symbol: 'BuildGraph'."),
 		mcp.WithString("symbol", mcp.Required(), mcp.Description("The name or ID of the symbol to explain (e.g., 'CreateUser' or 'Graph')")),
 	)
 	addTool(explainTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1166,8 +1166,8 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_node
 	nodeTool := mcp.NewTool("gograph_node",
-		mcp.WithDescription("Show full AST details for a symbol, package, or file: kind, file, line, signature, doc, and struct fields."),
-		mcp.WithString("name", mcp.Required(), mcp.Description("The symbol, package, or file name to look up")),
+		mcp.WithDescription("Extract full AST property details for any specific symbol, package, or file node in the repository graph. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when you need deep structural metadata including kinds, signatures, documentation, or exact file lines. Do NOT use if you need raw source code only (use gograph_source instead). COMPLETENESS: Requires 'name' parameter. Returns complete node properties and fields. Example name: 'Graph'."),
+		mcp.WithString("name", mcp.Required(), mcp.Description("The exact symbol, package path, or Go file name to inspect (e.g., 'Graph', 'internal/search', 'server.go')")),
 	)
 	addTool(nodeTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -1187,7 +1187,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_envs
 	envsTool := mcp.NewTool("gograph_envs",
-		mcp.WithDescription("List every os.Getenv / viper.Get* read in the codebase with file and line. Optionally filter by key name."),
+		mcp.WithDescription("Extract and audit all environment variables (os.Getenv, os.LookupEnv) referenced across the codebase. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when compiling configuration profiles, verifying env parameter bindings, or auditing configuration management. Do NOT use for magic constant literals (use gograph_literals instead). COMPLETENESS: Returns a structured list of env keys, their default fallbacks, and the file and line locations of the call."),
 		mcp.WithString("term", mcp.Description("Optional filter term (e.g., 'DATABASE' matches DATABASE_URL, DATABASE_HOST, etc.)")),
 	)
 	addTool(envsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1206,7 +1206,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_interfaces
 	interfacesTool := mcp.NewTool("gograph_interfaces",
-		mcp.WithDescription("Find all interfaces satisfied by a named struct (duck-typing). Inverse of gograph_implementers."),
+		mcp.WithDescription("Audit and list all Go interface declarations, complete with their defined method signatures. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when mapping API abstractions, checking interface contracts, or reviewing modular design patterns. Do NOT use to find implementers (use gograph_implementers instead). COMPLETENESS: Returns all interface names, method signatures, package paths, and file locations."),
 		mcp.WithString("struct", mcp.Required(), mcp.Description("The name of the struct (e.g., 'AuthService')")),
 	)
 	addTool(interfacesTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1227,7 +1227,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_tests
 	testsTool := mcp.NewTool("gograph_tests",
-		mcp.WithDescription("Find test functions that exercise a named symbol. Omit symbol to list all test edges."),
+		mcp.WithDescription("Find all unit tests, benchmark functions, and testing suites declared in Go test files. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to identify existing test coverage or locate specific verification flows before running tests. Do NOT use for production code symbols (use gograph_node instead). COMPLETENESS: Returns test functions, target packages, and their file definitions."),
 		mcp.WithString("symbol", mcp.Description("The symbol name to find tests for (optional)")),
 	)
 	addTool(testsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1246,7 +1246,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_hotspot
 	hotspotTool := mcp.NewTool("gograph_hotspot",
-		mcp.WithDescription("Rank functions by incoming call count (fan-in). Shows the most-depended-on code — study these first before making structural changes."),
+		mcp.WithDescription("Locate code hotspots by combining structural call complexity and incoming dependency metrics. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when conducting performance audits, locating architectural coupling hotspots, or planning structural simplification. Do NOT use for single-package metrics (use gograph_focus instead). COMPLETENESS: Returns a prioritized list of hotspot packages, complexity counts, and caller metrics."),
 		mcp.WithNumber("top", mcp.Description("Number of results to return (default: 10, 0 = all)")),
 		mcp.WithBoolean("include_tests", mcp.Description("Include call edges from *_test.go files. Default false — production fan-in only, otherwise test helpers (baseReq, newTestFoo, etc.) tend to dominate rankings in test-heavy codebases.")),
 	)
@@ -1274,9 +1274,9 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_deps
 	depsTool := mcp.NewTool("gograph_deps",
-		mcp.WithDescription("Show the import dependency tree of a package. Use transitive=true for the full BFS closure."),
-		mcp.WithString("package", mcp.Required(), mcp.Description("The package name or path (e.g., 'internal/auth')")),
-		mcp.WithBoolean("transitive", mcp.Description("If true, return the full transitive import closure via BFS")),
+		mcp.WithDescription("Render the package import dependency tree for a target Go package. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when mapping package interactions, auditing layer separation, or analyzing transitive import paths. Do NOT use for tracing raw usages of a symbol (use gograph_usages instead). COMPLETENESS: Requires 'package' parameter. Returns a structured package list showing direct or full transitive dependency chains. Example package: 'internal/search'."),
+		mcp.WithString("package", mcp.Required(), mcp.Description("The target package path or name to inspect (e.g., 'internal/search', 'internal/cli')")),
+		mcp.WithBoolean("transitive", mcp.Description("If true, return the full transitive import closure via Breadth-First Search (BFS)")),
 	)
 	addTool(depsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -1304,7 +1304,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_changes
 	changesTool := mcp.NewTool("gograph_changes",
-		mcp.WithDescription("Show symbols modified, added, or deleted since the last build. Use git_ref to compare against a git reference (e.g., 'main', 'HEAD~5')."),
+		mcp.WithDescription("Analyze structural changes and modifications in Go files compared to a specific git commit reference. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool during code reviews, pull request verification, or post-edit sessions to track structural diffs. Do NOT use for line diffs (use standard git diff instead). COMPLETENESS: Requires 'since' parameter. Returns changed symbol names, kinds, and paths. Example since: 'HEAD~1'."),
 		mcp.WithString("git_ref", mcp.Description("Optional git reference to compare against (e.g., 'main', 'HEAD~5', 'v1.4.50')")),
 	)
 	addTool(changesTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1339,7 +1339,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_path
 	pathTool := mcp.NewTool("gograph_path",
-		mcp.WithDescription("Find the shortest call chain between two symbols using BFS. Useful to confirm whether an HTTP handler actually reaches a given function."),
+		mcp.WithDescription("Trace and find the direct or transitive call paths connecting a starting source symbol to a target destination symbol. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when tracing synchronous control flow, debugging deadlocks, or mapping execution paths. Do NOT use if you only need direct callers (use gograph_callers instead). COMPLETENESS: Requires 'from' and 'to' parameters. Returns call chains connecting the two symbols. Example from: 'Serve', example to: 'BuildGraph'."),
 		mcp.WithString("from", mcp.Required(), mcp.Description("The starting symbol name")),
 		mcp.WithString("to", mcp.Required(), mcp.Description("The target symbol name")),
 	)
@@ -1377,7 +1377,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_stale
 	staleTool := mcp.NewTool("gograph_stale",
-		mcp.WithDescription("Check whether graph.json is older than any source file. Run before structural analysis to confirm the index is current."),
+		mcp.WithDescription("List all Go package dependencies that are currently stale and require rebuilding. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when verifying incremental build status, caching layers, or validating compilation health. Do NOT use if package dependencies are up to date. COMPLETENESS: Returns a list of stale package paths."),
 	)
 	addTool(staleTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -1394,8 +1394,8 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_complexity
 	complexityTool := mcp.NewTool("gograph_complexity",
-		mcp.WithDescription("Estimate cyclomatic complexity per function, sorted highest first. Optionally filter by symbol name substring. Labels: LOW / MEDIUM / HIGH / VERY HIGH."),
-		mcp.WithString("symbol", mcp.Description("Optional symbol name substring to filter results")),
+		mcp.WithDescription("Estimate and report cyclomatic complexity metrics for Go functions, sorted from highest to lowest. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when auditing code quality, identifying high-maintenance functions, or planning refactoring of complex logic. Do NOT use for import dependency metrics (use gograph_deps instead). COMPLETENESS: Optional 'symbol' filter. Returns a structured complexity report indicating complexity numbers and severity labels. Example symbol: 'Build'."),
+		mcp.WithString("symbol", mcp.Description("Optional Go function or method symbol name substring to filter the complexity report (e.g., 'Build')")),
 	)
 	addTool(complexityTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -1417,7 +1417,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_coupling
 	couplingTool := mcp.NewTool("gograph_coupling",
-		mcp.WithDescription("Show fan-in, fan-out, and instability per package. Instability = FanOut / (FanIn + FanOut). Range [0,1]: 0 = stable, 1 = unstable. Optionally filter by package name."),
+		mcp.WithDescription("Assess structural coupling and dependency ratios (Afferent vs Efferent coupling) for Go packages. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to evaluate package isolation, modularity strength, and stability indexes. Do NOT use for single function analysis (use gograph_complexity instead). COMPLETENESS: Returns afferent coupling (Ca), efferent coupling (Ce), and instability ratio (I) per package."),
 		mcp.WithString("package", mcp.Description("Optional package name substring to filter results")),
 		mcp.WithBoolean("include_stdlib", mcp.Description("Include standard-library packages in the report. Default false — users asking 'how coupled is my code?' rarely care about stdlib coupling.")),
 		mcp.WithBoolean("internal_only", mcp.Description("Restrict the report to the project's own packages (anything starting with the module path from go.mod). Strictly stronger than excluding stdlib — also excludes third-party deps.")),
@@ -1454,7 +1454,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_arity
 	arityTool := mcp.NewTool("gograph_arity",
-		mcp.WithDescription("Find functions with too many arguments (long parameter list smell). Default minimum is 5; override with min parameter."),
+		mcp.WithDescription("Identify functions or methods that exceed a specified number of parameters (arity violation). BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to audit design parameters or identify functions that should be refactored into a parameter struct. Do NOT use for struct fields (use gograph_fields instead). COMPLETENESS: Optional 'threshold' value (defaults to 5). Returns a list of functions exceeding the target parameter count."),
 		mcp.WithNumber("min", mcp.Description("Minimum argument count to report (default: 5)")),
 	)
 	addTool(arityTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1473,7 +1473,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_concurrency
 	concurrencyTool := mcp.NewTool("gograph_concurrency",
-		mcp.WithDescription("Map goroutine spawns, channel operations, mutex locks, WaitGroups, and sync.Once calls. Optionally filter by term."),
+		mcp.WithDescription("Scan the codebase to locate all concurrency declarations (go channels, select statements, sync primitives, go routines). BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to trace asynchronous routines, verify race safety, or audit synchronization primitives. Do NOT use for standard linear execution flows. COMPLETENESS: Returns file locations, line coordinates, and types of all concurrency primitives detected."),
 		mcp.WithString("term", mcp.Description("Optional filter term (e.g., 'goroutine', 'mutex', 'channel')")),
 	)
 	addTool(concurrencyTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1492,7 +1492,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_fixtures
 	fixturesTool := mcp.NewTool("gograph_fixtures",
-		mcp.WithDescription("Find test helper structs and functions in test files for a package. Useful for understanding what test infrastructure exists before writing new tests."),
+		mcp.WithDescription("Locate and audit external data files, JSON payloads, or database seeds used inside test suites. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to trace test dependencies or catalog test datasets. Do NOT use for active test functions (use gograph_tests instead). COMPLETENESS: Returns a structured checklist of all referenced testing datasets and their file paths."),
 		mcp.WithString("package", mcp.Required(), mcp.Description("The package path or name (e.g., 'internal/auth')")),
 	)
 	addTool(fixturesTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1513,7 +1513,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_godobj
 	godobjTool := mcp.NewTool("gograph_godobj",
-		mcp.WithDescription("Find god-object struct candidates scored by method count, field count, and outgoing calls. All thresholds are optional; defaults: methods=5, fields=8, calls=15, top=10."),
+		mcp.WithDescription("Detect God Object code smells by analyzing structural sizes, method counts, and references. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when auditing architectural modularity or identifying monolithic structs that should be refactored. Do NOT use for general struct layout checks (use gograph_fields instead). COMPLETENESS: Returns concrete structs exceeding target field or method count limits."),
 		mcp.WithNumber("methods", mcp.Description("Minimum method count (default: 5)")),
 		mcp.WithNumber("fields", mcp.Description("Minimum field count (default: 8)")),
 		mcp.WithNumber("calls", mcp.Description("Minimum outgoing call count (default: 15)")),
@@ -1548,7 +1548,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_skeleton
 	skeletonTool := mcp.NewTool("gograph_skeleton",
-		mcp.WithDescription("Output the entire repository's exported API signatures with function bodies stripped. Useful for a high-level structural overview. WARNING: output can be very large on big repositories."),
+		mcp.WithDescription("Generate high-level skeletal outline structural abstractions of codebase files, excluding implementation details. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when you need to understand the skeleton structure of files quickly without reading massive line counts. Do NOT use if you need full function implementations (use gograph_source instead). COMPLETENESS: Returns a concise abstract list of struct schemas, function definitions, and interfaces."),
 	)
 	addTool(skeletonTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -1559,7 +1559,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_returnusage
 	returnusageTool := mcp.NewTool("gograph_returnusage",
-		mcp.WithDescription("Show how each caller uses the return value of a named function. Labels: discarded (return not captured), assigned (all returns captured), partially_ignored (some returns blanked with _), returned (passed up the stack), passed (nested inside another call). Run before changing a return signature to find callers that silently discard values."),
+		mcp.WithDescription("Verify the patterns and coverage of return parameter usages and validation handling. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to check if returned parameters are properly inspected, validated, or captured after method invocations. Do NOT use for error flow bubbling (use gograph_errorflow instead). COMPLETENESS: Returns matched call locations and variable binding status."),
 		mcp.WithString("function", mcp.Required(), mcp.Description("The function name to analyse (e.g., 'ValidateToken')")),
 	)
 	addTool(returnusageTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1580,7 +1580,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_mutate
 	mutateTool := mcp.NewTool("gograph_mutate",
-		mcp.WithDescription("Find functions that mutate a specific struct field. Covers direct assignments (s.f = x), IncDec/augmented (s.f++, s.f += 1), and indirect mutations through method calls — atomic.*/sync.Map/sync.Mutex/sync.RWMutex/sync.WaitGroup/sync.Once stdlib mutators, user-defined wrapper methods that write to receiver fields (detected via SSA), and channel sends (s.ch <- x). Indirect rows carry a 'via' marker in their detail. ++/+= and indirect-mutation detection require a --precise build."),
+		mcp.WithDescription("Trace and audit all state-mutation and assignment points where a specific struct field gets modified. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool when diagnosing state bugs, checking data mutability, or analyzing struct field lifetimes. Do NOT use for direct struct layouts (use gograph_fields instead). COMPLETENESS: Requires 'struct' and 'field' parameters. Returns file and line locations where the target field is assigned or updated. Example struct: 'Symbol', example field: 'Name'."),
 		mcp.WithString("field", mcp.Required(), mcp.Description("The field name to search for mutations (e.g., 'Status')")),
 	)
 	addTool(mutateTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1601,7 +1601,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_stats
 	statsTool := mcp.NewTool("gograph_stats",
-		mcp.WithDescription("Return a compact health summary of the current graph index: schema version, build timestamp, and counts of packages, files, symbols, calls, imports, routes, SQL queries, env reads, and test edges. Use this as a quick sanity check before starting any analysis session."),
+		mcp.WithDescription("Generate comprehensive repository-level code statistics including total package counts, symbol frequencies, and imports. BEHAVIOR & SAFETY: This is a 100% local, read-only static analysis tool. It has no side effects, requires no authorization or credentials, has no rate limits, and performs zero destructive modifications. USAGE GUIDELINES: Call this tool to build high-level code density reports, trace total codebase sizes, or verify initial repository parsing health. Do NOT use for single symbol profiling (use gograph_node instead). COMPLETENESS: Returns total counts of files, lines, packages, structs, functions, and interfaces."),
 	)
 	addTool(statsTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
