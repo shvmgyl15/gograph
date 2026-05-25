@@ -265,8 +265,8 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_fields
 	fieldsTool := mcp.NewTool("gograph_fields",
-		mcp.WithDescription("Extract all fields from a specific struct, including their types and struct tags. Useful for understanding data models."),
-		mcp.WithString("struct", mcp.Required(), mcp.Description("The name of the struct (e.g., 'User')")),
+		mcp.WithDescription("Extract all fields, types, and struct tags declared inside a specific Go struct. USAGE GUIDELINES: Call this tool when inspecting struct definitions, verifying struct layouts, mapping JSON/database tags, or generating serialization logic. COMPLETENESS: Requires 'struct' parameter. Returns field names, Go types, and exact struct tag string metadata, providing full visibility into struct fields without manual code viewing."),
+		mcp.WithString("struct", mcp.Required(), mcp.Description("The exact name of the target struct to inspect fields for (e.g., 'Config', 'User')")),
 	)
 	addTool(fieldsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -381,8 +381,8 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_boundaries
 	boundariesTool := mcp.NewTool("gograph_boundaries",
-		mcp.WithDescription("Verify package architecture constraints against boundaries.json to detect forbidden imports between layers."),
-		mcp.WithString("config", mcp.Description("Optional path to configuration file (defaults to .gograph/boundaries.json)")),
+		mcp.WithDescription("Verify package architecture constraints against boundaries.json to detect forbidden imports and illegal layer dependencies. USAGE GUIDELINES: Call this tool to check if packages conform to domain design constraints or to debug illegal import cycles and layered violations. COMPLETENESS: Optional 'config' path. Returns a structured boundary compliance report listing authorized vs unauthorized dependencies, enabling complete dependency sanity audits."),
+		mcp.WithString("config", mcp.Description("Optional file path to boundary constraints configuration (defaults to .gograph/boundaries.json)")),
 	)
 	addTool(boundariesTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -758,9 +758,9 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_review
 	reviewTool := mcp.NewTool("gograph_review",
-		mcp.WithDescription("Post-edit or symbol-focused review. Summarizes what changed and its risk profile."),
-		mcp.WithString("symbol", mcp.Description("The symbol to review")),
-		mcp.WithBoolean("uncommitted", mcp.Description("Set to true to review all uncommitted changes")),
+		mcp.WithDescription("Run an architectural consistency and design constraint review against defined code boundaries or specific symbols. USAGE GUIDELINES: Call this tool during post-edit verification, CI pipelines, or refactoring phases to ensure new additions do not violate boundary limits. COMPLETENESS: Requires either 'symbol' or 'uncommitted' set to true. Returns a structured checklist of all rules evaluated, listing exact package paths and files violating architectural boundaries, enabling fast design corrections."),
+		mcp.WithString("symbol", mcp.Description("The name of the target symbol to run the design review for (e.g. 'AuthService')")),
+		mcp.WithBoolean("uncommitted", mcp.Description("Set to true to review all uncommitted/modified changes in the repository")),
 	)
 	addTool(reviewTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -864,8 +864,8 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_imports
 	importsTool := mcp.NewTool("gograph_imports",
-		mcp.WithDescription("Find all files that import a specific external package. Useful to trace where third-party libraries are used."),
-		mcp.WithString("package", mcp.Required(), mcp.Description("The name of the package (e.g., 'github.com/redis/go-redis')")),
+		mcp.WithDescription("Find all files and packages that import a specific internal or third-party package. USAGE GUIDELINES: Call this tool when mapping package dependency relationships, isolating features, or tracing where third-party libraries are used. COMPLETENESS: Requires 'package' parameter. Returns a complete array of file paths and importing packages referencing the target import path, enabling deep modularity audits."),
+		mcp.WithString("package", mcp.Required(), mcp.Description("The exact import path of the target package to trace imports for (e.g., 'github.com/redis/go-redis')")),
 	)
 	addTool(importsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -906,8 +906,8 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_sql
 	sqlTool := mcp.NewTool("gograph_sql",
-		mcp.WithDescription("Extract database SQL queries found in the codebase. You can optionally filter by term."),
-		mcp.WithString("term", mcp.Description("Optional string to filter the queries")),
+		mcp.WithDescription("Extract and analyze all raw SQL query literals, database touches, and transaction blocks inside the codebase. USAGE GUIDELINES: Call this tool when auditing database interactions, debugging database performance, or reviewing raw queries. Optional filter by keyword. COMPLETENESS: Returns a list of matching SQL statements, their file and line locations, and the parent Go functions containing the database touch, providing a clear map of database usage."),
+		mcp.WithString("term", mcp.Description("Optional SQL keyword or table name to filter database queries (e.g., 'SELECT', 'users')")),
 	)
 	addTool(sqlTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -1054,8 +1054,8 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_constructors
 	constructorsTool := mcp.NewTool("gograph_constructors",
-		mcp.WithDescription("Find factory functions returning the named struct."),
-		mcp.WithString("struct", mcp.Required(), mcp.Description("The name of the struct (e.g., 'User')")),
+		mcp.WithDescription("Find factory and constructor functions that instantiate and return the specified Go struct. USAGE GUIDELINES: Call this tool when auditing object initialization patterns, looking for existing builder functions, or verifying correct struct instantiation. COMPLETENESS: Requires 'struct' parameter. Returns a detailed list of constructor function symbols, their file locations, and signatures, showing exactly how the target struct is built in the codebase."),
+		mcp.WithString("struct", mcp.Required(), mcp.Description("The exact name of the target Go struct to find constructors for (e.g., 'User', 'Config')")),
 	)
 	addTool(constructorsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
