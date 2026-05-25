@@ -263,3 +263,7 @@ We love pull requests! See the [CONTRIBUTING.md](CONTRIBUTING.md) file for guide
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Glama.ai
+
+[![gograph MCP server](https://glama.ai/mcp/servers/ozgurcd/gograph/badges/score.svg)](https://glama.ai/mcp/servers/ozgurcd/gograph)

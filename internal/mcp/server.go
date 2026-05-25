@@ -144,8 +144,8 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_query
 	queryTool := mcp.NewTool("gograph_query",
-		mcp.WithDescription("Search the Go repository for symbols, packages, files, or imports using a keyword term."),
-		mcp.WithString("term", mcp.Required(), mcp.Description("The keyword to search for (e.g., 'Auth')")),
+		mcp.WithDescription("Search the Go repository for symbols, packages, files, or imports using a keyword term. USAGE GUIDELINES: Call this tool during the initial exploration phase when you have a keyword or feature name but do not know which files or packages contain the relevant code. COMPLETENESS: Returns a structured list of matching symbols, files, and imports, along with their location and kind, helping you find where to start your investigation."),
+		mcp.WithString("term", mcp.Required(), mcp.Description("The keyword search term to locate in symbols, files, and imports (e.g., 'AuthService', 'token', 'router')")),
 	)
 	addTool(queryTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -656,10 +656,10 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_plan
 	planTool := mcp.NewTool("gograph_plan",
-		mcp.WithDescription("Safe edit planning before code changes. Highlights likely affected tests, routes, env reads, SQL touches, and public API impact. Set with_context=true to bundle full context for each inspect_first symbol, eliminating follow-up context calls."),
-		mcp.WithString("symbol", mcp.Description("The symbol to plan changes for")),
-		mcp.WithBoolean("uncommitted", mcp.Description("Set to true to plan all uncommitted changes")),
-		mcp.WithBoolean("with_context", mcp.Description("If true, include full context (source, callers, callees, role) for each inspect_first symbol")),
+		mcp.WithDescription("Generate a comprehensive, safe edit plan before making modifications to the Go codebase. USAGE GUIDELINES: ALWAYS call this tool BEFORE applying code changes to a symbol. It identifies affected tests, routes, env reads, SQL calls, and public API drift. Set with_context=true to bundle full context/source code, avoiding redundant tool calls. COMPLETENESS: Requires either 'symbol' or 'uncommitted' set to true. Returns a structured list of dependent symbols, test targets to verify, affected routes, environment configurations, and an automated risk profile."),
+		mcp.WithString("symbol", mcp.Description("The name of the symbol you intend to modify (e.g., 'ValidateToken')")),
+		mcp.WithBoolean("uncommitted", mcp.Description("Set to true to generate a global plan for all currently uncommitted changes across the repository")),
+		mcp.WithBoolean("with_context", mcp.Description("If set to true, bundles full context, source code, callers, callees, and architectural roles for each symbol to be inspected")),
 	)
 	addTool(planTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -914,8 +914,8 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_errors
 	errorsTool := mcp.NewTool("gograph_errors",
-		mcp.WithDescription("Extract custom error messages and panics. You can optionally filter by a string."),
-		mcp.WithString("term", mcp.Description("Optional string to filter the errors")),
+		mcp.WithDescription("Extract custom error messages, return sites, and panics across the entire Go codebase. USAGE GUIDELINES: Call this tool when debugging error handling paths, auditing sentinel errors, or verifying panic recovery blocks. Optional 'term' can filter results. COMPLETENESS: Returns a comprehensive list of error symbols, direct return statements, error wrapping invocations, and panic locations, allowing deep analysis of failure paths."),
+		mcp.WithString("term", mcp.Description("Optional keyword to filter the returned error structures (e.g., 'ErrInvalid', 'unauthorized')")),
 	)
 	addTool(errorsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -954,8 +954,8 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_public
 	publicTool := mcp.NewTool("gograph_public",
-		mcp.WithDescription("Show only the exported (public) symbols of a specific package."),
-		mcp.WithString("package", mcp.Required(), mcp.Description("The package name (e.g., 'auth')")),
+		mcp.WithDescription("Show only the exported (public) symbols of a specific package. USAGE GUIDELINES: Call this tool when you need to understand the public API footprint of a package, define boundary interfaces, or inspect integration entry points. COMPLETENESS: Requires 'package' parameter. Returns exported symbols (starting with uppercase letters) including structs, interfaces, methods, constants, and functions, excluding internal private logic."),
+		mcp.WithString("package", mcp.Required(), mcp.Description("The package name or path to inspect (e.g., 'internal/auth')")),
 	)
 	addTool(publicTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -1085,8 +1085,8 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 	// Tool: gograph_globals
 	globalsTool := mcp.NewTool("gograph_globals",
-		mcp.WithDescription("Find package-level variables and functions mutating them."),
-		mcp.WithString("package", mcp.Required(), mcp.Description("The package name (e.g., 'internal/config')")),
+		mcp.WithDescription("Find package-level variables and all functions mutating them. USAGE GUIDELINES: Call this tool when auditing global state, tracking down race conditions, or refactoring package variables. COMPLETENESS: Requires 'package' parameter. Returns package-scoped global variable symbols and lists functions that write to them, providing essential concurrency safety context."),
+		mcp.WithString("package", mcp.Required(), mcp.Description("The package name or path to inspect (e.g., 'internal/config')")),
 	)
 	addTool(globalsTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
