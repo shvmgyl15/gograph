@@ -275,7 +275,7 @@ func CallersToMermaid(g *graph.Graph, term string, maxDepth int, includeTests bo
 				nameMatch = true
 			}
 		} else {
-			if strings.Contains(strings.ToLower(s.Name), tl) || (s.Receiver != "" && strings.Contains(strings.ToLower(s.Receiver), tl)) {
+			if MatchSymbol(s, term) || strings.Contains(strings.ToLower(s.Name), tl) || (s.Receiver != "" && strings.Contains(strings.ToLower(s.Receiver), tl)) {
 				nameMatch = true
 			}
 		}
@@ -391,7 +391,7 @@ func CalleesToMermaid(g *graph.Graph, term string, maxDepth int, includeTests bo
 				nameMatch = true
 			}
 		} else {
-			if strings.Contains(strings.ToLower(s.Name), tl) || (s.Receiver != "" && strings.Contains(strings.ToLower(s.Receiver), tl)) {
+			if MatchSymbol(s, term) || strings.Contains(strings.ToLower(s.Name), tl) || (s.Receiver != "" && strings.Contains(strings.ToLower(s.Receiver), tl)) {
 				nameMatch = true
 			}
 		}

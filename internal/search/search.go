@@ -132,7 +132,7 @@ func Node(g *graph.Graph, name string) []Result {
 	for _, s := range g.Symbols {
 		sname := strings.ToLower(s.Name)
 		full := strings.ToLower(fmt.Sprintf("(%s).%s", s.Receiver, s.Name))
-		if sname == nl || strings.Contains(full, nl) || strings.Contains(sname, nl) {
+		if MatchSymbol(s, name) || sname == nl || strings.Contains(full, nl) || strings.Contains(sname, nl) {
 			n2 := s.Name
 			if s.Receiver != "" {
 				n2 = fmt.Sprintf("(%s).%s", s.Receiver, s.Name)
@@ -162,16 +162,21 @@ func Callers(g *graph.Graph, name string, includeTests bool) []Result {
 		callerSymbols[s.ID] = s
 	}
 
-	// Match: FQ-ID exact match on CalleeSymbolID OR substring on CalleeRaw.
-	// When the query is FQ, we still allow CalleeRaw substring as a fallback
-	// in case the AST edge lacks CalleeSymbolID (legacy/basic-build edges) —
-	// the bare-name component of the FQ ID is used so the substring still
-	// roughly targets the right symbol. The visibility this gives the user
-	// is "I asked for the exact symbol but you only have edges by name; here
-	// are the name-matches — note they may be conflated."
+	targetSymbols := FindSymbols(g, name)
 	matchesCallee := func(c graph.CallEdge) bool {
 		if fqQuery && c.CalleeSymbolID == name {
 			return true
+		}
+		for _, ts := range targetSymbols {
+			if c.CalleeSymbolID == ts.ID {
+				return true
+			}
+		}
+		if strings.Contains(name, ".") {
+			replaced := strings.ReplaceAll(nl, ".", "::")
+			if strings.Contains(strings.ToLower(c.CalleeRaw), replaced) {
+				return true
+			}
 		}
 		return strings.Contains(strings.ToLower(c.CalleeRaw), nl)
 	}
@@ -245,7 +250,7 @@ func Callees(g *graph.Graph, name string, includeTests bool) []Result {
 		}
 		sname := strings.ToLower(s.Name)
 		full := strings.ToLower(fmt.Sprintf("(%s).%s", s.Receiver, s.Name))
-		if sname == nl || strings.Contains(full, nl) || strings.Contains(sname, nl) {
+		if MatchSymbol(s, name) || sname == nl || strings.Contains(full, nl) || strings.Contains(sname, nl) {
 			matchedIDs[s.ID] = true
 		}
 	}
@@ -648,7 +653,7 @@ func Implementers(g *graph.Graph, interfaceName string) []Result {
 	var results []Result
 
 	for i, s := range g.Symbols {
-		if s.Kind == graph.KindInterface && strings.ToLower(s.Name) == nl {
+		if s.Kind == graph.KindInterface && MatchSymbol(s, interfaceName) {
 			iface = &g.Symbols[i]
 			break
 		}
@@ -731,19 +736,119 @@ func Implementers(g *graph.Graph, interfaceName string) []Result {
 	return results
 }
 
-// Source extracts the exact source code lines for a given symbol.
-func Source(g *graph.Graph, rootDir, symbolName string) (string, error) {
-	var targets []graph.SymbolNode
-	nl := strings.ToLower(symbolName)
+// MatchSymbol checks if a SymbolNode matches a user query string (case-insensitively).
+// It supports bare names ("Graph"), fully-qualified IDs ("pkg::Graph"), and package/receiver-qualified
+// names ("graph.Graph", "(*graph.Graph).SomeMethod", "graph.Graph.SomeMethod", "(*Graph).SomeMethod").
+func MatchSymbol(s graph.SymbolNode, query string) bool {
+	ql := strings.ToLower(query)
 
-	for _, s := range g.Symbols {
+	// 1. Exact ID or Name match
+	if strings.ToLower(s.ID) == ql || strings.ToLower(s.Name) == ql {
+		return true
+	}
+
+	// 2. Exact Receiver+Method name matches
+	if s.Receiver != "" {
 		recName := strings.ToLower(fmt.Sprintf("%s.%s", strings.TrimPrefix(strings.TrimPrefix(s.Receiver, "*"), "("), s.Name))
 		fullRecName := strings.ToLower(fmt.Sprintf("(%s).%s", s.Receiver, s.Name))
-
-		if strings.ToLower(s.Name) == nl || strings.ToLower(s.ID) == nl || recName == nl || fullRecName == nl {
-			targets = append(targets, s)
+		if recName == ql || fullRecName == ql {
+			return true
 		}
 	}
+
+	// 3. Substring match for fully qualified ID suffix (e.g. replacing "." with "::" for "pkg.Symbol")
+	if strings.Contains(query, ".") {
+		// Try converting "pkg.Symbol" to "pkg::Symbol"
+		replaced := strings.ReplaceAll(ql, ".", "::")
+		if strings.Contains(strings.ToLower(s.ID), replaced) {
+			return true
+		}
+
+		// Also try structured dot-separated matching
+		norm := strings.ReplaceAll(ql, "(", "")
+		norm = strings.ReplaceAll(norm, ")", "")
+		norm = strings.ReplaceAll(norm, "*", "")
+		parts := strings.Split(norm, ".")
+
+		if len(parts) == 2 {
+			// Try package + name match
+			if strings.ToLower(s.PackageName) == parts[0] && strings.ToLower(s.Name) == parts[1] {
+				return true
+			}
+			// Try receiver + method match
+			if s.Receiver != "" {
+				rec := strings.ReplaceAll(strings.ToLower(s.Receiver), "*", "")
+				if rec == parts[0] && strings.ToLower(s.Name) == parts[1] {
+					return true
+				}
+			}
+		} else if len(parts) == 3 {
+			// Try package + receiver + method match
+			if s.Receiver != "" {
+				rec := strings.ReplaceAll(strings.ToLower(s.Receiver), "*", "")
+				if strings.ToLower(s.PackageName) == parts[0] && rec == parts[1] && strings.ToLower(s.Name) == parts[2] {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// FindSymbols returns all symbols matching the given query term.
+func FindSymbols(g *graph.Graph, term string) []graph.SymbolNode {
+	var matches []graph.SymbolNode
+	for i := range g.Symbols {
+		if MatchSymbol(g.Symbols[i], term) {
+			matches = append(matches, g.Symbols[i])
+		}
+	}
+	return matches
+}
+
+func matchTestTarget(target, testFunc, term string) bool {
+	if term == "" {
+		return true
+	}
+	tl := strings.ToLower(term)
+	targetLower := strings.ToLower(target)
+	testFuncLower := strings.ToLower(testFunc)
+
+	if strings.Contains(targetLower, tl) || strings.Contains(testFuncLower, tl) {
+		return true
+	}
+
+	// Support dot-separated package prefix
+	if strings.Contains(term, ".") {
+		replaced := strings.ReplaceAll(tl, ".", "::")
+		if strings.Contains(targetLower, replaced) || strings.Contains(testFuncLower, replaced) {
+			return true
+		}
+
+		// Also support matching on normalized parts
+		norm := strings.ReplaceAll(tl, "(", "")
+		norm = strings.ReplaceAll(norm, ")", "")
+		norm = strings.ReplaceAll(norm, "*", "")
+		parts := strings.Split(norm, ".")
+
+		if len(parts) == 2 {
+			targetSuffix := strings.ToLower(target)
+			if idx := strings.Index(targetSuffix, "::"); idx >= 0 {
+				pkgPart := targetSuffix[:idx]
+				symPart := targetSuffix[idx+2:]
+				if (strings.HasSuffix(pkgPart, parts[0]) || strings.Contains(pkgPart, "/"+parts[0])) && strings.Contains(symPart, parts[1]) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// Source extracts the exact source code lines for a given symbol.
+func Source(g *graph.Graph, rootDir, symbolName string) (string, error) {
+	targets := FindSymbols(g, symbolName)
 
 	if len(targets) == 0 {
 		return "", fmt.Errorf("symbol '%s' not found", symbolName)
@@ -825,10 +930,10 @@ func Orphans(g *graph.Graph) []Result {
 // Fields extracts all fields for a given struct.
 func Fields(g *graph.Graph, structName string) []Result {
 	var results []Result
-	nl := strings.ToLower(structName)
 
-	for _, s := range g.Symbols {
-		if s.Kind == graph.KindStruct && (strings.ToLower(s.Name) == nl || strings.ToLower(s.ID) == nl) {
+	targets := FindSymbols(g, structName)
+	for _, s := range targets {
+		if s.Kind == graph.KindStruct {
 			for _, f := range s.StructFields {
 				detail := f.Type
 				if f.Tag != "" {
@@ -1275,11 +1380,10 @@ func Concurrency(g *graph.Graph, term string) []Result {
 // Tests returns all test functions that exercise the named symbol.
 // Pass an empty term to list all test edges.
 func Tests(g *graph.Graph, term string) []Result {
-	nl := strings.ToLower(term)
 	var results []Result
 	seen := make(map[string]bool)
 	for _, te := range g.TestEdges {
-		if term == "" || strings.Contains(strings.ToLower(te.Target), nl) || strings.Contains(strings.ToLower(te.TestFunc), nl) {
+		if matchTestTarget(te.Target, te.TestFunc, term) {
 			key := fmt.Sprintf("%s|%s", te.TestFunc, te.Target)
 			if seen[key] {
 				continue
@@ -1310,6 +1414,15 @@ func Constructors(g *graph.Graph, structName string) []Result {
 		return results
 	}
 
+	// Unqualified pattern for same-package constructors
+	var samePkgPat *regexp.Regexp
+	var samePkgName string
+	if parts := strings.Split(structName, "."); len(parts) == 2 {
+		samePkgName = strings.ToLower(parts[0])
+		patternSame := `(?:[* ])` + regexp.QuoteMeta(parts[1]) + `(?:[,) ]|$)`
+		samePkgPat, _ = regexp.Compile(patternSame)
+	}
+
 	for _, s := range g.Symbols {
 		if s.Kind != graph.KindFunction && s.Kind != graph.KindMethod {
 			continue
@@ -1323,7 +1436,13 @@ func Constructors(g *graph.Graph, structName string) []Result {
 			continue
 		}
 		returnSig := sig[idx:]
-		if re.MatchString(returnSig) {
+
+		matched := re.MatchString(returnSig)
+		if !matched && samePkgPat != nil && strings.ToLower(s.PackageName) == samePkgName {
+			matched = samePkgPat.MatchString(returnSig)
+		}
+
+		if matched {
 			results = append(results, Result{
 				Kind:   "constructor",
 				Name:   s.Name,

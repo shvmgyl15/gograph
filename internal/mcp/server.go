@@ -146,6 +146,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 				"MCP tools do not execute target repository code.",
 				"MCP tools do not add network access.",
 				"Errorflow uses heuristic static call-graph and AST reference analysis. It does not perform SSA or full data-flow tracking.",
+				"Ambiguous short names can be disambiguated using standard Go dot-separated package-qualified notation (e.g. 'pkg.Struct.Method' or 'pkg.Struct') or fully-qualified symbol IDs (e.g., 'pkg/path::(*Struct).Method'). All search-based MCP tools fully support these formats.",
 			},
 		}
 		data, err := json.MarshalIndent(resp, "", "  ")
@@ -200,7 +201,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 	// Tool: gograph_callers
 	callersTool := mcp.NewTool("gograph_callers",
 		mcp.WithDescription("Find all functions and methods that directly call the specified function (one-hop fan-in). Requires .gograph/graph.json — run `gograph build .` first. Read-only; no side effects. WHEN TO USE: Before renaming, removing, or changing the signature of a function — see who calls it. NOT TO USE: For transitive upstream blast radius (use gograph_impact); for downstream callees (use gograph_callees). RETURNS: List of caller symbols with package paths, file locations, and call-site line numbers; empty when no callers found (function is a root or entry point)."),
-		mcp.WithString("function", mcp.Required(), mcp.Description("The name of the target function to find callers for (e.g., 'BuildGraph', 'Serve')")),
+		mcp.WithString("function", mcp.Required(), mcp.Description("The name of the target function to find callers for (supports short name 'BuildGraph', dot-notation 'graph.Graph.Build', or fully-qualified ID)")),
 	)
 	addTool(callersTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -221,7 +222,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 	// Tool: gograph_callees
 	calleesTool := mcp.NewTool("gograph_callees",
 		mcp.WithDescription("Find all functions and methods called from inside the specified function (one-hop fan-out). Requires .gograph/graph.json — run `gograph build .` first. Read-only; no side effects. WHEN TO USE: When understanding what a function depends on — its downstream execution flow, external service calls, and library usage. NOT TO USE: For upstream callers (use gograph_callers); for transitive package dependency trees (use gograph_deps). RETURNS: List of callee symbols with package paths, file locations, and call-site line numbers; empty when the function makes no calls."),
-		mcp.WithString("function", mcp.Required(), mcp.Description("The name of the calling function to inspect callees for (e.g., 'Serve', 'runMCP')")),
+		mcp.WithString("function", mcp.Required(), mcp.Description("The name of the calling function to inspect callees for (supports short name 'Serve', dot-notation 'graph.Graph.Build', or fully-qualified ID)")),
 	)
 	addTool(calleesTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -289,7 +290,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 	// Tool: gograph_source
 	sourceTool := mcp.NewTool("gograph_source",
 		mcp.WithDescription("Retrieve the verbatim Go source code for a named function, method, struct, or interface, including its complete body. Requires .gograph/graph.json — run `gograph build .` first. Read-only; no side effects. WHEN TO USE: When you need to read a specific implementation in full without loading a large file — a targeted alternative to reading the whole file. NOT TO USE: For call hierarchy information (use gograph_callers/gograph_callees); for AST metadata without the full body (use gograph_node). RETURNS: Raw Go source block with file path and line numbers; returns an error when the symbol is not found or the source file cannot be read."),
-		mcp.WithString("symbol", mcp.Required(), mcp.Description("The name of the symbol (e.g., 'ValidateToken' or 'AuthService')")),
+		mcp.WithString("symbol", mcp.Required(), mcp.Description("The name of the symbol to retrieve source for (supports short name 'ValidateToken', dot-notation 'graph.Graph', or fully-qualified ID)")),
 	)
 	addTool(sourceTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {
@@ -326,7 +327,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 	// Tool: gograph_impact
 	impactTool := mcp.NewTool("gograph_impact",
 		mcp.WithDescription("Traverse the call graph backwards to find every symbol that transitively calls the target — the full upstream blast radius of a change. Requires .gograph/graph.json — run `gograph build .` first. Read-only; no side effects. Three modes: (1) single symbol via `symbol`; (2) uncommitted-changes blast radius via `uncommitted=true`; (3) git-ref changes blast radius via `since`. WHEN TO USE: Before refactoring a core function to see what breaks; use uncommitted=true after editing to verify scope. NOT TO USE: For direct one-hop callers only (use gograph_callers instead). RETURNS: Transitive list of upstream affected symbols; JSON with count:0 message when no symbols are modified or no callers found."),
-		mcp.WithString("symbol", mcp.Description("Symbol name for single-symbol blast radius (e.g., 'ValidateToken')")),
+		mcp.WithString("symbol", mcp.Description("Symbol name for single-symbol blast radius (supports short name 'ValidateToken', dot-notation 'graph.Graph', or fully-qualified ID)")),
 		mcp.WithBoolean("uncommitted", mcp.Description("If true, compute blast radius of all uncommitted modified symbols")),
 		mcp.WithString("since", mcp.Description("Git ref (e.g. 'main', 'HEAD~5'): blast radius of all symbols changed since this ref")),
 	)
@@ -568,7 +569,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 	// Tool: gograph_context
 	contextTool := mcp.NewTool("gograph_context",
 		mcp.WithDescription("Fetch a pre-flight context bundle for a single Go symbol: AST node metadata, source code, direct callers, direct callees, linked test functions, and architectural role classification — all in one call. Requires .gograph/graph.json — run `gograph build .` first. Read-only; no side effects. Set uncommitted=true to bundle context for all currently modified symbols at once. WHEN TO USE: As the first call before editing a symbol — eliminates 4–5 separate tool roundtrips. NOT TO USE: For package-level orientation (use gograph_focus); for transitive blast radius (use gograph_impact). RETURNS: JSON with node, source, callers[], callees[], tests[], and role; empty object {} when symbol not found. With uncommitted=true, returns a contexts[] array; count:0 when no uncommitted symbols exist."),
-		mcp.WithString("symbol", mcp.Description("The exact name or ID of the symbol to retrieve context for.")),
+		mcp.WithString("symbol", mcp.Description("The exact name, dot-notation 'graph.Graph', or ID of the symbol to retrieve context for.")),
 		mcp.WithBoolean("uncommitted", mcp.Description("If true, return context for all uncommitted modified symbols bundled in one response.")),
 	)
 	addTool(contextTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -670,7 +671,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 	// Tool: gograph_plan
 	planTool := mcp.NewTool("gograph_plan",
 		mcp.WithDescription("Generate a structured pre-edit plan for a target symbol: which symbols to read first, which tests cover them, which routes and env vars they touch, and whether the change is public-API or SQL-touching. Requires .gograph/graph.json — run `gograph build .` first. Read-only; no side effects. Set with_context=true to inline full source+callers+callees for each symbol to inspect — eliminates follow-up gograph_context calls. WHEN TO USE: Before multi-file refactoring or architectural changes to understand scope upfront. NOT TO USE: For trivial single-line fixes; for post-edit verification (use gograph_review instead). RETURNS: JSON with inspect_first[], tests[], routes[], env[], and a risk object (public_api, touches_sql, etc.); with with_context=true, also includes inspect_contexts[] with full per-symbol bundles."),
-		mcp.WithString("symbol", mcp.Description("The name of the symbol you intend to modify (e.g., 'ValidateToken')")),
+		mcp.WithString("symbol", mcp.Description("The name of the symbol you intend to modify (supports short name 'ValidateToken', dot-notation 'graph.Graph', or fully-qualified ID)")),
 		mcp.WithBoolean("uncommitted", mcp.Description("Set to true to generate a global plan for all currently uncommitted changes across the repository")),
 		mcp.WithBoolean("with_context", mcp.Description("If set to true, bundles full context, source code, callers, callees, and architectural roles for each symbol to be inspected")),
 	)
@@ -1141,7 +1142,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 	// Tool: gograph_explain
 	explainTool := mcp.NewTool("gograph_explain",
 		mcp.WithDescription("Generate a synthesized, LLM-ready narrative for a Go symbol: role classification, callers, callees, complexity, SQL, env vars, HTTP routes, concurrency primitives, tests, and interface satisfaction — all in one structured document. Requires .gograph/graph.json — run `gograph build .` first. Read-only; no side effects. WHEN TO USE: For onboarding to an unfamiliar symbol, generating PR documentation, or getting an opinionated architectural assessment without issuing multiple tool calls. NOT TO USE: For raw source code (use gograph_source); for targeted blast-radius analysis (use gograph_impact). RETURNS: Rich structured JSON with role, narrative summary, and all associated cross-references; {\"found\":false} when symbol is not in the graph."),
-		mcp.WithString("symbol", mcp.Required(), mcp.Description("The name or ID of the symbol to explain (e.g., 'CreateUser' or 'Graph')")),
+		mcp.WithString("symbol", mcp.Required(), mcp.Description("The name or ID of the symbol to explain (supports short name 'CreateUser', dot-notation 'graph.Graph', or fully-qualified ID)")),
 	)
 	addTool(explainTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {

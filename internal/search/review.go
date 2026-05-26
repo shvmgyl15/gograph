@@ -104,8 +104,11 @@ func Review(g *graph.Graph, symbolNames []string, title string) *ReviewResult {
 	}
 
 	for _, name := range symbolNames {
-		if _, ok := symbolMap[name]; ok {
-			validSymbols = append(validSymbols, name)
+		matches := FindSymbols(g, name)
+		for _, sym := range matches {
+			if _, exists := symbolMap[sym.ID]; exists {
+				validSymbols = append(validSymbols, sym.ID)
+			}
 		}
 	}
 

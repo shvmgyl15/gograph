@@ -252,6 +252,12 @@ func resolveSymbol(g *graph.Graph, term string) *graph.SymbolNode {
 			return &g.Symbols[i]
 		}
 	}
+	// Structured/qualified match
+	for i := range g.Symbols {
+		if MatchSymbol(g.Symbols[i], term) {
+			return &g.Symbols[i]
+		}
+	}
 	// Case-insensitive substring
 	for i := range g.Symbols {
 		if strings.Contains(strings.ToLower(g.Symbols[i].ID), tl) {

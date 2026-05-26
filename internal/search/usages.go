@@ -14,13 +14,25 @@ func Usages(g *graph.Graph, typeName string) []Result {
 	nl := strings.ToLower(typeName)
 	var results []Result
 
+	parts := strings.Split(nl, ".")
+	hasDot := len(parts) == 2
+
 	for _, sym := range g.Symbols {
+		targetType := nl
+		if hasDot {
+			if strings.ToLower(sym.PackageName) == parts[0] {
+				targetType = parts[1]
+			} else {
+				targetType = parts[0] + "." + parts[1]
+			}
+		}
+
 		switch sym.Kind {
 		case graph.KindFunction, graph.KindMethod:
 			if sym.Signature == "" {
 				continue
 			}
-			if !containsTypeName(strings.ToLower(sym.Signature), nl) {
+			if !containsTypeName(strings.ToLower(sym.Signature), targetType) {
 				continue
 			}
 			// Skip the definition of the type itself if it appears in its own sig.
@@ -39,7 +51,7 @@ func Usages(g *graph.Graph, typeName string) []Result {
 
 		case graph.KindStruct:
 			for _, field := range sym.StructFields {
-				if containsTypeName(strings.ToLower(field.Type), nl) {
+				if containsTypeName(strings.ToLower(field.Type), targetType) {
 					results = append(results, Result{
 						Kind:   "field",
 						Name:   sym.Name + "." + field.Name,
@@ -53,7 +65,7 @@ func Usages(g *graph.Graph, typeName string) []Result {
 
 		case graph.KindInterface:
 			for methodName, methodSig := range sym.InterfaceMethods {
-				if containsTypeName(strings.ToLower(methodSig), nl) {
+				if containsTypeName(strings.ToLower(methodSig), targetType) {
 					results = append(results, Result{
 						Kind:   "iface_method",
 						Name:   sym.Name + "." + methodName,

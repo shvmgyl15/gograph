@@ -739,7 +739,9 @@ Numbers vary by repo, but the order-of-magnitude win is consistent: structural q
 ## Limitations the agent should know about
 
 - **Go only.** No multi-language parsing.
-- **Call edges are best-effort text form** from the AST — no type resolution, so overloaded names and method receivers may collide. Treat `callers`/`callees` results as a starting point, not ground truth. **Workaround:** when you need to disambiguate same-named methods/functions, pass a fully-qualified symbol ID instead of a short name. E.g. `gograph callers 'github.com/foo/bar/internal/auth::(*Service).Validate'` matches that exact method only; the short form `gograph callers Validate` falls back to fuzzy substring matching across every "Validate" in the codebase. The same FQ-ID syntax works for `callees`, `impact`, and `path` (both endpoints). Requires `--precise` mode at build time.
+- **Call edges are best-effort text form** from the AST — no type resolution, so overloaded names and method receivers may collide. Treat `callers`/`callees` results as a starting point, not ground truth. **Workaround:** when you need to disambiguate same-named methods/functions or query symbols cleanly:
+  1. Use standard Go **package-qualified dot-notation** (e.g. `service.GenerateRequest`, `graph.Graph` or `graph.Graph.Build`). All query commands support package-qualified dot notation dynamically.
+  2. For precise target matching with no same-name conflation, pass the fully-qualified symbol ID (e.g., `gograph callers 'github.com/foo/bar/internal/auth::(*Service).Validate'`). The same FQ-ID syntax works for `callees`, `impact`, and `path` (both endpoints). Requires `--precise` mode at build time.
 - **No cross-repo / module-external edges.** External dependencies are extracted from `go.mod` to summarize the tech stack, but call edges into third-party packages are not resolved.
 - **Snapshot, not live.** The graph reflects the state at the last `gograph build` run. Re-run after structural edits.
 

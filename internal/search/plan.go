@@ -94,22 +94,23 @@ func Plan(g *graph.Graph, symbolNames []string, title string) *PlanResult {
 
 	for _, symName := range symbolNames {
 		// Find symbol
-		for _, s := range g.Symbols {
-			if s.ID == symName || s.Name == symName {
-				line := fmt.Sprintf("%s:%d %s", s.File, s.Line, s.Name)
-				if !readSet[line] {
-					readSet[line] = true
-					res.ReadFirst = append(res.ReadFirst, Result{File: s.File, Line: s.Line, Name: s.Name})
-				}
+		matches := FindSymbols(g, symName)
+		for _, s := range matches {
+			line := fmt.Sprintf("%s:%d %s", s.File, s.Line, s.Name)
+			if !readSet[line] {
+				readSet[line] = true
+				res.ReadFirst = append(res.ReadFirst, Result{File: s.File, Line: s.Line, Name: s.Name})
 			}
 		}
 		// Find immediate callers
-		callers := Callers(g, symName, true)
-		for _, c := range callers {
-			line := fmt.Sprintf("%s:%d %s", c.File, c.Line, c.Name)
-			if !readSet[line] {
-				readSet[line] = true
-				res.ReadFirst = append(res.ReadFirst, c)
+		for _, s := range matches {
+			callers := Callers(g, s.ID, true)
+			for _, c := range callers {
+				line := fmt.Sprintf("%s:%d %s", c.File, c.Line, c.Name)
+				if !readSet[line] {
+					readSet[line] = true
+					res.ReadFirst = append(res.ReadFirst, c)
+				}
 			}
 		}
 	}

@@ -257,9 +257,10 @@ FINDING THINGS — three different scopes:
 CALL GRAPH — two different depths:
   callers/callees <sym> [--depth N]   bounded: 1 hop (default) up to 10 — use for focused exploration
   impact <sym>                         unbounded: full BFS to ALL transitive callers — can be large on hotspots
-  <sym> can be a short name ("Validate" — fuzzy substring match) OR a fully-qualified
+  <sym> can be a short name ("Validate" — fuzzy substring match), a standard Go package-qualified
+    name ("graph.Graph" or "graph.Graph.Build" — standard dot-notation), or a fully-qualified
     ID ("pkg/path::(*Service).Validate" — exact match, no same-name conflation). Use
-    the FQ form to disambiguate overloads/duplicates. Requires --precise build for
+    the dot or FQ form to disambiguate overloads/duplicates. Requires --precise build for
     full effect. Works for callers, callees, impact, and path (both endpoints).
 
 SYMBOL UNDERSTANDING — two different outputs:
