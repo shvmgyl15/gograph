@@ -1,51 +1,66 @@
-
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://ozgurcd.github.io/gograph/docs/getting-started/</loc>
-  </url><url>
+  </url>
+  <url>
     <loc>https://ozgurcd.github.io/gograph/docs/command-reference/</loc>
-  </url><url>
+  </url>
+  <url>
     <loc>https://ozgurcd.github.io/gograph/docs/agent-integration/</loc>
-  </url><url>
+  </url>
+  <url>
     <loc>https://ozgurcd.github.io/gograph/docs/workflows/</loc>
-  </url><url>
+  </url>
+  <url>
     <loc>https://ozgurcd.github.io/gograph/posts/analyzing-go-codebase-with-gograph/</loc>
-    <lastmod>2026-05-23T00:00:00+00:00</lastmod>
-  </url><url>
+    <lastmod>2026-05-23T00:00:00Z</lastmod>
+  </url>
+  <url>
     <loc>https://ozgurcd.github.io/gograph/tags/call-graph/</loc>
-    <lastmod>2026-05-23T00:00:00+00:00</lastmod>
-  </url><url>
+    <lastmod>2026-05-23T00:00:00Z</lastmod>
+  </url>
+  <url>
     <loc>https://ozgurcd.github.io/gograph/tags/developer-tools/</loc>
-    <lastmod>2026-05-23T00:00:00+00:00</lastmod>
-  </url><url>
+    <lastmod>2026-05-23T00:00:00Z</lastmod>
+  </url>
+  <url>
     <loc>https://ozgurcd.github.io/gograph/tags/go/</loc>
-    <lastmod>2026-05-23T00:00:00+00:00</lastmod>
-  </url><url>
+    <lastmod>2026-05-23T00:00:00Z</lastmod>
+  </url>
+  <url>
     <loc>https://ozgurcd.github.io/gograph/</loc>
-    <lastmod>2026-05-23T00:00:00+00:00</lastmod>
-  </url><url>
+    <lastmod>2026-05-23T00:00:00Z</lastmod>
+  </url>
+  <url>
     <loc>https://ozgurcd.github.io/gograph/tags/golang/</loc>
-    <lastmod>2026-05-23T00:00:00+00:00</lastmod>
-  </url><url>
+    <lastmod>2026-05-23T00:00:00Z</lastmod>
+  </url>
+  <url>
     <loc>https://ozgurcd.github.io/gograph/tags/llm-tokens/</loc>
-    <lastmod>2026-05-23T00:00:00+00:00</lastmod>
-  </url><url>
+    <lastmod>2026-05-23T00:00:00Z</lastmod>
+  </url>
+  <url>
     <loc>https://ozgurcd.github.io/gograph/tags/mcp-server/</loc>
-    <lastmod>2026-05-23T00:00:00+00:00</lastmod>
-  </url><url>
+    <lastmod>2026-05-23T00:00:00Z</lastmod>
+  </url>
+  <url>
     <loc>https://ozgurcd.github.io/gograph/posts/</loc>
-    <lastmod>2026-05-23T00:00:00+00:00</lastmod>
-  </url><url>
+    <lastmod>2026-05-23T00:00:00Z</lastmod>
+  </url>
+  <url>
     <loc>https://ozgurcd.github.io/gograph/tags/static-analysis/</loc>
-    <lastmod>2026-05-23T00:00:00+00:00</lastmod>
-  </url><url>
+    <lastmod>2026-05-23T00:00:00Z</lastmod>
+  </url>
+  <url>
     <loc>https://ozgurcd.github.io/gograph/tags/</loc>
-    <lastmod>2026-05-23T00:00:00+00:00</lastmod>
-  </url><url>
+    <lastmod>2026-05-23T00:00:00Z</lastmod>
+  </url>
+  <url>
     <loc>https://ozgurcd.github.io/gograph/categories/</loc>
-  </url><url>
+  </url>
+  <url>
     <loc>https://ozgurcd.github.io/gograph/docs/</loc>
   </url>
 </urlset>
