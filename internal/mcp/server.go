@@ -147,6 +147,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 				"MCP tools do not add network access.",
 				"Errorflow uses heuristic static call-graph and AST reference analysis. It does not perform SSA or full data-flow tracking.",
 				"Ambiguous short names can be disambiguated using standard Go dot-separated package-qualified notation (e.g. 'pkg.Struct.Method' or 'pkg.Struct') or fully-qualified symbol IDs (e.g., 'pkg/path::(*Struct).Method'). All search-based MCP tools fully support these formats.",
+				"Nested route-group prefixes (e.g. Gin/Echo/Chi Group()) are lost at the static AST level. HTTP routes are registered under their final path suffix (e.g., '/users' instead of '/api/v1/users'). Always search by final suffix or by the handler function symbol name.",
 			},
 		}
 		data, err := json.MarshalIndent(resp, "", "  ")
@@ -426,8 +427,8 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_endpoint
 	endpointTool := mcp.NewTool("gograph_endpoint",
-		mcp.WithDescription("Build a full vertical slice for one HTTP route: the matched handler symbol, a BFS call chain downstream (default depth 5), all SQL queries emitted in that chain, and all env vars read. Requires .gograph/graph.json — run `gograph build .` first. Read-only; no side effects. WHEN TO USE: When auditing what an API endpoint does end-to-end — its downstream dependencies, database queries, and configuration reads. NOT TO USE: For listing all routes (use gograph_routes first to find the pattern); for raw handler source code only (use gograph_source). RETURNS: Array of endpoint slices with route, handler, call chain, SQL, and env fields; found:false with a suggestion when the query does not match any route. `query` accepts route pattern (\"POST /api/users\"), path fragment (\"/users\"), or handler name. `depth` controls call-chain BFS depth (default: 5)."),
-		mcp.WithString("query", mcp.Required(), mcp.Description(`Route pattern ("POST /api/users"), path fragment ("/users"), or handler symbol name ("CreateUser")`)),
+		mcp.WithDescription("Build a full vertical slice for one HTTP route: the matched handler symbol, a BFS call chain downstream (default depth 5), all SQL queries emitted in that chain, and all env vars read. Requires .gograph/graph.json — run `gograph build .` first. Read-only; no side effects. LIMITATION: Nested route-group prefixes (e.g. Gin/Echo/Chi Group()) are lost at the static AST level. Always query by the final route path suffix or, ideally, by the handler function symbol name (e.g., 'CreateUser'). WHEN TO USE: When auditing what an API endpoint does end-to-end — its downstream dependencies, database queries, and configuration reads. NOT TO USE: For listing all routes (use gograph_routes first to find the pattern); for raw handler source code only (use gograph_source). RETURNS: Array of endpoint slices with route, handler, call chain, SQL, and env fields; found:false with a suggestion when the query does not match any route. `query` accepts route pattern (\"POST /api/users\"), path fragment (\"/users\"), or handler name. `depth` controls call-chain BFS depth (default: 5)."),
+		mcp.WithString("query", mcp.Required(), mcp.Description(`Route pattern ("POST /api/users"), final path suffix ("POST /users"), or handler symbol name ("CreateUser"). NOTE: Nested route-group prefixes are lost statically.`)),
 		mcp.WithNumber("depth", mcp.Description("BFS depth for call chain traversal (default: 5)")),
 	)
 	addTool(endpointTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -556,7 +557,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 
 	// Tool: gograph_routes
 	routesTool := mcp.NewTool("gograph_routes",
-		mcp.WithDescription("List all HTTP routes registered in the codebase with their HTTP methods, URL patterns, and handler function names. Requires .gograph/graph.json — run `gograph build .` first. Read-only; no side effects. WHEN TO USE: To get the complete API surface of a service before deep-diving into a specific route with gograph_endpoint. NOT TO USE: For full call chain analysis of a route (use gograph_endpoint instead). RETURNS: Structured table of method/path/handler triples; empty when no HTTP routes are registered in the graph."),
+		mcp.WithDescription("List all HTTP routes registered in the codebase with their HTTP methods, URL patterns, and handler function names. Requires .gograph/graph.json — run `gograph build .` first. Read-only; no side effects. LIMITATION: Nested route-group prefixes (e.g. Gin/Echo/Chi Group()) are lost at the static AST level. Routes are recorded under their final path suffix (e.g., '/users' instead of '/api/v1/users'). WHEN TO USE: To get the complete API surface of a service before deep-diving into a specific route with gograph_endpoint. NOT TO USE: For full call chain analysis of a route (use gograph_endpoint instead). RETURNS: Structured table of method/path/handler triples; empty when no HTTP routes are registered in the graph."),
 	)
 	addTool(routesTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if newG, err := rebuild(); err == nil {

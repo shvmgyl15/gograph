@@ -11,3 +11,4 @@ CLAUDE.md
 .DS_Store
 .cursor
 .obsidian
+codeql-db/
