@@ -108,7 +108,7 @@ func StartSession(customWord string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("create session log file: %w", err)
 	}
-	defer logFile.Close()
+	defer func() { _ = logFile.Close() }()
 
 	startEntry := SessionStartEntry{
 		Type:      "session_start",
@@ -149,7 +149,7 @@ func EndSession() (string, error) {
 		_ = os.Remove(activePointerPath)
 		return activeID, fmt.Errorf("open session log for append: %w (pointer cleaned up)", err)
 	}
-	defer logFile.Close()
+	defer func() { _ = logFile.Close() }()
 
 	endEntry := SessionEndEntry{
 		Type:    "session_end",
@@ -179,7 +179,7 @@ func LogCommand(command string, args []string, intention string, elapsed time.Du
 	if err != nil {
 		return fmt.Errorf("open session log for append: %w", err)
 	}
-	defer logFile.Close()
+	defer func() { _ = logFile.Close() }()
 
 	entry := CommandLogEntry{
 		Type:        "command",
@@ -286,7 +286,7 @@ func RunAudit(sessionID string, jsonMode bool) int {
 		fmt.Fprintf(os.Stderr, "Error opening session log %q: %v\n", logFilePath, err)
 		return 1
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var lines []GenericLogLine
 	scanner := bufio.NewScanner(file)

@@ -1682,7 +1682,7 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 
 		exitCode := session.RunAudit(sessionID, jsonMode)
 
-		w.Close()
+		_ = w.Close()
 		os.Stdout = oldStdout
 
 		var buf bytes.Buffer
