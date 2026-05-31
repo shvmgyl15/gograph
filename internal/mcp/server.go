@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/ozgurcd/gograph/internal/graph"
 	"github.com/ozgurcd/gograph/internal/search"
+	"github.com/ozgurcd/gograph/internal/session"
 )
 
 // MCPResponse is the stable structured data payload returned by complex tools.
@@ -86,6 +88,10 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 			"tools": []map[string]string{
 				{"name": "gograph_capabilities", "purpose": "List all available tools and recommended workflows. No prerequisites."},
 				{"name": "gograph_stale", "purpose": "Check whether .gograph/graph.json is outdated vs source files. Run this first as a pre-flight check; if stale, run `gograph build .`."},
+				{"name": "gograph_session_create", "purpose": "Start a telemetry audit session for tracking agent compliance and tool success metrics."},
+				{"name": "gograph_session_end", "purpose": "End the active telemetry session cleanly and write end-of-session logs."},
+				{"name": "gograph_session_audit", "purpose": "Review and grade agent compliance (Plan rule, Review rule, Composability/Efficiency) and tool success rates."},
+				{"name": "gograph_session_cleanup", "purpose": "Delete all stale inactive session telemetry logs to keep the repository clean."},
 				{"name": "gograph_query", "purpose": "Search by keyword substring: symbols, packages, files, import edges. Use when you have a name but don't know which package it's in."},
 				{"name": "gograph_focus", "purpose": "Full structural summary of one package: files, symbols, internal call edges, and imports. Use before editing an unfamiliar package."},
 				{"name": "gograph_context", "purpose": "Pre-flight bundle for one symbol: node metadata, source, callers, callees, tests, and role in one call. Use uncommitted=true for all currently modified symbols. Replaces 4–5 separate calls."},
@@ -1617,5 +1623,87 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_session_create
+	sessionCreateTool := mcp.NewTool("gograph_session_create",
+		mcp.WithDescription("Start a telemetry audit session for tracking agent compliance and tool success metrics. No prerequisites. WHEN TO USE: Call once at the start of a multi-step coding task to track your work. NOT TO USE: When a session is already active. RETURNS: Structured message with the newly generated session ID."),
+		mcp.WithString("custom_word", mcp.Description("Optional custom word prefix to incorporate in the timestamped session ID (e.g. 'implement_feature')")),
+	)
+	addTool(sessionCreateTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, _ := request.Params.Arguments.(map[string]any)
+		customWord := ""
+		if args != nil {
+			if w, ok := args["custom_word"].(string); ok {
+				customWord = w
+			}
+		}
+		sessionID, err := session.StartSession(customWord)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Session %q successfully created and activated.", sessionID)), nil
+	})
+
+	// Tool: gograph_session_end
+	sessionEndTool := mcp.NewTool("gograph_session_end",
+		mcp.WithDescription("End the active telemetry session cleanly and write end-of-session logs. No prerequisites. WHEN TO USE: Call once after you have completed all edits and post-edit reviews. NOT TO USE: When no session is active. RETURNS: Message confirming ending of the session."),
+	)
+	addTool(sessionEndTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		sessionID, err := session.EndSession()
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Session %q successfully ended.", sessionID)), nil
+	})
+
+	// Tool: gograph_session_audit
+	sessionAuditTool := mcp.NewTool("gograph_session_audit",
+		mcp.WithDescription("Review and grade agent compliance (Plan rule, Review rule, Composability/Efficiency) and tool success rates. No prerequisites. WHEN TO USE: After ending a session to obtain compliance metrics and recommendations. RETURNS: Audited session details and grade."),
+		mcp.WithString("session_id", mcp.Description("Optional session ID to audit. If not supplied, audits the most recent session in the repository.")),
+		mcp.WithBoolean("json", mcp.Description("Set to true to return structured JSON format instead of human-readable ASCII layout.")),
+	)
+	addTool(sessionAuditTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, _ := request.Params.Arguments.(map[string]any)
+		sessionID := ""
+		jsonMode := false
+		if args != nil {
+			if s, ok := args["session_id"].(string); ok {
+				sessionID = s
+			}
+			if j, ok := args["json"].(bool); ok {
+				jsonMode = j
+			}
+		}
+
+		oldStdout := os.Stdout
+		r, w, _ := os.Pipe()
+		os.Stdout = w
+
+		exitCode := session.RunAudit(sessionID, jsonMode)
+
+		w.Close()
+		os.Stdout = oldStdout
+
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+
+		if exitCode != 0 {
+			return mcp.NewToolResultError(fmt.Sprintf("Audit failed: %s", buf.String())), nil
+		}
+
+		return mcp.NewToolResultText(buf.String()), nil
+	})
+
+	// Tool: gograph_session_cleanup
+	sessionCleanupTool := mcp.NewTool("gograph_session_cleanup",
+		mcp.WithDescription("Delete all stale inactive session telemetry JSONL logs. If no session is active, it deletes all logs. No prerequisites. WHEN TO USE: Call after auditing to keep the repository clean. RETURNS: Number of deleted session files."),
+	)
+	addTool(sessionCleanupTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		count, err := session.CleanupSessions()
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Successfully deleted %d stale session log files.", count)), nil
 	})
 }

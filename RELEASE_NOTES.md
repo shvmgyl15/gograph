@@ -1,5 +1,41 @@
 # Release Notes
 
+## v1.4.69 — 2026-05-30
+
+### New Features
+
+#### Agent Intention Audit & Session Telemetry
+Introduced a workflow logging and session tracking engine designed to audit agent behaviors, track compliance with core workflow guidelines, and log tool execution telemetry.
+- **CLI Commands:**
+  - `gograph session create [word]`: Initiates a telemetry session. Generates IDs in the format `<word>_<timestamp>` (or `<session_slug>_<timestamp>` if the word is omitted).
+  - `gograph session end`: Ends the active telemetry session.
+  - `gograph session audit [session_id]`: Reads the session log stream, computes agent compliance score (Plan rule 35%, Review rule 35%, Composability 30%), calculates success rates, assigns a compliance grade (A, B, C, F), and renders highly actionable recommendations. Supports `--json` machine parsing.
+  - `gograph session cleanup`: Deletes all inactive `.jsonl` files in `.gograph/sessions/` (safely skipping the active session file if one is active) to keep the repository clean.
+- **MCP Server Tools:** Added matching `gograph_session_create`, `gograph_session_end`, `gograph_session_audit`, and `gograph_session_cleanup` native tools.
+- **Intention Enforcement:** All analytical commands executed while a session is active are blocked unless an intention states their technical rationale via `--intention` / `-i`. Non-analytical commands (like `build`, `session`, `mcp`, `version`, `help`) are exempt from intention enforcement.
+- **Append-Only Telemetry Logs:** Log metadata (latency, exit status, intention, command args) is stored in `.gograph/sessions/session_<session_id>.jsonl` with zero execution output bloat to guarantee low I/O overhead.
+- **Agent Rules:** Agents are strictly forbidden from reading, listing, or parsing files in the `.gograph/sessions/` directory.
+
+---
+
+### Improvements
+
+#### Asymmetric MCP Route Warning Resolution (Phase A)
+- **MCP Descriptions:** Updated tool descriptions for `gograph_endpoint` and `gograph_routes` inside `internal/mcp/server.go` to explicitly outline AST static limitations regarding route-group variable drop behaviors (e.g., Gin, Echo, Chi, and Fiber `Group()` receiver paths).
+- **Limitations Telemetry:** Surfaced warning context inside `gograph_capabilities` limitations array to prevent coding agents from suffering route lookup failures.
+
+---
+
+## v1.4.60 – v1.4.68 — 2026-05-28
+Integrated several major analytical and infrastructure hardening sweeps:
+- **Symbol Resolution:** Added standard package-qualified dot-notation for all symbol queries (e.g. `service.GenerateRequest`, `graph.Graph`), resolving overload and package disambiguation limits.
+- **MCP Server Hardening:** Refactored and hardened all 50 MCP tool schemas with strict usage rules, safety boundaries, and concrete symbol examples to maximize LLM client discovery and prevent hallucinated arguments.
+- **Architecture Diagrams:** Implemented the `gograph diagram` command with Mermaid output formats supporting `package`, `module`, `service`, and `file` grouping boundaries.
+- **Precision Reachability:** Upgraded graph traversal to track function-value references inside initializers, struct/variable assignments, and nested call expressions.
+- **Orphan Sweeps:** Resolved various reachability edge cases inside the AST analysis logic to guarantee highly accurate dead-code identification.
+
+---
+
 ## v1.4.59 — 2026-05-22
 
 ### Improvements

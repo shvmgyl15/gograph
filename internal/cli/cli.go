@@ -43,13 +43,15 @@ func Run(args []string) int {
 		return 0
 	}
 
-	// Strip --json, --files-only, and --mermaid from args before dispatch; set the package-level flags.
+	// Strip global flags before dispatch; set the package-level flags.
 	jsonMode = false
 	filesOnlyMode = false
 	mermaidMode = false
+	var intention string
 	filtered := args[:0]
-	for _, a := range args {
-		switch a {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+			switch a {
 		case "--help", "-h":
 			if len(args) > 1 && args[0] != "--help" && args[0] != "-h" {
 				printCommandHelp(args[0])
@@ -63,8 +65,22 @@ func Run(args []string) int {
 			filesOnlyMode = true
 		case "--mermaid":
 			mermaidMode = true
+		case "-i", "--intention":
+			if i+1 < len(args) {
+				intention = args[i+1]
+				i++ // skip the value
+			} else {
+				fmt.Fprintln(os.Stderr, "Error: --intention/-i flag requires a value")
+				return 1
+			}
 		default:
-			filtered = append(filtered, a)
+			if strings.HasPrefix(a, "-i=") {
+				intention = strings.TrimPrefix(a, "-i=")
+			} else if strings.HasPrefix(a, "--intention=") {
+				intention = strings.TrimPrefix(a, "--intention=")
+			} else {
+				filtered = append(filtered, a)
+			}
 		}
 	}
 	args = filtered
@@ -78,7 +94,55 @@ func Run(args []string) int {
 		return 0
 	}
 
+	// Enforce active session constraints
+	nonAnalytical := map[string]bool{
+		"session":           true,
+		"--session":         true,
+		"mcp":               true,
+		"build":             true,
+		"add-claude-plugin": true,
+		"hook-guard":        true,
+		"version":           true,
+		"help":              true,
+		"-h":                true,
+		"--help":            true,
+		"-v":                true,
+		"--version":         true,
+		"stale":             true,
+		"stats":             true,
+	}
+
+	if !nonAnalytical[args[0]] {
+		activeID, err := GetActiveSessionID()
+		if err == nil && activeID != "" {
+			if intention == "" {
+				fmt.Fprintf(os.Stderr, "Error: Active session %q requires an intention. Please supply the --intention (-i) flag stating your technical rationale.\n", activeID)
+				return 1
+			}
+		}
+	}
+
+	startTime := time.Now()
+	exitCode := dispatch(args)
+	elapsed := time.Since(startTime)
+
+	// Log command telemetry
+	if args[0] != "session" && args[0] != "--session" && args[0] != "mcp" {
+		status := "success"
+		if exitCode != 0 {
+			status = "failure"
+		}
+		_ = LogCommand(args[0], args[1:], intention, elapsed, status)
+	}
+
+	return exitCode
+}
+
+// dispatch routes subcommands to their implementation.
+func dispatch(args []string) int {
 	switch args[0] {
+	case "session", "--session":
+		return runSession(args[1:])
 	case "build":
 		return runBuild(args[1:])
 	case "query":
@@ -395,6 +459,7 @@ check [--since ref]  : static policy checks (boundaries, api_drift, test require
 gate                 : CI/CD enforcement against .gograph.yml thresholds
 snapshot <subcmd>    : architectural metric snapshots (save, diff, list, drop)
 mcp [path]           : start MCP server over stdio
+gograph session <action>     : start/end audit sessions (create [word], end, audit)
 add-claude-plugin    : install MCP plugin + CLAUDE.md rules + PreToolUse hook
 hook-guard           : PreToolUse hook — blocks grep on Go symbols, redirects to gograph`)
 	return 0
@@ -1017,6 +1082,8 @@ GLOBAL FLAGS
                              path, impact, and endpoint.
                              Bare form (no subcommand): gograph --mermaid → architecture
                              overview diagram (shorthand for 'diagram').
+  -i, --intention <msg>      Explain the technical rationale for executing the command.
+                             MANDATORY for all analytical commands when a session is active.
 
 INDEXING
   build [path]               Walk and parse a Go repository. Generates graph.json
@@ -1192,6 +1259,10 @@ AGENT INTEGRATION
                              first so the agent knows how to use gograph.
   mcp [path]                 Start a Model Context Protocol server over stdio.
                              Exposes graph queries as native tools for AI clients.
+  session <action> [word]    Manage telemetry & audit sessions. Actions:
+                             - create [unique_word]: Starts an audit session.
+                             - end: Ends the active session.
+                             - audit [session_id]: Audits and scores agent compliance & success.
   add-claude-plugin          Install gograph as a Claude MCP plugin. Also injects
                              CLAUDE.md steering rules and a smart PreToolUse hook
                              that redirects Go symbol greps to gograph tools.

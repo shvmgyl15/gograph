@@ -302,3 +302,99 @@ func TestGographContext_Structured(t *testing.T) {
 		t.Errorf("expected structured test_results to contain TestTargetFunc, got %v", out.TestResults)
 	}
 }
+
+func TestGographSessionMCP(t *testing.T) {
+	// Clean up any existing active session pointer first
+	_ = os.Remove(".gograph/active_session.json")
+	_ = os.RemoveAll(".gograph/sessions")
+
+	handlers := setupHandlers(t, &graph.Graph{})
+	createHandler, ok := handlers["gograph_session_create"]
+	if !ok {
+		t.Fatal("gograph_session_create handler not found")
+	}
+	endHandler, ok := handlers["gograph_session_end"]
+	if !ok {
+		t.Fatal("gograph_session_end handler not found")
+	}
+	auditHandler, ok := handlers["gograph_session_audit"]
+	if !ok {
+		t.Fatal("gograph_session_audit handler not found")
+	}
+
+	// 1. Create a session
+	req := mcp.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"custom_word": "mcp_test"}
+	res, err := createHandler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected create session error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("create session failed: %s", res.Content[0].(mcp.TextContent).Text)
+	}
+	createText := res.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(createText, "successfully created and activated") {
+		t.Errorf("expected success message, got %s", createText)
+	}
+
+	// 2. Try creating session again (should fail because one is active)
+	res2, err := createHandler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected create session error: %v", err)
+	}
+	if !res2.IsError {
+		t.Error("expected create session to fail when active session exists")
+	}
+
+	// 3. End the session
+	resEnd, err := endHandler(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("unexpected end session error: %v", err)
+	}
+	if resEnd.IsError {
+		t.Fatalf("end session failed: %s", resEnd.Content[0].(mcp.TextContent).Text)
+	}
+	endText := resEnd.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(endText, "successfully ended") {
+		t.Errorf("expected success end message, got %s", endText)
+	}
+
+	// 4. Run audit
+	reqAudit := mcp.CallToolRequest{}
+	reqAudit.Params.Arguments = map[string]any{"json": true}
+	resAudit, err := auditHandler(context.Background(), reqAudit)
+	if err != nil {
+		t.Fatalf("unexpected audit error: %v", err)
+	}
+	if resAudit.IsError {
+		t.Fatalf("audit failed: %s", resAudit.Content[0].(mcp.TextContent).Text)
+	}
+	auditText := resAudit.Content[0].(mcp.TextContent).Text
+
+	// Verify JSON output format
+	var out map[string]any
+	if err := json.Unmarshal([]byte(auditText), &out); err != nil {
+		t.Fatalf("expected JSON output from gograph_session_audit, got: %s", auditText)
+	}
+	if sID, ok := out["session_id"].(string); !ok || !strings.Contains(sID, "mcp_test") {
+		t.Errorf("expected session_id to contain mcp_test, got %v", out["session_id"])
+	}
+
+	// 5. Run session cleanup
+	cleanupHandler, ok := handlers["gograph_session_cleanup"]
+	if !ok {
+		t.Fatal("gograph_session_cleanup handler not found")
+	}
+	resCleanup, err := cleanupHandler(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("unexpected cleanup error: %v", err)
+	}
+	if resCleanup.IsError {
+		t.Fatalf("cleanup failed: %s", resCleanup.Content[0].(mcp.TextContent).Text)
+	}
+	cleanupText := resCleanup.Content[0].(mcp.TextContent).Text
+	if !strings.Contains(cleanupText, "Successfully deleted") {
+		t.Errorf("expected successful cleanup message, got %s", cleanupText)
+	}
+}
+

@@ -652,6 +652,11 @@ MCP agents should call `gograph_capabilities` first when they need to discover a
 
 The current tool suite includes:
 - **`gograph_capabilities`**: Discover available tools and workflows.
+- **`gograph_stale`**: Check whether `.gograph/graph.json` is outdated versus source files.
+- **`gograph_session_create`**: Start a telemetry audit session for tracking agent compliance and tool success metrics.
+- **`gograph_session_end`**: End the active telemetry session cleanly and write end-of-session logs.
+- **`gograph_session_audit`**: Review and grade agent compliance (Plan rule, Review rule, Composability/Efficiency) and tool success rates.
+- **`gograph_session_cleanup`**: Delete all stale inactive session telemetry logs to keep the repository clean.
 - **`gograph_query`**
 - **`gograph_focus`**
 - **`gograph_callers`**
@@ -709,6 +714,86 @@ The current tool suite includes:
    The `gograph capabilities` command will output a token-optimized cheat sheet of commands and tell the agent everything it needs to know to stop grepping and start using the graph.
 
 4. **Optional — refresh on demand.** Have the agent run `gograph build .` after creating/renaming/removing symbols, or wire it into a `pre-commit` / `Makefile` target.
+
+## Workflow Telemetry & Audit Sessions
+
+`gograph` includes a high-fidelity workflow logging and session tracking engine. This system allows developers, teams, and CI/CD pipelines to audit agent behaviors, ensure compliance with agent workflow rules, and track command success/failure telemetry.
+
+### 1. Activating a Session
+A session is started using the `session create` subcommand. You can supply an optional custom word which will be incorporated into the session ID along with a timestamp:
+```sh
+gograph session create implement_refactor
+# Output: Session "implement_refactor_20260530_200840" successfully created and activated.
+```
+If the custom word is omitted, `gograph` will generate a short, random, unique identifier:
+```sh
+gograph session create
+# Output: Session "session_d3f45a_20260530_200840" successfully created and activated.
+```
+Only one session can be active at a time per workspace. The active session pointer is tracked in `.gograph/active_session.json`.
+
+### 2. Mandatory Intention Enforcement
+When a session is active, the AI agent is **required** to state its technical rationale using the `--intention` or `-i` flag for every analytical command:
+```sh
+gograph stale -i "Check if the graph is stale before analyzing the codebase"
+```
+If the agent fails to supply `-i` when a session is active, `gograph` blocks execution and returns a structured exit code `1` with an error message:
+```
+Error: Active session "implement_refactor_20260530_200840" requires an intention. Please supply the --intention (-i) flag stating your technical rationale.
+```
+*Note: Session commands (`session create`, `session end`, `session audit`), MCP routing servers (`mcp`), and help commands are exempt from intention enforcement.*
+
+### 3. Ending a Session
+Once the agent finishes its work, the session is cleanly ended:
+```sh
+gograph session end
+# Output: Session "implement_refactor_20260530_200840" successfully ended.
+```
+
+### 4. Telemetry Log Architecture (Append-Only JSONL)
+All commands executed during an active session are logged inside `.gograph/sessions/session_<session_id>.jsonl`. 
+To ensure architectural cleanliness and avoid heavy I/O operations or disk bloat, **raw query results are never logged**. Only telemetry metadata is captured:
+- Command name and arguments
+- Technical intention (`-i` / `--intention`)
+- Latency (execution time in milliseconds)
+- Exit status (`success` or `failure`)
+
+Example log format:
+```json
+{"type":"session_start","session_id":"my_refactor_20260530_200840","created_at":"2026-05-30T20:08:40-04:00"}
+{"type":"command","timestamp":"2026-05-30T20:08:48-04:00","command":"stale","args":[],"intention":"Check graph status","execution_ms":57,"status":"success"}
+{"type":"session_end","ended_at":"2026-05-30T20:08:54-04:00","status":"completed"}
+```
+
+### 5. Auditing and Compliance Scoring
+You can audit the agent's work at any time during or after a session using the `session audit` command:
+```sh
+gograph session audit [session_id]
+```
+If `session_id` is omitted, the tool automatically scans `.gograph/sessions/` and audits the **most recent** session.
+
+The audit report provides:
+1. **Agent Compliance Score & Grade**:
+   - **Plan Rule compliance (35%)**: Did the agent run `plan <symbol>` before modifying code?
+   - **Review Rule compliance (35%)**: Did the agent run `review --uncommitted` after making edits?
+   - **Efficiency / Composability (30%)**: Did the agent use composed token-saving commands (like `context <symbol>`) instead of running dozens of verbose raw queries (like `node`, `callers`, `callees`)?
+   - **Overall Grade**: Scores are mapped to academic grades (A: Highly Compliant, B: Good, C: Needs Improvement, F: Non-Compliant).
+2. **Success Rate**: The percentage of successfully completed commands versus failed ones.
+3. **Actionable Recommendations**: If the agent missed core rules, the report details exactly how to instruct or steer the agent to improve its efficiency.
+
+#### ⚠️ Strict Agent Access Ban
+To preserve the integrity of the audit pipeline and prevent the agent from parsing or altering logs:
+> [!IMPORTANT]
+> **AI Coding Agents are strictly forbidden from listing, reading, or parsing files inside the `.gograph/sessions/` directory.**
+
+### 6. Session Cleanup
+To prevent `.gograph/sessions/` from growing indefinitely and accumulating stale session metadata, you can trigger a cleanup at any time:
+```sh
+gograph session cleanup
+```
+*Note: If an active session is currently running, `session cleanup` safely skips deleting the active session's `.jsonl` log file to prevent telemetry corruption.*
+
+---
 
 ## Why this is safe to give an agent
 

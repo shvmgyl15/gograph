@@ -240,6 +240,21 @@ If you prefer manual setup, add this to your `.cursorrules`, `CLAUDE.md`, or AI 
 > **System Prompt:**
 > Before answering architecture or repository questions, inspect the available `gograph_*` MCP tools for the current project and use them instead of grep/find. Each project ships its own gograph MCP server; pick the matching one. If using the CLI directly, run `gograph capabilities` first.
 
+## 📊 Agent Workflow Telemetry & Compliance Auditing
+
+`gograph` includes an native **Workflow Telemetry & Compliance Auditing engine** (available via both the CLI and the MCP server) to monitor, grade, and optimize how AI coding agents interact with your Go codebases.
+
+### Commands & Tools:
+* **Session Lifecycle**: Start a session with `gograph session create [word]` (or `gograph_session_create`) and end it with `gograph session end` (or `gograph_session_end`).
+* **Intention Enforcement**: When a session is active, all analytical commands **must** specify an intention detailing the technical rationale (`--intention <reason>` / `-i <reason>`), or they are blocked.
+* **Compliance Auditing**: Call `gograph session audit [session_id]` (or `gograph_session_audit`) to evaluate the agent's work. The engine computes:
+  - **Plan Rule compliance (35%)**: Did the agent run `plan` before code modifications?
+  - **Review Rule compliance (35%)**: Did the agent run `review --uncommitted` post-edit?
+  - **Composability/Efficiency (30%)**: Did the agent leverage token-saving composed tools (like `context`) rather than wasteful individual queries (like `node`, `callers`, `callees`)?
+  - **Compliance Grade & Actionable Recommendations**: Computes an academic grade (A, B, C, F) and yields high-fidelity diagnostics to steer and optimize the agent.
+
+For full architectural details, see [docs/coding-agent-usage.md](docs/coding-agent-usage.md).
+
 ## Example Output
 
 When you run `gograph build .`, the generated `GRAPH_REPORT.md` gives your AI a condensed, highly-dense context map that looks like this:

@@ -130,6 +130,10 @@ func TestAllCommandsRegistered(t *testing.T) {
 		"--json",
 		"--files-only",
 		"--mermaid",
+		"session",
+		"--session",
+		"-i",
+		"--intention",
 		// aliases
 		"help",
 		"--help",
@@ -152,17 +156,17 @@ func TestAllCommandsRegistered(t *testing.T) {
 		t.Fatalf("failed to parse cli.go: %v", err)
 	}
 
-	// Walk the AST and collect all case clause string literals inside Run().
+	// Walk the AST and collect all case clause string literals inside Run() and dispatch().
 	registered := make(map[string]bool)
 	ast.Inspect(f, func(n ast.Node) bool {
 		fn, ok := n.(*ast.FuncDecl)
 		if !ok {
 			return true
 		}
-		if fn.Name.Name != "Run" {
+		if fn.Name.Name != "Run" && fn.Name.Name != "dispatch" {
 			return true
 		}
-		// Found Run — now collect all CaseClause string values within it.
+		// Found Run or dispatch — now collect all CaseClause string values within it.
 		ast.Inspect(fn.Body, func(inner ast.Node) bool {
 			cc, ok := inner.(*ast.CaseClause)
 			if !ok {
