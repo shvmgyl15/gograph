@@ -2,17 +2,17 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title>Call-Graph on gograph – Go Codebase Analysis &amp; MCP Server</title>
-    <link>https://ozgurcd.github.io/gograph/tags/call-graph/</link>
+    <link>http://localhost:1313/tags/call-graph/</link>
     <description>Recent content in Call-Graph on gograph – Go Codebase Analysis &amp; MCP Server</description>
     <generator>Hugo</generator>
     <language>en-us</language>
     <lastBuildDate>Sat, 23 May 2026 00:00:00 +0000</lastBuildDate>
-    <atom:link href="https://ozgurcd.github.io/gograph/tags/call-graph/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="http://localhost:1313/tags/call-graph/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Analyzing a Go Codebase with gograph — Starting with Itself</title>
-      <link>https://ozgurcd.github.io/gograph/posts/analyzing-go-codebase-with-gograph/</link>
+      <link>http://localhost:1313/posts/analyzing-go-codebase-with-gograph/</link>
       <pubDate>Sat, 23 May 2026 00:00:00 +0000</pubDate>
-      <guid>https://ozgurcd.github.io/gograph/posts/analyzing-go-codebase-with-gograph/</guid>
+      <guid>http://localhost:1313/posts/analyzing-go-codebase-with-gograph/</guid>
       <description>A deep-dive technical case study running gograph&amp;#39;s static analysis engine on its own codebase. Discover how structural call-graph intelligence eliminates LLM token waste, tracks precise blast radii, and out-performs standard grep.</description>
     </item>
   </channel>

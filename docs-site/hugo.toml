@@ -1,4 +1,4 @@
-baseURL = "https://ozgurcd.github.io/gograph/"
+baseURL = "https://gograph.identuum.ai/"
 languageCode = "en-us"
 title = "gograph – Go Codebase Analysis & MCP Server"
 theme = "PaperMod"

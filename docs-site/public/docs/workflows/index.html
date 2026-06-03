@@ -1,24 +1,24 @@
 <!DOCTYPE html>
 <html lang="en" dir="auto" data-theme="auto">
 
-<head><meta charset="utf-8">
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1313&amp;path=livereload" data-no-instant defer></script><meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<meta name="robots" content="index, follow">
+<meta name="robots" content="noindex, nofollow">
 <title>Agent Workflows | gograph – Go Codebase Analysis &amp; MCP Server</title>
 <meta name="keywords" content="">
 <meta name="description" content="Recommended operational workflows for developers and AI agents using gograph.">
 <meta name="author" content="Ozgur Demir">
-<link rel="canonical" href="https://ozgurcd.github.io/gograph/docs/workflows/">
-<link crossorigin="anonymous" href="/gograph/assets/css/stylesheet.cd9298b33628769aa1bc1acebbbfd7aa11ce81dfe03484d479e1907760249a1d.css" integrity="sha256-zZKYszYodpqhvBrOu7/XqhHOgd/gNITUeeGQd2Akmh0=" rel="preload stylesheet" as="style">
-<link rel="icon" href="https://ozgurcd.github.io/gograph/favicon.ico">
-<link rel="icon" type="image/png" sizes="16x16" href="https://ozgurcd.github.io/gograph/favicon-16x16.png">
-<link rel="icon" type="image/png" sizes="32x32" href="https://ozgurcd.github.io/gograph/favicon-32x32.png">
-<link rel="apple-touch-icon" href="https://ozgurcd.github.io/gograph/apple-touch-icon.png">
-<link rel="mask-icon" href="https://ozgurcd.github.io/gograph/safari-pinned-tab.svg">
+<link rel="canonical" href="http://localhost:1313/docs/workflows/">
+<link crossorigin="anonymous" href="/assets/css/stylesheet.cd9298b33628769aa1bc1acebbbfd7aa11ce81dfe03484d479e1907760249a1d.css" integrity="sha256-zZKYszYodpqhvBrOu7/XqhHOgd/gNITUeeGQd2Akmh0=" rel="preload stylesheet" as="style">
+<link rel="icon" href="http://localhost:1313/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="http://localhost:1313/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="http://localhost:1313/favicon-32x32.png">
+<link rel="apple-touch-icon" href="http://localhost:1313/apple-touch-icon.png">
+<link rel="mask-icon" href="http://localhost:1313/safari-pinned-tab.svg">
 <meta name="theme-color" content="#2e2e33">
 <meta name="msapplication-TileColor" content="#2e2e33">
-<link rel="alternate" hreflang="en" href="https://ozgurcd.github.io/gograph/docs/workflows/">
+<link rel="alternate" hreflang="en" href="http://localhost:1313/docs/workflows/">
 <noscript>
     <style>
         #theme-toggle,
@@ -64,78 +64,13 @@
         document.querySelector("html").dataset.theme = 'light';
     }
 
-</script><meta property="og:url" content="https://ozgurcd.github.io/gograph/docs/workflows/">
-  <meta property="og:site_name" content="gograph – Go Codebase Analysis & MCP Server">
-  <meta property="og:title" content="Agent Workflows">
-  <meta property="og:description" content="Recommended operational workflows for developers and AI agents using gograph.">
-  <meta property="og:locale" content="en_us">
-  <meta property="og:type" content="article">
-    <meta property="article:section" content="docs">
-
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Agent Workflows">
-  <meta name="twitter:description" content="Recommended operational workflows for developers and AI agents using gograph.">
-
-
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "itemListElement": [
-    {
-      "@type": "ListItem",
-      "position":  1 ,
-      "name": "Documentation Portal",
-      "item": "https://ozgurcd.github.io/gograph/docs/"
-    }, 
-    {
-      "@type": "ListItem",
-      "position":  2 ,
-      "name": "Agent Workflows",
-      "item": "https://ozgurcd.github.io/gograph/docs/workflows/"
-    }
-  ]
-}
-</script>
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "BlogPosting",
-  "headline": "Agent Workflows",
-  "name": "Agent Workflows",
-  "description": "Recommended operational workflows for developers and AI agents using gograph.",
-  "keywords": [
-    
-  ],
-  "articleBody": "To maximize efficiency, reduce latency, and guarantee safety when modifying codebases, we recommend following these standardized workflows. These steps can be programmed into AI system instructions or executed manually.\nWorkflow 1: Onboarding to a New Repo When opening an unfamiliar Go repository, use this workflow to get oriented in seconds:\nVerify Index Status: gograph stats gograph stale If stale or missing, run gograph build .. Find High-Risk Hotspots: gograph hotspot --top 10 Identifies the most heavily referenced functions in the codebase. Map Package Coupling: gograph coupling Gives a high-level table showing package stability and dependencies. Inspect the Global API Surface: gograph skeleton Exposes every package signature with bodies stripped. Workflow 2: Safe-Edit Symbol Lifecycle Before changing the signature or behavior of any function, method, or struct, follow this cycle:\n[ plan ] ──► [ context ] ──► [ Edit Code ] ──► [ build . --precise ] ──► [ review --uncommitted ] Plan first: gograph plan This automatically checks for callers, associated tests, and risk profiles (e.g. database transactions or env reads). Extract Symbol Context: gograph context Bundles raw AST info, the exact source block of the target, and immediate dependencies in one call. Perform the Edit: Modify the code as needed. Type-checked build: gograph build . --precise Verifies compilation and computes type-checked interface implementers. Post-edit review: gograph review --uncommitted Validates complexity drift, test coverage, and security risk introductions before making a commit. Workflow 3: Package-Level Refactoring Before splitting, merging, or moving a Go package, execute this check:\nDiscover all external consumers: gograph dependents Finds every other package that imports your target. A package with high fan-in (low instability) is difficult to change without sweeping breaking changes. Review public API contracts: gograph public Ensure you know exactly what symbols are exported and consumed externally. ",
-  "wordCount" : "300",
-  "inLanguage": "en",
-  "datePublished": "0001-01-01T00:00:00Z",
-  "dateModified": "0001-01-01T00:00:00Z",
-  "author":{
-    "@type": "Person",
-    "name": "Ozgur Demir"
-  },
-  "mainEntityOfPage": {
-    "@type": "WebPage",
-    "@id": "https://ozgurcd.github.io/gograph/docs/workflows/"
-  },
-  "publisher": {
-    "@type": "Person",
-    "name": "gograph – Go Codebase Analysis \u0026 MCP Server",
-    "logo": {
-      "@type": "ImageObject",
-      "url": "https://ozgurcd.github.io/gograph/favicon.ico"
-    }
-  }
-}
 </script>
 </head>
 <body id="top">
     <header class="header">
     <nav class="header-nav">
         <div class="logo">
-            <a href="https://ozgurcd.github.io/gograph/" accesskey="h" title="gograph – Go Codebase Analysis &amp; MCP Server (Alt + H)">gograph – Go Codebase Analysis &amp; MCP Server</a>
+            <a href="http://localhost:1313/" accesskey="h" title="gograph – Go Codebase Analysis &amp; MCP Server (Alt + H)">gograph – Go Codebase Analysis &amp; MCP Server</a>
             <div class="logo-switches">
                 <button id="theme-toggle" class="theme-toggle" accesskey="t" title="(Alt + T)" aria-label="Toggle theme">
                     <svg class="moon" xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24"
@@ -161,27 +96,27 @@
         </div>
         <ul id="menu" class="menu">
             <li>
-                <a href="https://ozgurcd.github.io/gograph/docs/getting-started/" title="Get Started">
+                <a href="http://localhost:1313/docs/getting-started/" title="Get Started">
                     <span>Get Started</span>
                 </a>
             </li>
             <li>
-                <a href="https://ozgurcd.github.io/gograph/docs/command-reference/" title="Commands">
+                <a href="http://localhost:1313/docs/command-reference/" title="Commands">
                     <span>Commands</span>
                 </a>
             </li>
             <li>
-                <a href="https://ozgurcd.github.io/gograph/docs/agent-integration/" title="AI Integration">
+                <a href="http://localhost:1313/docs/agent-integration/" title="AI Integration">
                     <span>AI Integration</span>
                 </a>
             </li>
             <li>
-                <a href="https://ozgurcd.github.io/gograph/docs/workflows/" title="Workflows">
+                <a href="http://localhost:1313/docs/workflows/" title="Workflows">
                     <span class="active">Workflows</span>
                 </a>
             </li>
             <li>
-                <a href="https://ozgurcd.github.io/gograph/posts/" title="Blog">
+                <a href="http://localhost:1313/posts/" title="Blog">
                     <span>Blog</span>
                 </a>
             </li>
@@ -204,12 +139,12 @@
 <article class="post-single">
   <header class="post-header">
     <nav class="breadcrumbs" role="navigation" aria-label="Breadcrumb">
-            <a href="/gograph/">Home</a>
+            <a href="/">Home</a>
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevron-right">
                 <polyline points="9 18 15 12 9 6"></polyline>
             </svg>
-            <a href="/gograph/docs/">Documentation Portal</a>
+            <a href="/docs/">Documentation Portal</a>
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
         stroke-linecap="round" stroke-linejoin="round" class="feather feather-chevron-right">
         <polyline points="9 18 15 12 9 6"></polyline>
@@ -288,7 +223,7 @@
     </main>
     
 <footer class="footer">
-        <span>&copy; 2026 <a href="https://ozgurcd.github.io/gograph/">gograph – Go Codebase Analysis &amp; MCP Server</a></span> · 
+        <span>&copy; 2026 <a href="http://localhost:1313/">gograph – Go Codebase Analysis &amp; MCP Server</a></span> · 
 
     
     
