@@ -1,5 +1,115 @@
 # Release Notes
 
+## v1.4.71 — 2026-06-03
+
+### New MCP Tools (CLI↔MCP Parity Completion)
+
+Three CLI commands that previously had no MCP equivalent are now fully accessible via the MCP server, closing the only remaining CLI↔MCP parity gap. The four intentionally CLI-only commands (`gate`, `snapshot`, `add-claude-plugin`, `hook-guard`) remain CLI-only by design.
+
+#### `gograph_trace`
+Alias for `gograph_errorflow`, identical behaviour and output schema. Added to the MCP tool registry for backward compatibility with agents that learned the `trace` name from earlier CLI documentation.
+
+- **Parameters:** `term` (required), `no_tests` (bool)
+- **Returns:** Same structured JSON as `gograph_errorflow` (definition sites, return sites, likely call paths to entry points)
+- **When to use:** Prefer `gograph_errorflow` directly; this tool exists purely so agents trained on older documentation continue to function without modification.
+
+#### `gograph_diagram`
+Generates a Mermaid architecture diagram of the repository’s package dependency graph. Equivalent to CLI `gograph diagram`.
+
+- **Parameters:** `group_by` (package/module/service/file, default: package), `max_depth` (int, 0 = unlimited), `include_stdlib` (bool)
+- **Returns:** Mermaid diagram text, ready to paste into any Markdown renderer or Mermaid live editor.
+- **When to use:** Onboarding to an unfamiliar repository, architecture review, or communicating package structure. Use `group_by=module` for monorepos; `group_by=file` for deep drill-downs. Diagrams with >30 nodes may be hard to read — use `max_depth=2` or a coarser grouping level.
+
+#### `gograph_check`
+Runs static policy checks against the repository graph. Equivalent to CLI `gograph check`.
+
+- **Parameters:** `since` (git ref for api\_drift baseline), `uncommitted` (bool), `config` (path to checks.json — defaults to `.gograph/checks.json` if present)
+- **Checks performed:** `boundaries` (package layer violations), `api_drift` (breaking changes vs baseline ref), `max_arity`, `max_complexity`, `test_coverage`, `no_orphans`
+- **Returns:** Structured JSON with `status` (pass/warn/fail), `findings` array (level, check, message, location), and `summary` counts.
+- **When to use:** During PR review or pre-commit analysis to surface policy violations. For CI/CD enforcement requiring a non-zero exit code, use CLI `gograph gate` instead.
+
+**Token-saving benefit:** Agents can run a complete policy surface scan in a single MCP call instead of sequentially invoking `gograph_boundaries`, `gograph_complexity`, `gograph_arity`, and `gograph_orphans` individually.
+
+---
+
+### Scanner Improvement
+
+#### `.agents` Directory Excluded from Walk
+`.agents` added to the hardcoded scanner blocklist alongside `.claude` and `.cursor`. Covers generic agent framework scratch and worktree directories that may contain copies of the project source.
+
+**Two-layer defence recap (full picture after v1.4.70 + v1.4.71):**
+
+| Layer | Mechanism | Coverage |
+|---|---|---|
+| Hardcoded blocklist | `ignoredDirs` map (zero I/O, always active) | `.git`, `.gograph`, `vendor`, `testdata`, `node_modules`, `dist`, `build`, `.terraform`, `.claude`, `.cursor`, `.agents` |
+| `.gitignore`-aware pruning | `git check-ignore --quiet <dir>` per directory | Any directory already listed in the repo’s `.gitignore`, including future tool directories not yet in the blocklist |
+
+**Regression test added:** `TestWalk_SkipsAgentsDirs` in `internal/scanner/ignore_test.go`.
+
+---
+
+### Documentation
+
+All mandatory documentation targets updated to reflect the changes introduced in v1.4.70 and v1.4.71:
+
+| Target | Changes |
+|---|---|
+| `README.md` | Added `gograph diagram` to usage block; added **AI Worktree Safe** feature bullet |
+| `docs/coding-agent-usage.md` | Added `diagram`, `check`, `check --uncommitted`, `check --since` to cheat sheet; added `gograph_trace`, `gograph_diagram`, `gograph_check` to MCP tools registry; added AI worktree exclusion note to the safety section |
+| `gograph capabilities` | Added `diagram` to QUERY COMMANDS; updated `build` to list excluded dirs; updated `session` entry with `cleanup` subcommand and MCP audit fix note |
+| `gograph --help` | Updated `build` with AI worktree exclusion note; updated `session` with `cleanup` and MCP audit note |
+| `RELEASE_NOTES.md` | This file |
+| `plugin.json` | Description updated to accurately reflect 57 tools; keywords expanded with `architecture-diagram`, `mermaid`, `workflow-telemetry`, `blast-radius`, `code-quality` |
+
+---
+
+## v1.4.70 — 2026-06-03
+
+### Bug Fixes
+
+#### MCP Session Telemetry — Plan/Review Counters Were Always Zero
+`gograph_session_audit` reported `total_commands: 0`, `plan_run: false`, and `review_run: false` even when the coding agent had invoked `gograph_plan` and `gograph_review` via MCP.
+
+Root cause: MCP tool handlers called `search.Plan` / `search.Review` directly and completely bypassed `session.LogCommand`. The CLI path already recorded every command at the end of `Run()`, but the MCP path had no equivalent.
+
+**Fix:** The `addTool` closure in `NewServer` now wraps every handler registration with a timing + telemetry shim. It strips the `gograph_` prefix so `"gograph_plan"` records as `"plan"` — matching the CLI convention the audit engine reads. The four session management tools are excluded from recording to avoid noise. One change site covers all 50+ tools.
+
+**Regression test:** `TestMCPSessionTelemetry_PlanAndReviewIncrementCounters` — creates a session, invokes `gograph_plan` and `gograph_review` via their MCP handlers, ends the session, audits, and asserts `total_commands >= 2`, `plan_run = true`, `review_run = true`, `grade != F`.
+
+---
+
+#### Duplicate Symbols from AI Agent Worktrees ([Issue #17](https://github.com/ozgurcd/gograph/issues/17))
+When Claude Code (or other agents) create working trees inside the project directory (e.g. `.claude/worktrees/agent-<id>/`), `gograph build` was picking up those files, duplicating every symbol and call edge in the graph and polluting all outputs.
+
+**Fix — two-layer defence:**
+1. **Hardcoded blocklist** (always active, zero I/O): `.claude` and `.cursor` added to `ignoredDirs`, joining `.git`, `vendor`, `testdata`, etc.
+2. **`.gitignore`-aware directory pruning**: `Walk` now calls `git check-ignore --quiet <dir>` before descending into any directory. If git reports it as gitignored the entire subtree is pruned with `filepath.SkipDir`. This is the general solution — any worktree or scratch directory already listed in `.gitignore` is automatically excluded, including future tool directories. Silently no-ops when git is unavailable.
+
+**Regression tests:** `TestWalk_SkipsClaudeWorktrees` and `TestWalk_SkipsCursorDirs` — both work without git (blocklist layer).
+
+---
+
+### Architecture Improvements
+
+#### Boundary Violations Resolved
+Three violations in `.gograph/boundaries.json` caused by the session layer additions:
+- `gopkg.in/yaml.v3` → `internal_cli.may_import`
+- `internal/session/**` → `internal_cli.may_import`
+- `internal/session/**` → `internal_mcp.may_import`
+
+`gograph boundaries` now reports: **"No boundary violations found. Architecture is clean!"**
+
+#### Hollow Pass-Through Wrapper Removed (`internal/cli/session.go`)
+Six re-export stubs that added zero logic removed. `cli.go` now imports `internal/session` directly, consistent with `mcp/server.go`.
+
+---
+
+### Test Coverage
+- **`internal/session`**: 18 new tests covering the full session lifecycle, `LogCommand` hook-guard filter, `FindMostRecentSessionID`, `CleanupSessions`, and `RunAudit`.
+- **`internal/precise`**: 8 new tests covering `Enrich` integration, determinism, invalid-dir handling, and helper functions.
+
+---
+
 ## v1.4.69 — 2026-05-30
 
 ### New Features
@@ -23,6 +133,9 @@ Introduced a workflow logging and session tracking engine designed to audit agen
 #### Asymmetric MCP Route Warning Resolution (Phase A)
 - **MCP Descriptions:** Updated tool descriptions for `gograph_endpoint` and `gograph_routes` inside `internal/mcp/server.go` to explicitly outline AST static limitations regarding route-group variable drop behaviors (e.g., Gin, Echo, Chi, and Fiber `Group()` receiver paths).
 - **Limitations Telemetry:** Surfaced warning context inside `gograph_capabilities` limitations array to prevent coding agents from suffering route lookup failures.
+
+#### Telemetry Log Noise Reduction
+- **Hook Guard Filter:** Skip recording successful `hook-guard` pre-tool use commands in the telemetry session logs. Only failed or blocked hook validations are written, ensuring full security audit capabilities while completely eliminating `.jsonl` file pollution.
 
 ---
 

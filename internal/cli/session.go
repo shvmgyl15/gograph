@@ -3,35 +3,9 @@ package cli
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/ozgurcd/gograph/internal/session"
 )
-
-// Re-expose types/constants for compatibility if needed, or simply delegate.
-func GetActiveSessionID() (string, error) {
-	return session.GetActiveSessionID()
-}
-
-func StartSession(customWord string) (string, error) {
-	return session.StartSession(customWord)
-}
-
-func EndSession() (string, error) {
-	return session.EndSession()
-}
-
-func LogCommand(command string, args []string, intention string, elapsed time.Duration, status string) error {
-	return session.LogCommand(command, args, intention, elapsed, status)
-}
-
-func RunAudit(sessionID string) int {
-	return session.RunAudit(sessionID, jsonMode)
-}
-
-func CleanupSessions() (int, error) {
-	return session.CleanupSessions()
-}
 
 // runSession manages the `--session` / `session` CLI subcommands.
 func runSession(args []string) int {
@@ -46,7 +20,7 @@ func runSession(args []string) int {
 		if len(args) >= 2 {
 			customWord = args[1]
 		}
-		sessionID, err := StartSession(customWord)
+		sessionID, err := session.StartSession(customWord)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error starting session: %v\n", err)
 			return 1
@@ -55,7 +29,7 @@ func runSession(args []string) int {
 		return 0
 
 	case "end":
-		sessionID, err := EndSession()
+		sessionID, err := session.EndSession()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error ending session: %v\n", err)
 			return 1
@@ -68,10 +42,10 @@ func runSession(args []string) int {
 		if len(args) >= 2 {
 			sessionID = args[1]
 		}
-		return RunAudit(sessionID)
+		return session.RunAudit(sessionID, jsonMode)
 
 	case "cleanup":
-		count, err := CleanupSessions()
+		count, err := session.CleanupSessions()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error cleaning up sessions: %v\n", err)
 			return 1
@@ -92,4 +66,3 @@ func printSessionHelp() {
 	fmt.Println("  gograph session audit [session_id]               - Audits and scores agent compliance & success")
 	fmt.Println("  gograph session cleanup                          - Deletes all inactive session log files")
 }
-

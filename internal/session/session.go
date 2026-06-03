@@ -169,6 +169,10 @@ func EndSession() (string, error) {
 
 // LogCommand Telemetry records command execution details inside the active session log if present.
 func LogCommand(command string, args []string, intention string, elapsed time.Duration, status string) error {
+	if command == "hook-guard" && status == "success" {
+		return nil // Skip logging successful meta hook checks to keep the log clean
+	}
+
 	activeID, err := GetActiveSessionID()
 	if err != nil || activeID == "" {
 		return nil // No active session to log to

@@ -1,7 +1,7 @@
 {
   "name": "gograph",
-  "display_name": "Gograph — Go Repository Intelligence",
-  "description": "AST-aware Go code analysis for AI agents. Provides blast radius analysis, call graph traversal, interface resolution, architectural boundary enforcement, and static policy checks. Replaces grep-based file exploration with precise, token-efficient semantic queries over your Go repository.",
+  "display_name": "Gograph \u2014 Go Repository Intelligence",
+  "description": "AST-aware Go code analysis for AI agents. Provides 57 semantic query tools covering call graph traversal, blast radius analysis, interface resolution, type usage, architecture boundary enforcement, static policy checks, Mermaid architecture diagrams, error flow tracing, and workflow telemetry. Replaces grep-based file exploration with precise, token-efficient structural queries over your Go repository. Respects .gitignore and skips AI agent worktree directories automatically.",
   "version": "1.4.70",
   "author": "ozgurcd",
   "repository": "https://github.com/ozgurcd/gograph",
@@ -9,9 +9,29 @@
   "license": "MIT",
   "mcp": {
     "command": "gograph",
-    "args": ["mcp", "."],
+    "args": [
+      "mcp",
+      "."
+    ],
     "transport": "stdio"
   },
-  "categories": ["developer-tools", "code-intelligence"],
-  "keywords": ["go", "golang", "ast", "code-analysis", "mcp", "static-analysis", "call-graph", "architecture"]
+  "categories": [
+    "developer-tools",
+    "code-intelligence"
+  ],
+  "keywords": [
+    "go",
+    "golang",
+    "ast",
+    "code-analysis",
+    "mcp",
+    "static-analysis",
+    "call-graph",
+    "architecture",
+    "architecture-diagram",
+    "mermaid",
+    "workflow-telemetry",
+    "blast-radius",
+    "code-quality"
+  ]
 }

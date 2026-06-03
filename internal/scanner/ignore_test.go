@@ -20,6 +20,11 @@ func TestShouldIgnoreDir(t *testing.T) {
 		{"dist", true},
 		{"build", true},
 		{".terraform", true},
+		// AI agent directories added for issue #17.
+		{".claude", true},
+		{".cursor", true},
+		{".agents", true},
+		// Normal directories must not be ignored.
 		{"internal", false},
 		{"cmd", false},
 		{"mypkg", false},
@@ -85,6 +90,51 @@ func TestWalk_SkipsIgnoredDirs(t *testing.T) {
 	}
 }
 
+// TestWalk_SkipsClaudeWorktrees is the regression test for GitHub issue #17.
+// Claude Code creates worktrees inside .claude/worktrees/agent-<id>/ which are
+// verbatim copies of the project directory. Without exclusion, every symbol and
+// call edge in the project is duplicated in the graph.
+//
+// The .claude directory is in the hardcoded ignoredDirs blocklist, so this test
+// does NOT require git to be present.
+func TestWalk_SkipsClaudeWorktrees(t *testing.T) {
+	root := t.TempDir()
+
+	// Real project file — must be included.
+	mustWrite(t, filepath.Join(root, "main.go"), "package main\nfunc main(){}\n")
+
+	// Simulated Claude worktree — must be excluded entirely.
+	worktreeFile := filepath.Join(root, ".claude", "worktrees", "agent-a18fea2ec1ebda290", "internal", "pkg", "foo.go")
+	mustWrite(t, worktreeFile, "package pkg\nfunc Foo(){}\n")
+
+	paths, errs := scanner.Walk(root)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("expected exactly 1 path (main.go), got %d: %v", len(paths), paths)
+	}
+	if filepath.Base(paths[0]) != "main.go" {
+		t.Errorf("expected main.go, got %s", paths[0])
+	}
+}
+
+// TestWalk_SkipsCursorDirs verifies that .cursor AI agent directories are also
+// excluded via the hardcoded blocklist.
+func TestWalk_SkipsCursorDirs(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "app.go"), "package main\n")
+	mustWrite(t, filepath.Join(root, ".cursor", "scratch", "temp.go"), "package scratch\n")
+
+	paths, errs := scanner.Walk(root)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if len(paths) != 1 || filepath.Base(paths[0]) != "app.go" {
+		t.Fatalf("expected only app.go, got %v", paths)
+	}
+}
+
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
@@ -92,5 +142,20 @@ func mustWrite(t *testing.T, path, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o640); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestWalk_SkipsAgentsDirs verifies .agents directories are excluded.
+func TestWalk_SkipsAgentsDirs(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "app.go"), "package main\n")
+	mustWrite(t, filepath.Join(root, ".agents", "scratch", "temp.go"), "package scratch\n")
+
+	paths, errs := scanner.Walk(root)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	if len(paths) != 1 || filepath.Base(paths[0]) != "app.go" {
+		t.Fatalf("expected only app.go, got %v", paths)
 	}
 }

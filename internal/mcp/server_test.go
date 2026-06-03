@@ -398,3 +398,106 @@ func TestGographSessionMCP(t *testing.T) {
 	}
 }
 
+
+// TestMCPSessionTelemetry_PlanAndReviewIncrementCounters is the regression test
+// for the bug where gograph_session_audit reported Total Commands: 0,
+// Plan Rule Run: false, and Review Rule Run: false even after the coding agent
+// invoked gograph_plan and gograph_review via MCP.
+//
+// Root cause: the MCP tool handlers called search.Plan / search.Review directly
+// and completely bypassed session.LogCommand. The fix wraps every addTool
+// registration with a telemetry shim that records the command name, elapsed
+// time, and success/failure into the active session — identical to what the
+// CLI Run() function does.
+func TestMCPSessionTelemetry_PlanAndReviewIncrementCounters(t *testing.T) {
+	// Isolate session files under a temp directory so this test cannot
+	// corrupt a real developer session and is safe in parallel CI.
+	tmpDir := t.TempDir()
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir to tmp: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(origDir); err != nil {
+			t.Logf("warning: could not restore wd: %v", err)
+		}
+	})
+
+	handlers := setupHandlers(t, &graph.Graph{})
+
+	for _, name := range []string{
+		"gograph_session_create",
+		"gograph_plan",
+		"gograph_review",
+		"gograph_session_end",
+		"gograph_session_audit",
+	} {
+		if handlers[name] == nil {
+			t.Fatalf("handler %q not found — tool not registered", name)
+		}
+	}
+
+	// 1. Start a session.
+	createReq := mcp.CallToolRequest{}
+	createReq.Params.Arguments = map[string]any{"custom_word": "regression_test"}
+	createRes, err := handlers["gograph_session_create"](context.Background(), createReq)
+	if err != nil || createRes.IsError {
+		t.Fatalf("session_create failed: err=%v", err)
+	}
+
+	// 2. Call gograph_plan — simulates the coding agent using plan via MCP.
+	planReq := mcp.CallToolRequest{}
+	planReq.Params.Arguments = map[string]any{"symbol": "Run"}
+	_, _ = handlers["gograph_plan"](context.Background(), planReq)
+
+	// 3. Call gograph_review — simulates the coding agent using review via MCP.
+	reviewReq := mcp.CallToolRequest{}
+	reviewReq.Params.Arguments = map[string]any{"symbol": "Run"}
+	_, _ = handlers["gograph_review"](context.Background(), reviewReq)
+
+	// 4. End the session.
+	endRes, err := handlers["gograph_session_end"](context.Background(), mcp.CallToolRequest{})
+	if err != nil || endRes.IsError {
+		t.Fatalf("session_end failed: err=%v", err)
+	}
+
+	// 5. Audit — assertion heart of the regression test.
+	auditReq := mcp.CallToolRequest{}
+	auditReq.Params.Arguments = map[string]any{"json": true}
+	auditRes, err := handlers["gograph_session_audit"](context.Background(), auditReq)
+	if err != nil {
+		t.Fatalf("session_audit error: %v", err)
+	}
+	if auditRes.IsError {
+		t.Fatalf("session_audit failed: %s", auditRes.Content[0].(mcp.TextContent).Text)
+	}
+
+	auditText := auditRes.Content[0].(mcp.TextContent).Text
+	var report map[string]any
+	if err := json.Unmarshal([]byte(auditText), &report); err != nil {
+		t.Fatalf("audit output is not JSON: %s", auditText)
+	}
+
+	// total_commands must be >= 2 (plan + review were logged).
+	if tc, _ := report["total_commands"].(float64); tc < 2 {
+		t.Errorf("total_commands = %.0f, want >= 2\nFull audit: %s", tc, auditText)
+	}
+
+	// plan_run must be true.
+	if planRun, _ := report["plan_run"].(bool); !planRun {
+		t.Errorf("plan_run = false, want true after gograph_plan via MCP\nFull audit: %s", auditText)
+	}
+
+	// review_run must be true.
+	if reviewRun, _ := report["review_run"].(bool); !reviewRun {
+		t.Errorf("review_run = false, want true after gograph_review via MCP\nFull audit: %s", auditText)
+	}
+
+	// Grade must not be F when both plan and review ran.
+	if grade, _ := report["grade"].(string); strings.HasPrefix(grade, "F") {
+		t.Errorf("grade = %q, want anything better than F\nFull audit: %s", grade, auditText)
+	}
+}

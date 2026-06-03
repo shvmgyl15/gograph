@@ -19,6 +19,7 @@ import (
 	"github.com/ozgurcd/gograph/internal/report"
 	"github.com/ozgurcd/gograph/internal/scanner"
 	"github.com/ozgurcd/gograph/internal/search"
+	"github.com/ozgurcd/gograph/internal/session"
 )
 
 const outputDir = ".gograph"
@@ -113,7 +114,7 @@ func Run(args []string) int {
 	}
 
 	if !nonAnalytical[args[0]] {
-		activeID, err := GetActiveSessionID()
+		activeID, err := session.GetActiveSessionID()
 		if err == nil && activeID != "" {
 			if intention == "" {
 				fmt.Fprintf(os.Stderr, "Error: Active session %q requires an intention. Please supply the --intention (-i) flag stating your technical rationale.\n", activeID)
@@ -132,7 +133,7 @@ func Run(args []string) int {
 		if exitCode != 0 {
 			status = "failure"
 		}
-		_ = LogCommand(args[0], args[1:], intention, elapsed, status)
+		_ = session.LogCommand(args[0], args[1:], intention, elapsed, status)
 	}
 
 	return exitCode
@@ -390,6 +391,8 @@ AGENT WORKFLOW RULES (CRITICAL):
 
 INDEXING:
 build . [--precise]  : parse AST, write graph.json + GRAPH_REPORT.md to .gograph/
+                       Skips .git, vendor, testdata, .claude, .cursor, .agents, and
+                       any directories listed in .gitignore (via git check-ignore).
 stale                : list source files newer than graph.json
 stats                : schema version, build time, symbol/call/route counts
 
@@ -401,6 +404,8 @@ callers <fn> [--no-tests] [--depth N]: who calls fn (depth=1 direct; --depth 2+ 
 complexity [sym]     : cyclomatic complexity estimate per function (highest first)
 concurrency [str]    : goroutines/channels/mutexes
 coupling [pkg]       : fan-in, fan-out, and instability per package
+diagram [--group-by package|module|service|file] [--max-depth N] [--include-stdlib]
+                     : Mermaid architecture diagram of package dependency graph
 embeds <struct>      : structs embedding this struct
 envs [str]           : os.Getenv/viper reads
 errors [--no-tests]  : custom errors/panics
@@ -459,7 +464,9 @@ check [--since ref]  : static policy checks (boundaries, api_drift, test require
 gate                 : CI/CD enforcement against .gograph.yml thresholds
 snapshot <subcmd>    : architectural metric snapshots (save, diff, list, drop)
 mcp [path]           : start MCP server over stdio
-gograph session <action>     : start/end audit sessions (create [word], end, audit)
+gograph session <action>     : start/end audit sessions (create [word], end, audit, cleanup)
+                               NOTE: MCP tool calls (gograph_plan, gograph_review) are
+                               now correctly recorded in session audit counters.
 add-claude-plugin    : install MCP plugin + CLAUDE.md rules + PreToolUse hook
 hook-guard           : PreToolUse hook — blocks grep on Go symbols, redirects to gograph`)
 	return 0
@@ -1091,6 +1098,8 @@ INDEXING
                              Run after any major code change. Default path: .
                              Supports --precise to perform type-checked Class
                              Hierarchy Analysis (CHA) for more precise call edges.
+                             AI worktree directories (.claude, .cursor, .agents) and
+                             directories listed in .gitignore are automatically skipped.
   stale                      Check if graph.json is older than any source file.
                              Agents should run this before structural analysis.
   stats                      Compact index health summary: schema version, build
@@ -1263,6 +1272,9 @@ AGENT INTEGRATION
                              - create [unique_word]: Starts an audit session.
                              - end: Ends the active session.
                              - audit [session_id]: Audits and scores agent compliance & success.
+                             - cleanup: Deletes stale inactive session log files.
+                             NOTE: MCP gograph_plan/gograph_review calls are now
+                             counted correctly in audit totals.
   add-claude-plugin          Install gograph as a Claude MCP plugin. Also injects
                              CLAUDE.md steering rules and a smart PreToolUse hook
                              that redirects Go symbol greps to gograph tools.

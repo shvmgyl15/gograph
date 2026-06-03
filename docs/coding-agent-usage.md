@@ -73,6 +73,10 @@ gograph changes                  # new/modified/deleted symbols since last build
 gograph changes --git <ref>      # symbols in files changed since a git ref (MODIFIED only; e.g. --git main, --git HEAD~5, --git v1.4.50)
 gograph errorflow "parse failed" --no-tests  # trace error path to entry points, excluding test references
 gograph trace "parse failed"     # alias for errorflow (kept for compatibility)
+gograph diagram                  # Mermaid architecture diagram of package dependency graph [--group-by package|module|service|file] [--max-depth N] [--include-stdlib]
+gograph check                    # run static policy checks (.gograph/checks.json): boundaries, api_drift, max_arity, max_complexity, test_coverage
+gograph check --uncommitted      # include uncommitted code in check scope
+gograph check --since main       # include api_drift baseline against a git ref
 gograph mutate "User.Status"     # find functions that mutate a specific struct field (covers direct assignments, IncDec/augmented (++, +=), and indirect mutations through method calls: atomic.*/sync.Map/sync.Mutex stdlib mutators, user-defined wrapper methods detected by SSA, and channel sends. Indirect detection requires --precise build. Results carry `via=<method>` in Detail when indirect.)
 gograph arity --min 5            # find functions with many arguments (long parameter list smell)
 gograph skeleton                 # output the whole repository's API signatures (bodies stripped)
@@ -692,6 +696,9 @@ The current tool suite includes:
 - **`gograph_mocks`**
 - **`gograph_explain`**: LLM-ready architectural summary. Synthesizes callers (prod vs test), callees, complexity, SQL, env, routes, concurrency, test coverage, interface satisfaction, and an opinionated role classification into one structured narrative.
 - **`gograph_stats`**: Compact index health summary. Returns schema version, build timestamp, and counts of packages, files, symbols, calls, imports, routes, SQL queries, env reads, and test edges. Use this as a quick sanity check at the start of any analysis session.
+- **`gograph_trace`**: Alias for `gograph_errorflow`. Kept for backward compatibility — prefer `gograph_errorflow` directly.
+- **`gograph_diagram`**: Mermaid architecture diagram of the repository package dependency graph. Parameters: `group_by` (package/module/service/file), `max_depth` (0=unlimited), `include_stdlib` (bool). Use for onboarding or communicating package structure.
+- **`gograph_check`**: Run static policy checks (boundaries, api_drift, max_arity, max_complexity, test_coverage, no_orphans). Parameters: `since` (git ref for api_drift baseline), `uncommitted` (bool), `config` (path to checks.json). Returns structured JSON with status (pass/warn/fail), findings, and summary counts. Use during PR review or pre-commit analysis. For CI enforcement with non-zero exit code, use CLI `gograph gate` instead.
 
 ## Recommended project setup
 
@@ -804,6 +811,7 @@ gograph session cleanup
 - **No secret-bearing files** — only `.go` files are opened. `.env`, `*.key`, `*.pem`, `*.crt`, kubeconfig, tfstate, etc. are never read.
 - **No file contents in output** — the graph stores structural metadata (names, kinds, line numbers, edges), not source bodies.
 - **Generated files skipped** — `.pb.go`, `_generated.go`, files with `// Code generated` headers are excluded so they don't pollute the map.
+- **AI agent worktrees excluded** — `.claude/`, `.cursor/`, `.agents/` directories are skipped entirely by the scanner, preventing duplicate symbols from AI agent worktrees (e.g. `.claude/worktrees/agent-*/`). Directories listed in `.gitignore` are also skipped via `git check-ignore`.
 - **Non-destructive** — output files are mode `0640`; `.gitignore` is appended to, never overwritten.
 
 The agent gains a structural view of the repo without gaining any new attack surface or data-exfiltration vector.

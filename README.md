@@ -38,6 +38,7 @@ In short: `gopls` is optimized for human IDEs. `gograph` is optimized for termin
 - **Pathfinding:** `path <from> <to>` finds the shortest call chain between any two symbols via BFS.
 - **Dead Code Detection:** `orphans` uses full reachability analysis from entry points — stricter than simple 0-call-count checks.
 - **Clean Graph (No Generated Files):** Uses strict line-based detection to automatically exclude generated files like mocks or protobufs.
+- **AI Worktree Safe:** `.claude/`, `.cursor/`, `.agents/` directories are excluded from scanning, preventing duplicate symbols from AI agent worktrees. Directories listed in `.gitignore` are also skipped automatically.
 - **Fast:** Written in Go for high performance.
 
 ## Non-goals
@@ -157,6 +158,7 @@ gograph skeleton                  # Output the whole repository's API signatures
 gograph errorflow "invalid token" # Trace an error's path from definition up to HTTP handlers (heuristic, NO SSA)
 gograph errorflow "invalid token" --no-tests  # Same, excluding test-file references
 gograph trace "parse failed"      # Alias for errorflow (kept for compatibility)
+gograph diagram                   # Mermaid architecture diagram of package dependency graph [--group-by package|module|service|file] [--max-depth N] [--include-stdlib]
 # endpoint: full vertical slice for one HTTP endpoint. IMPORTANT: route patterns only work with flat routers.
 # With Gin/Echo/Chi Group() routing, the prefix is lost in the AST. Use handler symbol name instead.
 gograph endpoint "CreateUser"     # RECOMMENDED: always works regardless of routing style [--depth N] [--json]

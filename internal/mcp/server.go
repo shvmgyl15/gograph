@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -59,6 +60,15 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		server.WithToolCapabilities(true),
 	)
 
+	// sessionTools lists the tool names that manage the session lifecycle itself.
+	// These are excluded from telemetry recording to avoid noise in the audit log.
+	sessionTools := map[string]bool{
+		"gograph_session_create":  true,
+		"gograph_session_end":     true,
+		"gograph_session_audit":   true,
+		"gograph_session_cleanup": true,
+	}
+
 	addTool := func(tool mcp.Tool, handler func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)) {
 		// Override mark3labs/mcp-go defaults because gograph tools are purely static analysis (read-only and safe)
 		readOnly := true
@@ -71,9 +81,31 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		tool.Annotations.IdempotentHint = &idempotent
 		tool.Annotations.OpenWorldHint = &openWorld
 
-		s.AddTool(tool, handler)
+		// Wrap the handler to record command telemetry into the active session.
+		// This ensures that MCP invocations of plan/review/context/etc. are
+		// counted by gograph_session_audit — identical to what the CLI does in Run().
+		toolName := tool.Name
+		instrumentedHandler := handler
+		if !sessionTools[toolName] {
+			instrumentedHandler = func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				start := time.Now()
+				result, err := handler(ctx, req)
+				elapsed := time.Since(start)
+				status := "success"
+				if err != nil || (result != nil && result.IsError) {
+					status = "failure"
+				}
+				// Strip the "gograph_" prefix so the command name matches the CLI
+				// convention (e.g. "plan", "review", "callers") used by RunAudit.
+				cmd := strings.TrimPrefix(toolName, "gograph_")
+				_ = session.LogCommand(cmd, nil, "", elapsed, status)
+				return result, err
+			}
+		}
+
+		s.AddTool(tool, instrumentedHandler)
 		if ExposeToolsForTesting != nil {
-			ExposeToolsForTesting[tool.Name] = handler
+			ExposeToolsForTesting[tool.Name] = instrumentedHandler
 		}
 	}
 
@@ -994,7 +1026,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		return formatResults(results), nil
 	})
 
-	initNewTools(g, rebuild, addTool)
+	initNewTools(g, rebuild, buildGraph, addTool)
 
 	// Start stdio server
 	return s
@@ -1019,7 +1051,7 @@ func formatResults(results []search.Result) *mcp.CallToolResult {
 	return mcp.NewToolResultText(sb.String())
 }
 
-func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool func(tool mcp.Tool, handler func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error))) {
+func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph func(string) (*graph.Graph, error), addTool func(tool mcp.Tool, handler func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error))) {
 	// Tool: gograph_usages
 	usagesTool := mcp.NewTool("gograph_usages",
 		mcp.WithDescription("Find every place a named Go type appears in function parameter lists, return type signatures, and struct field type declarations. Requires .gograph/graph.json — run `gograph build .` first. Read-only; no side effects. WHEN TO USE: Before changing an interface or type definition — see the full consumption blast radius across all signatures and struct fields. NOT TO USE: For call sites of a function (use gograph_callers); for struct composite-literal initialization sites (use gograph_literals); for all transitive callers (use gograph_impact). RETURNS: File paths and line locations where the type name appears in signatures or struct fields; empty when the type is not referenced."),
@@ -1619,6 +1651,147 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), addTool 
 		}
 		st := search.Stats(g)
 		data, err := json.MarshalIndent(st, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+
+	// Tool: gograph_trace
+	// Alias for gograph_errorflow -- kept for backward compatibility with agents
+	// that learned the 'trace' name from earlier CLI versions or documentation.
+	traceTool := mcp.NewTool("gograph_trace",
+		mcp.WithDescription("Alias for gograph_errorflow. Traces an error string heuristically from its definition up through the call chain to HTTP handlers. Requires .gograph/graph.json. Read-only; no side effects. WHEN TO USE: Use gograph_errorflow instead -- this alias exists purely for backward compatibility. RETURNS: Same structured output as gograph_errorflow."),
+		mcp.WithString("term", mcp.Required(), mcp.Description("Error string or symbol name to trace (e.g. 'ErrNotFound', 'permission denied')")),
+		mcp.WithBoolean("no_tests", mcp.Description("If true, skip collecting related test functions")),
+	)
+	addTool(traceTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		term, ok := args["term"].(string)
+		if !ok || term == "" {
+			return mcp.NewToolResultError("term must be a non-empty string"), nil
+		}
+		noTests := false
+		if v, ok := args["no_tests"].(bool); ok {
+			noTests = v
+		}
+		result := search.ErrorFlow(g, term, !noTests)
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_diagram
+	diagramTool := mcp.NewTool("gograph_diagram",
+		mcp.WithDescription("Generate a Mermaid architecture diagram of the repository package dependency graph. Requires .gograph/graph.json. Read-only; no side effects. WHEN TO USE: Onboarding to an unfamiliar repository, architecture review, or communicating package structure. Use group_by=module for monorepos, group_by=file for deep drill-downs. NOT TO USE: For call-graph traversal (use gograph_callers/gograph_impact); for single-package focus (use gograph_focus or gograph_deps). RETURNS: Mermaid diagram text. Note: diagrams with >30 nodes may be hard to read; use max_depth=2 or a coarser group_by level."),
+		mcp.WithString("group_by", mcp.Description("Grouping level: 'package' (default), 'module', 'service', or 'file'")),
+		mcp.WithNumber("max_depth", mcp.Description("Maximum BFS depth from graph roots (0 = unlimited)")),
+		mcp.WithBoolean("include_stdlib", mcp.Description("If true, include Go standard library packages in the diagram")),
+	)
+	addTool(diagramTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, _ := request.Params.Arguments.(map[string]any)
+		groupBy := "package"
+		maxDepth := 0
+		includeStdlib := false
+		if args != nil {
+			if v, ok := args["group_by"].(string); ok && v != "" {
+				groupBy = v
+			}
+			if v, ok := args["max_depth"].(float64); ok {
+				maxDepth = int(v)
+			}
+			if v, ok := args["include_stdlib"].(bool); ok {
+				includeStdlib = v
+			}
+		}
+		diagram := search.DiagramToMermaid(g, groupBy, maxDepth, includeStdlib)
+		return mcp.NewToolResultText(diagram), nil
+	})
+
+	// Tool: gograph_check
+	checkTool := mcp.NewTool("gograph_check",
+		mcp.WithDescription("Run static policy checks against the repository graph. Checks include: boundaries (package layer violations), api_drift (breaking changes vs a baseline ref), max_arity (functions with too many args), max_complexity (cyclomatic complexity), test_coverage (symbols without tests), and no_orphans. Requires .gograph/graph.json. Read-only; no side effects. WHEN TO USE: During PR review to surface policy violations or as part of a pre-commit analysis workflow. NOT TO USE: For CI/CD enforcement with non-zero exit codes (use CLI gograph gate instead). RETURNS: Structured JSON with status (pass/warn/fail), findings array (level, check, message, location), and summary counts."),
+		mcp.WithString("since", mcp.Description("Git ref for api_drift baseline (e.g. 'main', 'HEAD~5', 'v1.4.50')")),
+		mcp.WithBoolean("uncommitted", mcp.Description("If true, include uncommitted changes in the analysis scope")),
+		mcp.WithString("config", mcp.Description("Optional path to a checks.json config file (defaults to .gograph/checks.json if present)")),
+	)
+	addTool(checkTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, _ := request.Params.Arguments.(map[string]any)
+		var sinceRef string
+		uncommitted := false
+		configPath := ""
+		if args != nil {
+			if v, ok := args["since"].(string); ok {
+				sinceRef = v
+			}
+			if v, ok := args["uncommitted"].(bool); ok {
+				uncommitted = v
+			}
+			if v, ok := args["config"].(string); ok {
+				configPath = v
+			}
+		}
+		cfg := &search.CheckConfig{
+			Checks: map[string]any{
+				"boundaries":     "warn",
+				"max_arity":      map[string]any{"level": "warn", "value": 6.0},
+				"max_complexity": map[string]any{"level": "warn", "value": 20.0},
+			},
+			BoundariesConfig: ".gograph/boundaries.json",
+		}
+		if configPath == "" {
+			if _, err := os.Stat(".gograph/checks.json"); err == nil {
+				configPath = ".gograph/checks.json"
+			}
+		}
+		if configPath != "" {
+			data, err := os.ReadFile(configPath)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("failed to read config: %v", err)), nil
+			}
+			if err := json.Unmarshal(data, cfg); err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("failed to parse config: %v", err)), nil
+			}
+		}
+		if sinceRef != "" {
+			cfg.Baseline = sinceRef
+		}
+		var baselineGraph *graph.Graph
+		if cfg.Baseline != "" {
+			var err error
+			baselineGraph, err = buildGraph(cfg.Baseline)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("failed to build baseline graph for %q: %v", cfg.Baseline, err)), nil
+			}
+		}
+		p := &search.CheckParams{
+			CurrentGraph:  g,
+			BaselineGraph: baselineGraph,
+			Config:        cfg,
+			SinceRef:      cfg.Baseline,
+			Uncommitted:   uncommitted,
+			RootDir:       ".",
+		}
+		report, err := search.RunChecks(p)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("check failed: %v", err)), nil
+		}
+		data, err := json.MarshalIndent(report, "", "  ")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
