@@ -11,12 +11,39 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/ozgurcd/gograph/internal/rootfind"
 )
 
 const (
-	sessionsDir       = ".gograph/sessions"
-	activePointerPath = ".gograph/active_session.json"
+	gographDir            = ".gograph"
+	relSessionsDir        = ".gograph/sessions"
+	relActivePointerPath  = ".gograph/active_session.json"
 )
+
+// FindGographRoot walks up from the current working directory until it finds a
+// directory that already contains a ".gograph" subdirectory (i.e. the project
+// root where `gograph build` was run). Falls back to "." when none is found so
+// that existing behaviour and tests that chdir to a fresh temp dir are
+// unaffected.
+//
+// This is a thin wrapper around rootfind.FindRoot() kept for backward
+// compatibility.
+func FindGographRoot() string {
+	return rootfind.FindRoot()
+}
+
+// sessionsDirAbs returns the absolute path to the sessions directory,
+// anchored at the discovered gograph root.
+func sessionsDirAbs() string {
+	return filepath.Join(FindGographRoot(), relSessionsDir)
+}
+
+// activePointerPathAbs returns the absolute path to the active-session pointer
+// file, anchored at the discovered gograph root.
+func activePointerPathAbs() string {
+	return filepath.Join(FindGographRoot(), relActivePointerPath)
+}
 
 // ActiveSessionPointer tracks the currently active session ID.
 type ActiveSessionPointer struct {
@@ -50,11 +77,11 @@ type CommandLogEntry struct {
 
 // GetActiveSessionID retrieves the currently active session ID if it exists.
 func GetActiveSessionID() (string, error) {
-	if _, err := os.Stat(activePointerPath); os.IsNotExist(err) {
+	if _, err := os.Stat(activePointerPathAbs()); os.IsNotExist(err) {
 		return "", nil
 	}
 
-	data, err := os.ReadFile(activePointerPath)
+	data, err := os.ReadFile(activePointerPathAbs())
 	if err != nil {
 		return "", fmt.Errorf("read active pointer: %w", err)
 	}
@@ -98,12 +125,12 @@ func StartSession(customWord string) (string, error) {
 	}
 
 	// 3. Ensure directories exist
-	if err := os.MkdirAll(sessionsDir, 0755); err != nil {
+	if err := os.MkdirAll(sessionsDirAbs(), 0755); err != nil {
 		return "", fmt.Errorf("create sessions directory: %w", err)
 	}
 
 	// 4. Create and write the session start log
-	logFilePath := filepath.Join(sessionsDir, fmt.Sprintf("session_%s.jsonl", sessionID))
+	logFilePath := filepath.Join(sessionsDirAbs(), fmt.Sprintf("session_%s.jsonl", sessionID))
 	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return "", fmt.Errorf("create session log file: %w", err)
@@ -123,7 +150,7 @@ func StartSession(customWord string) (string, error) {
 	// 5. Write the active session pointer
 	ptr := ActiveSessionPointer{ActiveSessionID: sessionID}
 	ptrBytes, _ := json.MarshalIndent(ptr, "", "  ")
-	if err := os.WriteFile(activePointerPath, ptrBytes, 0644); err != nil {
+	if err := os.WriteFile(activePointerPathAbs(), ptrBytes, 0644); err != nil {
 		return "", fmt.Errorf("write active session pointer: %w", err)
 	}
 
@@ -142,11 +169,11 @@ func EndSession() (string, error) {
 	}
 
 	// 2. Append end entry to log file
-	logFilePath := filepath.Join(sessionsDir, fmt.Sprintf("session_%s.jsonl", activeID))
+	logFilePath := filepath.Join(sessionsDirAbs(), fmt.Sprintf("session_%s.jsonl", activeID))
 	logFile, err := os.OpenFile(logFilePath, os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		// If log file was manually deleted, still allow clean teardown of the active pointer
-		_ = os.Remove(activePointerPath)
+		_ = os.Remove(activePointerPathAbs())
 		return activeID, fmt.Errorf("open session log for append: %w (pointer cleaned up)", err)
 	}
 	defer func() { _ = logFile.Close() }()
@@ -160,7 +187,7 @@ func EndSession() (string, error) {
 	_, _ = logFile.Write(append(endBytes, '\n'))
 
 	// 3. Remove the active pointer file
-	if err := os.Remove(activePointerPath); err != nil {
+	if err := os.Remove(activePointerPathAbs()); err != nil {
 		return activeID, fmt.Errorf("remove active pointer: %w", err)
 	}
 
@@ -178,7 +205,7 @@ func LogCommand(command string, args []string, intention string, elapsed time.Du
 		return nil // No active session to log to
 	}
 
-	logFilePath := filepath.Join(sessionsDir, fmt.Sprintf("session_%s.jsonl", activeID))
+	logFilePath := filepath.Join(sessionsDirAbs(), fmt.Sprintf("session_%s.jsonl", activeID))
 	logFile, err := os.OpenFile(logFilePath, os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("open session log for append: %w", err)
@@ -240,11 +267,11 @@ type AuditReport struct {
 
 // FindMostRecentSessionID finds the session log file with the newest modification time.
 func FindMostRecentSessionID() (string, error) {
-	if _, err := os.Stat(sessionsDir); os.IsNotExist(err) {
+	if _, err := os.Stat(sessionsDirAbs()); os.IsNotExist(err) {
 		return "", fmt.Errorf("no sessions directory exists yet")
 	}
 
-	files, err := os.ReadDir(sessionsDir)
+	files, err := os.ReadDir(sessionsDirAbs())
 	if err != nil {
 		return "", fmt.Errorf("read sessions directory: %w", err)
 	}
@@ -260,6 +287,7 @@ func FindMostRecentSessionID() (string, error) {
 					name := strings.TrimPrefix(f.Name(), "session_")
 					name = strings.TrimSuffix(name, ".jsonl")
 					newestID = name
+
 					newestTime = info.ModTime()
 				}
 			}
@@ -267,7 +295,7 @@ func FindMostRecentSessionID() (string, error) {
 	}
 
 	if newestID == "" {
-		return "", fmt.Errorf("no session logs found in %s", sessionsDir)
+		return "", fmt.Errorf("no session logs found in %s", sessionsDirAbs())
 	}
 
 	return newestID, nil
@@ -284,7 +312,7 @@ func RunAudit(sessionID string, jsonMode bool) int {
 		}
 	}
 
-	logFilePath := filepath.Join(sessionsDir, fmt.Sprintf("session_%s.jsonl", sessionID))
+	logFilePath := filepath.Join(sessionsDirAbs(), fmt.Sprintf("session_%s.jsonl", sessionID))
 	file, err := os.Open(logFilePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening session log %q: %v\n", logFilePath, err)
@@ -472,11 +500,11 @@ func RunAudit(sessionID string, jsonMode bool) int {
 
 // CleanupSessions deletes all inactive session JSONL logs. If no session is active, it deletes all logs.
 func CleanupSessions() (int, error) {
-	if _, err := os.Stat(sessionsDir); os.IsNotExist(err) {
+	if _, err := os.Stat(sessionsDirAbs()); os.IsNotExist(err) {
 		return 0, nil
 	}
 
-	files, err := os.ReadDir(sessionsDir)
+	files, err := os.ReadDir(sessionsDirAbs())
 	if err != nil {
 		return 0, fmt.Errorf("read sessions directory: %w", err)
 	}
@@ -493,7 +521,7 @@ func CleanupSessions() (int, error) {
 			if activeFileName != "" && f.Name() == activeFileName {
 				continue // Skip active session log to prevent runtime telemetry corruption
 			}
-			filePath := filepath.Join(sessionsDir, f.Name())
+			filePath := filepath.Join(sessionsDirAbs(), f.Name())
 			if err := os.Remove(filePath); err == nil {
 				deletedCount++
 			}

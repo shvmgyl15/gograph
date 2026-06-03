@@ -39,6 +39,7 @@ In short: `gopls` is optimized for human IDEs. `gograph` is optimized for termin
 - **Dead Code Detection:** `orphans` uses full reachability analysis from entry points — stricter than simple 0-call-count checks.
 - **Clean Graph (No Generated Files):** Uses strict line-based detection to automatically exclude generated files like mocks or protobufs.
 - **AI Worktree Safe:** `.claude/`, `.cursor/`, `.agents/` directories are excluded from scanning, preventing duplicate symbols from AI agent worktrees. Directories listed in `.gitignore` are also skipped automatically.
+- **Subdirectory Aware:** All query commands (`plan`, `review`, `callers`, `context`, etc.) auto-discover the project root by walking up to the nearest `.gograph/` directory. No need to `cd` back to the repo root before running queries.
 - **Fast:** Written in Go for high performance.
 
 ## Non-goals

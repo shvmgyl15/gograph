@@ -812,6 +812,7 @@ gograph session cleanup
 - **No file contents in output** — the graph stores structural metadata (names, kinds, line numbers, edges), not source bodies.
 - **Generated files skipped** — `.pb.go`, `_generated.go`, files with `// Code generated` headers are excluded so they don't pollute the map.
 - **AI agent worktrees excluded** — `.claude/`, `.cursor/`, `.agents/` directories are skipped entirely by the scanner, preventing duplicate symbols from AI agent worktrees (e.g. `.claude/worktrees/agent-*/`). Directories listed in `.gitignore` are also skipped via `git check-ignore`.
+- **Subdirectory aware** — all query commands auto-discover the project root by walking up to the nearest `.gograph/` directory. Agents do not need to `cd` back to the repo root before running `plan`, `review`, or any other query.
 - **Non-destructive** — output files are mode `0640`; `.gitignore` is appended to, never overwritten.
 
 The agent gains a structural view of the repo without gaining any new attack surface or data-exfiltration vector.

@@ -1,5 +1,67 @@
 # Release Notes
 
+## v1.4.72 — 2026-06-03
+
+### Bug Fixes
+
+#### Root-Aware Graph Loading — Plan/Review Now Work from Subdirectories
+`gograph plan` and `gograph review` (and all other query commands) failed when invoked from a subdirectory of the project root:
+
+```
+cannot read .../internal/session/.gograph/graph.json — run `gograph build` first
+```
+
+**Root cause:** `loadGraph(".")` resolved `"."` to the current working directory via `filepath.Abs()`. When the working directory was a subdirectory, graph.json was sought under `<cwd>/.gograph/graph.json` instead of `<project-root>/.gograph/graph.json`.
+
+**Fix:** `loadGraph` now calls `rootfind.FindRoot()` when invoked with `"."` (the default for all query commands). `FindRoot()` walks up from the current working directory until it finds a `.gograph/` directory, returning the project root. Falls back to `"."` when no `.gograph/` is found (fresh directories, test temp dirs).
+
+This single-point fix in `loadGraph` makes **all ~50 query commands** (plan, review, callers, callees, context, explain, etc.) work from any subdirectory. Explicit path calls (e.g., `gograph build <path>`, `gograph mcp <path>`) are unaffected.
+
+---
+
+### Architecture Improvements
+
+#### New `internal/rootfind` Package
+Extracted the root-discovery logic into a dedicated shared package (`internal/rootfind`) to avoid coupling graph loading (a core concern) with session telemetry. Both `internal/cli` and `internal/session` now import `rootfind.FindRoot()` instead of duplicating the walk-up logic.
+
+| Consumer | Before | After |
+|---|---|---|
+| `internal/session` | Inline `FindGographRoot()` with manual walk-up loop | Thin wrapper delegating to `rootfind.FindRoot()` |
+| `internal/cli` | `loadGraph(".")` → `filepath.Abs(".")` → cwd | `loadGraph(".")` → `rootfind.FindRoot()` → project root |
+
+`session.FindGographRoot()` is preserved as a backward-compatible wrapper.
+
+#### `runPlan --with-context` Root Fix
+The `--with-context` code path in `runPlan` used `filepath.Abs(".")` to resolve the root for source lookups. Updated to use `rootfind.FindRoot()` so that source file extraction also works from subdirectories.
+
+---
+
+### Test Coverage
+
+#### New `internal/rootfind` Tests (3 tests)
+- `TestFindRoot_NoGographDir_FallsBackToCwd` — no `.gograph/` anywhere → returns `"."`
+- `TestFindRoot_FromRoot` — cwd = root with `.gograph/` → returns root
+- `TestFindRoot_FromSubdirectory` — cwd = nested subdir → walks up, returns root
+
+#### New Subdirectory Graph Loading Regression Tests (4 tests)
+- `TestPlanFromRoot` — plan succeeds from repo root
+- `TestPlanFromSubdirectory` — plan succeeds from a subdirectory (the key regression)
+- `TestReviewFromSubdirectory` — review succeeds from a subdirectory
+- `TestSessionAndGraphLoading_SubdirectoryE2E` — full lifecycle: session create at root → chdir into subdirectory → plan with `-i` → review with `-i` → end session → audit → verify `total_commands >= 2`, `success_count >= 2`, `failure_count = 0`, `plan_run = true`, `review_run = true`, grade ≠ F
+
+---
+
+### Documentation
+
+| Target | Changes |
+|---|---|
+| `README.md` | Added **Subdirectory Aware** feature bullet |
+| `docs/coding-agent-usage.md` | Added subdirectory-awareness guarantee to the "Why this is safe" section |
+| `gograph capabilities` | Added `Subdirectory safe` entry to the LIMITATIONS block |
+| `RELEASE_NOTES.md` | This file |
+
+---
+
 ## v1.4.71 — 2026-06-03
 
 ### New MCP Tools (CLI↔MCP Parity Completion)

@@ -17,6 +17,7 @@ import (
 	"github.com/ozgurcd/gograph/internal/parser"
 	"github.com/ozgurcd/gograph/internal/precise"
 	"github.com/ozgurcd/gograph/internal/report"
+	"github.com/ozgurcd/gograph/internal/rootfind"
 	"github.com/ozgurcd/gograph/internal/scanner"
 	"github.com/ozgurcd/gograph/internal/search"
 	"github.com/ozgurcd/gograph/internal/session"
@@ -383,6 +384,9 @@ Know these before trusting results:
                         Use callers --depth N for bounded traversal instead of impact.
   All results           reflect the state of graph.json at last build. Run 'gograph stale'
                         to confirm the index is current before structural analysis.
+  Subdirectory safe     all query commands auto-discover the project root (walks up to
+                        the nearest .gograph/ directory). No need to cd back to the repo
+                        root before running plan, review, or any other query.
 
 ━━━ COMMANDS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 AGENT WORKFLOW RULES (CRITICAL):
@@ -937,6 +941,12 @@ func runMCP(args []string) int {
 }
 
 func loadGraph(root string) (*graph.Graph, error) {
+	// When root is "." (the default for all query commands), discover the
+	// actual gograph project root by walking upward.  This lets plan/review
+	// and every other query command work from subdirectories.
+	if root == "." {
+		root = rootfind.FindRoot()
+	}
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return nil, fmt.Errorf("resolving path: %w", err)
@@ -2733,7 +2743,7 @@ func runPlan(args []string) int {
 	fmt.Print(plan.String())
 
 	if withContext && len(plan.ReadFirst) > 0 {
-		root, _ := filepath.Abs(".")
+		root, _ := filepath.Abs(rootfind.FindRoot())
 		fmt.Println("\n=== INSPECT_FIRST CONTEXTS ===")
 		for _, sym := range plan.ReadFirst {
 			result := search.Context(g, root, sym.Name)
