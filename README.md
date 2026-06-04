@@ -2,265 +2,123 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/ozgurcd/gograph)](https://goreportcard.com/report/github.com/ozgurcd/gograph)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/ozgurcd/gograph)](https://github.com/ozgurcd/gograph)
+[![Homebrew](https://img.shields.io/badge/homebrew-available-orange)](https://github.com/ozgurcd/homebrew-tap)
+[![Docs](https://img.shields.io/badge/docs-gograph.identuum.ai-blue)](https://gograph.identuum.ai)
 
-`gograph` is a local AST/type-aware Go repository context indexer for AI coding agents.
+**Stop burning tokens on `grep`. Give your AI agent a graph.**
+
+`gograph` builds a local, AST-aware call graph of your Go repository and exposes **50+ query tools** via CLI and MCP so coding agents can navigate packages, symbols, call chains, routes, SQL, env vars, and tests — without reading raw files.
 
 ![Gograph Demo](gograph-demo.gif)
 
-It builds a compact graph of packages, symbols, calls, routes, config reads, tests, and code-quality signals so agents can navigate Go repositories with fewer raw file reads.
+> **Zero network. Zero execution. Zero secrets read.** `gograph` is purely static analysis — it never runs your code, makes API calls, or opens non-`.go` files.
 
-> **Note on Language Support:** I originally built `gograph` specifically for **Golang** because that is what I needed for my own workflows. It currently only parses and maps Go codebases. However, the architecture is extensible! If you want to add support for other languages (Python, TypeScript, Rust, etc.), **contributions are more than welcome.** Please see the [Contributing Guide](CONTRIBUTING.md) to get started.
-
-## Why not use a Language Server (`gopls`)?
-
-While `gopls` has access to similar AST and type data, connecting an AI coding agent to a Language Server is notoriously difficult and inefficient:
-
-1. **Protocol Mismatch:** AI agents operate inside terminal environments. `gopls` communicates via JSON-RPC over `stdin/stdout`. While you can invoke some `gopls` CLI commands, it usually returns raw file coordinates (`file:line:col`). This forces the agent to burn tokens running `cat` or `sed` to actually read the referenced code.
-2. **LLM-Optimized Output:** `gograph` doesn't just find coordinates; it physically extracts the exact structural slice (the struct body, the interface, the method) and formats it natively in Markdown. The AI reads exactly what it needs in one shot with zero surrounding file noise.
-3. **Graph-Level Diagnostics:** Language servers are built for point-in-time human IDE features (like hover or go-to-definition). `gograph` is built for systemic graph traversal. For example, `gograph trace "parse failed"` performs a reverse-BFS from an error string all the way up the call stack to the HTTP entry point. `gograph impact` calculates the full blast radius of a code change. `gopls` doesn't natively perform graph-traversal diagnostics like this out of the box.
-
-In short: `gopls` is optimized for human IDEs. `gograph` is optimized for terminal-based LLMs trying to save context tokens.
-
-## Features
-- **Local Only:** Graph building performs no network calls and sends no source code to external APIs. MCP integration is local stdio-based.
-- **Go Focused:** Maps Go project structures, packages, and dependencies using the standard AST.
-- **Targeted Focus:** Extract incredibly targeted context for a single package using `focus` to save LLM tokens.
-- **Token-Saving Context Bundle:** `context <symbol>` replaces 4–5 separate tool calls — returns node, source, callers, callees, and tests in one response.
-- **Hotspot Ranking:** `hotspot` ranks functions by incoming call count so agents know which functions to study first.
-- **Code Quality Analysis:** Cyclomatic complexity (`complexity`), god-object detection (`godobj`), and package coupling/instability (`coupling`).
-- **Change Detection:** `changes` surfaces new/modified/deleted symbols since the last build without re-reading source files. `changes --git <ref>` scopes the same output to files changed since any git ref (branch, tag, or commit).
-- **Dependency Trees:** `deps <pkg> [--transitive]` shows direct or full transitive import closures for any package.
-- **Tech Stack Extraction:** Automatically parses `go.mod` to summarize your external dependencies (like `gin` or `pgx`) so agents instantly understand your stack.
-- **Concurrency Mapping:** Detects goroutine spawns, channel sends, mutex locks, WaitGroup usage, and `sync.Once.Do` calls across the entire codebase.
-- **Interface Satisfaction:** Best-effort duck-typing analysis that tells you which interfaces any struct satisfies — without running the compiler.
-- **Test Coverage Map:** Best-effort mapping that links `Test*` functions to the production symbols they likely exercise.
-- **Environment Config:** Surfaces every `os.Getenv` / `viper.Get*` read with file, line, and enclosing function.
-- **Pathfinding:** `path <from> <to>` finds the shortest call chain between any two symbols via BFS.
-- **Dead Code Detection:** `orphans` uses full reachability analysis from entry points — stricter than simple 0-call-count checks.
-- **Clean Graph (No Generated Files):** Uses strict line-based detection to automatically exclude generated files like mocks or protobufs.
-- **AI Worktree Safe:** `.claude/`, `.cursor/`, `.agents/` directories are excluded from scanning, preventing duplicate symbols from AI agent worktrees. Directories listed in `.gitignore` are also skipped automatically.
-- **Subdirectory Aware:** All query commands (`plan`, `review`, `callers`, `context`, etc.) auto-discover the project root by walking up to the nearest `.gograph/` directory. No need to `cd` back to the repo root before running queries.
-- **Fast:** Written in Go for high performance.
-
-## Non-goals
-- No multi-language parsing.
-- No AI/model API calls.
-- No embeddings.
-- No SaaS backend.
-- No telemetry.
-- No replacement for compiler/type-checker correctness.
-- No guarantee that heuristic extractors find every route, SQL query, test relation, or dynamic call.
-
-## Correctness model
-- **Default mode** uses Go AST parsing and best-effort heuristics. It tolerates incomplete or non-compiling repositories.
-- **Precise mode** uses type-checked enrichment and requires compilable packages.
-- Heuristic extractors such as routes, SQL, tests, and error mapping are navigation aids, not authoritative program analysis.
-
-## Installation
+## Quick Start
 
 ```bash
-# MacOS / Linux (via Homebrew)
+# Install
 brew install ozgurcd/tap/gograph
 
-# Or using Go:
-go install github.com/ozgurcd/gograph/cmd/gograph@latest
-```
-
-## Usage
-
-**1. Generate the Graph (Run this after every major code change):**
-```bash
-gograph build .
-# OR for more precise type-checked analysis (slower, but provides exact dynamic dispatch & interface satisfaction proofs):
+# Build the graph
 gograph build . --precise
-```
-*This instantly generates `.gograph/graph.json` and `.gograph/GRAPH_REPORT.md`.*
 
-**2. Query the Graph (Lightning fast, no re-parsing):**
-```bash
-gograph boundaries [--config]     # Verify package architecture constraints using boundaries.json
-gograph callees "InitServer"               # See what InitServer calls (direct, depth 1)
-gograph callees "InitServer" --depth 2     # 2 hops down (callees of callees)
-gograph callers "ValidateToken"            # See what functions call ValidateToken (direct)
-gograph callers "ValidateToken" --depth 3  # 3 hops up (callers-of-callers-of-callers)
-gograph callers 'github.com/me/app/internal/auth::(*Service).Validate'  # Pass a fully-qualified symbol ID for exact match (no same-name conflation). Works for callees/impact/path too. Requires --precise build.
-gograph complexity                # Cyclomatic complexity for all functions (highest first)
-gograph complexity "Run"          # Complexity for a specific function
-gograph concurrency               # Map all goroutines, channels, mutexes, and sync primitives
-gograph coupling                  # Package fan-in, fan-out, instability table
-gograph coupling "internal/auth"  # Filter to a specific package
-gograph embeds "Mutex"            # See which structs embed a target struct
-gograph envs                      # List every environment variable read in the codebase
-gograph errors                    # Map every custom error and panic to its function
-gograph fields "User"             # Extract all fields and types of a struct
-gograph focus "internal/auth"     # Generate a highly targeted context for one package
-gograph godobj                    # Find god-object struct candidates
-gograph godobj --methods 10 --fields 12 --calls 30 --top 5  # Custom thresholds
-gograph impact "ValidateToken"    # View the full blast radius (all downstream callers)
-gograph impact --uncommitted      # Calculate the blast radius of all your uncommitted code changes
-gograph impact --since main       # Blast radius of all symbols changed since main (PR-level)
-gograph implementers "AuthService" # See which structs implement an interface
-gograph implementers "AuthService" --test-only  # Limit to test/mock files (replaces gograph mocks)
-gograph imports "redis"           # Find all files that import a specific external package
-gograph interfaces "UserService"  # See which interfaces a struct satisfies (type-checked if --precise was used)
-gograph node "UserStruct"         # Get detailed AST info about a specific node
-gograph orphans                   # List functions and methods with 0 explicit incoming calls (dead code)
-gograph path "CreateUser" "sql"   # Shortest call chain between two symbols
-gograph public "internal/auth"    # Filter graph to only show exported public symbols
-gograph query "Auth"              # Search for symbols, files, or packages
-gograph routes                    # Extract all HTTP REST API routes (e.g. GET /api)
-gograph endpoint "CreateUser"     # Full vertical slice: handler → call chain → SQL → env reads (PREFERRED: use handler name)
-gograph endpoint "POST /api/users" # Same but via route pattern (ONLY works for flat routers — fails with Gin/Echo/Chi groups)
-gograph source "ValidateToken"    # Extract the source code for a specific symbol
-gograph sql                       # Extract database SQL queries from the AST
-gograph stale                     # Check if graph.json is out of date vs source files
-gograph stats                     # Compact index health summary: schema version, build timestamp, counts
-gograph tests "ValidateToken"     # Find which test functions exercise a named symbol
-# --- STATIC GUARDS & CI ENFORCEMENT ---
-gograph check                     # Run static policy checks using .gograph/checks.json
-gograph check --uncommitted       # Run checks, including uncommitted code
-gograph check --since main        # Run checks, including API drift against main
-gograph boundaries                # Verify package architecture constraints against boundaries.json
-gograph gate                      # Fail CI if any .gograph.yml threshold is violated (complexity, instability, orphans, coupling)
-# --- SNAPSHOTS ---
-gograph snapshot save v1          # Capture current architectural metrics under label v1
-gograph snapshot diff v1          # Compare current graph against snapshot v1
-gograph snapshot list             # List all saved snapshots
-gograph snapshot drop v1          # Delete snapshot v1
-# --- TOKEN SAVERS ---
-gograph api --since main          # Identify breaking API and contract changes since a git reference
-gograph arity --min 5             # Find functions with many arguments (long parameter list smell)
-gograph changes                   # New/modified/deleted symbols since last build
-gograph changes --git main        # Symbols in files changed since main (git-ref mode)
-gograph changes --git v1.4.50     # Same, scoped to a release tag
-gograph constructors "User"       # Find factory functions returning the named struct
-gograph literals "User"           # All Foo{...} composite literal sites (run before adding a required field)
-gograph usages "AuthService"      # Every place a type appears in signatures and fields (run before changing an interface)
-gograph returnusage "ValidateToken" # How each caller uses the return value (discarded/assigned/returned/passed)
-gograph context "ValidateToken"   # Node + source + callers + callees + tests + role in ONE call
-gograph context --uncommitted     # Context for ALL uncommitted symbols bundled (replaces 5-8 sequential calls)
-gograph explain "ValidateToken"   # LLM-ready architectural narrative: role, callers, callees, complexity, SQL, env, tests
-gograph deps "internal/auth"      # Direct import dependencies of a package
-gograph deps "internal/auth" --transitive  # Full transitive closure
-gograph dependents "internal/auth" # All packages that import this package (inverse of deps)
-gograph fixtures "internal/auth"  # Find test helper structs and functions in test files
-gograph globals "internal/auth"   # Find pkg-level vars, consts, and functions mutating them
-gograph hotspot                   # Top 10 most-called functions (where to focus first)
-gograph hotspot --top 20          # Expand to top 20
-gograph mocks "AuthService"       # Alias for: gograph implementers "AuthService" --test-only
-gograph mutate "User.Status"      # Find functions that mutate a specific struct field (direct assignments, ++/+=, and indirect mutations via atomic.*, sync.Map, sync.Mutex, channel sends, and user-defined wrapper methods. Requires --precise build for indirect detection.)
-gograph plan "ValidateToken"      # Generate an operational change plan (callers, tests, risk profile) before editing a symbol
-gograph plan "ValidateToken" --with-context  # Plan + full context for every inspect_first symbol (replaces plan + N×context)
-gograph plan --uncommitted        # Generate a change plan for all currently uncommitted modified symbols
-gograph review "ValidateToken"    # Generate a post-edit final review report for a modified symbol
-gograph review --uncommitted      # Generate a post-edit final review report for all uncommitted changes
-gograph schema "users"            # Find structs mapped to a database table/schema via tags
-gograph skeleton                  # Output the whole repository's API signatures (bodies stripped)
-gograph errorflow "invalid token" # Trace an error's path from definition up to HTTP handlers (heuristic, NO SSA)
-gograph errorflow "invalid token" --no-tests  # Same, excluding test-file references
-gograph trace "parse failed"      # Alias for errorflow (kept for compatibility)
-gograph diagram                   # Mermaid architecture diagram of package dependency graph [--group-by package|module|service|file] [--max-depth N] [--include-stdlib]
-# endpoint: full vertical slice for one HTTP endpoint. IMPORTANT: route patterns only work with flat routers.
-# With Gin/Echo/Chi Group() routing, the prefix is lost in the AST. Use handler symbol name instead.
-gograph endpoint "CreateUser"     # RECOMMENDED: always works regardless of routing style [--depth N] [--json]
-gograph endpoint "POST /api/users" # route pattern: only works if path is a flat string literal (no Group() prefix)
+# Try it — who calls ValidateToken?
+gograph callers "ValidateToken"
+
+# Full context in ONE call (node + source + callers + callees + tests)
+gograph context "ValidateToken"
+
+# Change plan before editing (callers, tests, routes, SQL, env risk)
+gograph plan "ValidateToken"
 ```
 
-**3. Architecture Boundary Enforcement:**
-You can configure `gograph` to actively enforce clean architecture by defining boundaries. Create a `.gograph/boundaries.json` file in your root directory:
+## Why gograph?
+
+*Benchmarked on gograph's own codebase (70 files, 518 symbols, 16 packages):*
+| Task | `grep -rn` | `gograph` | Savings |
+|---|---|---|---|
+| Find callers of `loadGraph` | 158 noisy lines (comments, docs, vars) | 56 exact structural call sites | ~65% noise eliminated |
+| Locate symbol definitions | 842 lines matching "Symbol" | 83 true type/method declarations | ~90% noise eliminated |
+| Read one function body | `cat` dumps 180+ lines of the whole file | `source` extracts the exact 12-line function | ~93% fewer tokens |
+| Understand a symbol fully | 4–5 separate tool calls | 1 call: `context` bundles everything | 80% fewer tool calls |
+
+## Key Features
+
+**50+ Query Tools** — callers, callees, impact, context, plan, review, errorflow, orphans, hotspot, coupling, and more. Full [command reference →](https://gograph.identuum.ai/docs/command-reference/)
+
+**Native MCP Server** — all tools available as MCP endpoints for Claude, Cursor, Copilot, and any MCP-compatible agent. One command setup: `gograph add-claude-plugin`
+
+**Token-Saving Composites** — `context` replaces 5 calls. `plan` replaces 8. `explain` synthesizes architectural narratives. Built to minimize agent round-trips.
+
+**Safe by Design** — no network, no code execution, no secrets, no `.env` files read. AI worktree directories (`.claude/`, `.cursor/`, `.agents/`) auto-excluded.
+
+**Architecture Enforcement** — boundary rules, API drift detection, complexity gates, dead code sweeps, god-object detection, coupling analysis. Run in CI with `gograph gate`.
+
+**Agent Compliance Auditing** — session telemetry tracks whether agents run `plan` before edits and `review` after. Grades agent behavior A–F with actionable recommendations.
+
+## Command Reference
+
+All commands support `--json` for machine-readable output and `--files-only` for flat file lists.
+
+| Category | Commands | What it does |
+|---|---|---|
+| **Indexing** | `build . [--precise]`, `stale`, `stats` | Parse AST, write graph. Check freshness. Index health. |
+| **Navigation** | `query`, `callers [--depth N]`, `callees [--depth N]`, `path`, `source`, `node` | Find symbols, trace call chains, extract source. |
+| **Context** | `context`, `explain`, `focus`, `endpoint` | Bundled structural data in one call. Token savers. |
+| **Change Analysis** | `plan`, `review`, `impact [--uncommitted\|--since]`, `changes [--git]`, `api --since` | Pre-edit planning, post-edit review, blast radius, drift. |
+| **Architecture** | `boundaries`, `coupling`, `complexity`, `godobj`, `orphans`, `arity` | Quality gates, dead code, coupling, god objects. |
+| **Types & Structs** | `fields`, `implementers [--test-only]`, `interfaces`, `embeds`, `constructors`, `literals`, `usages`, `mutate`, `schema` | Struct fields, interface satisfaction, type usage. |
+| **Infrastructure** | `routes`, `sql`, `envs`, `errors`, `concurrency`, `globals`, `deps [--transitive]`, `dependents` | HTTP routes, SQL, env vars, concurrency, imports. |
+| **Testing** | `tests`, `fixtures`, `mocks` | Test coverage map, helpers, mock implementations. |
+| **Error Tracing** | `errorflow [--no-tests]`, `trace` | Reverse-BFS from error strings to HTTP entry points. |
+| **Diagnostics** | `hotspot`, `returnusage`, `skeleton`, `diagram`, `changes`, `public` | Hotspots, return usage, API signatures, Mermaid diagrams. |
+| **CI/CD** | `check [--since\|--uncommitted]`, `gate`, `snapshot save\|diff\|list\|drop` | Policy checks, threshold enforcement, metric snapshots. |
+| **Telemetry** | `session create\|end\|audit\|cleanup` | Agent compliance tracking and grading (A–F). |
+
+> Full command reference with examples: [gograph.identuum.ai/docs/command-reference](https://gograph.identuum.ai/docs/command-reference/)
+
+<details>
+<summary><strong>Architecture Boundary Enforcement</strong></summary>
+
+Define boundaries in `.gograph/boundaries.json`:
 ```json
 {
   "layers": [
-    {
-      "name": "domain",
-      "packages": ["internal/domain/**"],
-      "may_import": []
-    },
-    {
-      "name": "handler",
-      "packages": ["internal/handler/**"],
-      "may_import": [
-        "internal/service/**",
-        "internal/domain/**"
-      ]
-    }
+    { "name": "domain", "packages": ["internal/domain/**"], "may_import": [] },
+    { "name": "handler", "packages": ["internal/handler/**"], "may_import": ["internal/service/**", "internal/domain/**"] }
   ]
 }
 ```
-*Note: Standard library imports are implicitly allowed. Imports within the same layer are also implicitly allowed.*
+Run `gograph boundaries` — exits with code 1 on violation. Works in CI/CD.
+</details>
 
-Run the enforcement check:
-```bash
-gograph boundaries
-```
-*If a violation is found (e.g., `handler` imports `internal/repository` directly), it will exit with code 1 and print the exact file that violated the rule. Extremely useful for CI/CD or Agent `CLAUDE.md` instructions!*
+## AI Agent Integration
 
-**4. Agent JSON Integration:**
-All search and query commands support the `--json` flag to emit strictly formatted, machine-parseable JSON envelopes.
-
-For specific instructions on how to configure agents to use `gograph`, read the [Claude Code Integration Guide](docs/claude-code-integration.md).
-
-```bash
-gograph callers "ValidateToken" --json
-```
-*Returns: `{"schema_version": "1", "command": "callers", "status": "ok", "count": 2, "results": [...]}`*
-
-
-**5. Run as an MCP Server (For AI Agents):**
-If you want to give your AI agent native tool execution capabilities, `gograph` has a built-in [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server.
-
-To install the plugin automatically on macOS, Windows, or Linux, run:
+**One-command setup** (Claude Desktop + Claude Code):
 ```bash
 gograph add-claude-plugin
 ```
+This registers the MCP server, injects `CLAUDE.md` steering rules, and installs a `PreToolUse` hook that redirects `grep` on Go symbols to `gograph` tools.
 
-This single command does three things:
-1. **Registers the MCP server** in `claude_desktop_config.json` (Claude Desktop) so `gograph` tools are available to Claude natively.
-2. **Injects steering rules** into `~/.claude/CLAUDE.md` — Claude reads this automatically and knows to use `gograph_query` instead of `grep` for Go symbol searches.
-3. **Installs a smart `PreToolUse` hook** at `~/.claude/hooks/gograph-guard.sh` — this intercepts `grep`/`rg` calls targeting Go symbols and redirects Claude to the appropriate `gograph` MCP tool, saving tokens and improving precision.
-
-The hook is **smart**: it only blocks grep when the search pattern looks like a Go identifier (PascalCase/camelCase, 3+ chars). Legitimate raw-text searches in YAML, Markdown, SQL, or comment files are allowed through unchanged.
-
-For Claude Code (CLI) users, also run:
+**Other agents** (Cursor, Copilot, Antigravity, etc.):
 ```bash
-claude mcp add gograph -- gograph mcp .
+gograph mcp .   # Run as MCP server over stdio
+```
+Add to your `.cursorrules` or AI system prompt:
+> Before answering architecture or repository questions, inspect the available `gograph_*` MCP tools and use them instead of grep/find. Run `gograph capabilities` first.
+
+All commands support `--json` for machine-readable output:
+```bash
+gograph callers "ValidateToken" --json
+# → {"schema_version": "1", "command": "callers", "status": "ok", "count": 2, "results": [...]}
 ```
 
-You can also run the MCP server manually over stdio:
-```bash
-gograph mcp .
-```
-
-## 🤖 Integrating with AI Agents (Cursor, Claude Code, Copilot)
-
-To get the best results from your AI coding assistant, run `gograph add-claude-plugin`. It automatically configures everything:
-- MCP server registration for native tool access
-- `CLAUDE.md` rules that steer Claude to use `gograph` instead of `grep`
-- A `PreToolUse` hook that enforces Go symbol lookups go through `gograph`
-
-If you prefer manual setup, add this to your `.cursorrules`, `CLAUDE.md`, or AI system instructions:
-
-> **System Prompt:**
-> Before answering architecture or repository questions, inspect the available `gograph_*` MCP tools for the current project and use them instead of grep/find. Each project ships its own gograph MCP server; pick the matching one. If using the CLI directly, run `gograph capabilities` first.
-
-## 📊 Agent Workflow Telemetry & Compliance Auditing
-
-`gograph` includes an native **Workflow Telemetry & Compliance Auditing engine** (available via both the CLI and the MCP server) to monitor, grade, and optimize how AI coding agents interact with your Go codebases.
-
-### Commands & Tools:
-* **Session Lifecycle**: Start a session with `gograph session create [word]` (or `gograph_session_create`) and end it with `gograph session end` (or `gograph_session_end`).
-* **Intention Enforcement**: When a session is active, all analytical commands **must** specify an intention detailing the technical rationale (`--intention <reason>` / `-i <reason>`), or they are blocked.
-* **Compliance Auditing**: Call `gograph session audit [session_id]` (or `gograph_session_audit`) to evaluate the agent's work. The engine computes:
-  - **Plan Rule compliance (35%)**: Did the agent run `plan` before code modifications?
-  - **Review Rule compliance (35%)**: Did the agent run `review --uncommitted` post-edit?
-  - **Composability/Efficiency (30%)**: Did the agent leverage token-saving composed tools (like `context`) rather than wasteful individual queries (like `node`, `callers`, `callees`)?
-  - **Compliance Grade & Actionable Recommendations**: Computes an academic grade (A, B, C, F) and yields high-fidelity diagnostics to steer and optimize the agent.
-
-For full architectural details, see [docs/coding-agent-usage.md](docs/coding-agent-usage.md).
+For full integration guides, see [docs/coding-agent-usage.md](docs/coding-agent-usage.md).
 
 ## Example Output
 
-When you run `gograph build .`, the generated `GRAPH_REPORT.md` gives your AI a condensed, highly-dense context map that looks like this:
+When you run `gograph build .`, the generated `GRAPH_REPORT.md` gives your AI a condensed context map:
 
 **External Dependencies (Tech Stack)**
 | Module | Version |
@@ -274,14 +132,42 @@ When you run `gograph build .`, the generated `GRAPH_REPORT.md` gives your AI a 
 | `(Server).Start` | method | `server.go` | 42 | 18 |
 | `ValidateAuth` | function | `auth.go` | 12 | 14 |
 
+---
+
+## Why not use a Language Server (`gopls`)?
+
+`gopls` is optimized for human IDEs. `gograph` is optimized for terminal-based LLMs:
+
+1. **Protocol Mismatch** — `gopls` returns `file:line:col` coordinates. Agents must then burn tokens running `cat`/`sed` to read the actual code. `gograph` extracts the exact structural slice and formats it as Markdown.
+2. **Graph-Level Diagnostics** — `gopls` does hover and go-to-definition. `gograph` does reverse-BFS error tracing, full blast radius analysis, and PR-level change plans across the entire call graph.
+3. **Composable Intelligence** — `gopls` answers one question at a time. `gograph context` bundles node + source + callers + callees + tests in a single call. `gograph plan` aggregates impact, routes, SQL, env, and test risk into one checklist.
+
+<details>
+<summary><strong>Correctness model</strong></summary>
+
+- **Default mode** uses Go AST parsing and best-effort heuristics. Tolerates incomplete or non-compiling repositories.
+- **Precise mode** uses type-checked enrichment and requires compilable packages.
+- Heuristic extractors (routes, SQL, tests, error mapping) are navigation aids, not authoritative program analysis.
+</details>
+
+<details>
+<summary><strong>Non-goals</strong></summary>
+
+- No multi-language parsing
+- No AI/model API calls
+- No embeddings or SaaS backend
+- No telemetry
+- No replacement for compiler/type-checker correctness
+</details>
+
 ## Contributing
 
-We love pull requests! See the [CONTRIBUTING.md](CONTRIBUTING.md) file for guidelines on how to build, test, and contribute to the project. If you are adding support for a new language, please open an issue first to discuss the design.
+Pull requests welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for build, test, and contribution guidelines.
+
+> **Language Support:** `gograph` currently parses Go only. The architecture is extensible — if you want to add Python, TypeScript, Rust, etc., please open an issue first.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Glama.ai
+MIT — see [LICENSE](LICENSE).
 
 [![gograph MCP server](https://glama.ai/mcp/servers/ozgurcd/gograph/badges/score.svg)](https://glama.ai/mcp/servers/ozgurcd/gograph)

@@ -17,6 +17,7 @@ enableRobotsTXT = true
   ShowCodeCopyButtons = true
   ShowBreadCrumbs = true
   disableAnchoredHeadings = false
+  comments = true
 
   homeInfoParams = { Title = "gograph", Content = "A fast, AST-aware Go codebase analysis tool and MCP server. Query call graphs, dependency trees, interface implementers, and error flows in milliseconds — from your terminal or any AI agent." }
 
