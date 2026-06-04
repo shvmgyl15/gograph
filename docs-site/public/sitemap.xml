@@ -2,65 +2,65 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
-    <loc>http://localhost:1313/docs/getting-started/</loc>
+    <loc>https://gograph.identuum.ai/docs/getting-started/</loc>
   </url>
   <url>
-    <loc>http://localhost:1313/docs/command-reference/</loc>
+    <loc>https://gograph.identuum.ai/docs/command-reference/</loc>
   </url>
   <url>
-    <loc>http://localhost:1313/docs/agent-integration/</loc>
+    <loc>https://gograph.identuum.ai/docs/agent-integration/</loc>
   </url>
   <url>
-    <loc>http://localhost:1313/docs/workflows/</loc>
+    <loc>https://gograph.identuum.ai/docs/workflows/</loc>
   </url>
   <url>
-    <loc>http://localhost:1313/posts/analyzing-go-codebase-with-gograph/</loc>
+    <loc>https://gograph.identuum.ai/posts/analyzing-go-codebase-with-gograph/</loc>
     <lastmod>2026-05-23T00:00:00Z</lastmod>
   </url>
   <url>
-    <loc>http://localhost:1313/tags/call-graph/</loc>
+    <loc>https://gograph.identuum.ai/tags/call-graph/</loc>
     <lastmod>2026-05-23T00:00:00Z</lastmod>
   </url>
   <url>
-    <loc>http://localhost:1313/tags/developer-tools/</loc>
+    <loc>https://gograph.identuum.ai/tags/developer-tools/</loc>
     <lastmod>2026-05-23T00:00:00Z</lastmod>
   </url>
   <url>
-    <loc>http://localhost:1313/tags/go/</loc>
+    <loc>https://gograph.identuum.ai/tags/go/</loc>
     <lastmod>2026-05-23T00:00:00Z</lastmod>
   </url>
   <url>
-    <loc>http://localhost:1313/</loc>
+    <loc>https://gograph.identuum.ai/</loc>
     <lastmod>2026-05-23T00:00:00Z</lastmod>
   </url>
   <url>
-    <loc>http://localhost:1313/tags/golang/</loc>
+    <loc>https://gograph.identuum.ai/tags/golang/</loc>
     <lastmod>2026-05-23T00:00:00Z</lastmod>
   </url>
   <url>
-    <loc>http://localhost:1313/tags/llm-tokens/</loc>
+    <loc>https://gograph.identuum.ai/tags/llm-tokens/</loc>
     <lastmod>2026-05-23T00:00:00Z</lastmod>
   </url>
   <url>
-    <loc>http://localhost:1313/tags/mcp-server/</loc>
+    <loc>https://gograph.identuum.ai/tags/mcp-server/</loc>
     <lastmod>2026-05-23T00:00:00Z</lastmod>
   </url>
   <url>
-    <loc>http://localhost:1313/posts/</loc>
+    <loc>https://gograph.identuum.ai/posts/</loc>
     <lastmod>2026-05-23T00:00:00Z</lastmod>
   </url>
   <url>
-    <loc>http://localhost:1313/tags/static-analysis/</loc>
+    <loc>https://gograph.identuum.ai/tags/static-analysis/</loc>
     <lastmod>2026-05-23T00:00:00Z</lastmod>
   </url>
   <url>
-    <loc>http://localhost:1313/tags/</loc>
+    <loc>https://gograph.identuum.ai/tags/</loc>
     <lastmod>2026-05-23T00:00:00Z</lastmod>
   </url>
   <url>
-    <loc>http://localhost:1313/categories/</loc>
+    <loc>https://gograph.identuum.ai/categories/</loc>
   </url>
   <url>
-    <loc>http://localhost:1313/docs/</loc>
+    <loc>https://gograph.identuum.ai/docs/</loc>
   </url>
 </urlset>

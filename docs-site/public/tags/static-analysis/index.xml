@@ -2,17 +2,17 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title>Static-Analysis on gograph – Go Codebase Analysis &amp; MCP Server</title>
-    <link>http://localhost:1313/tags/static-analysis/</link>
+    <link>https://gograph.identuum.ai/tags/static-analysis/</link>
     <description>Recent content in Static-Analysis on gograph – Go Codebase Analysis &amp; MCP Server</description>
     <generator>Hugo</generator>
     <language>en-us</language>
     <lastBuildDate>Sat, 23 May 2026 00:00:00 +0000</lastBuildDate>
-    <atom:link href="http://localhost:1313/tags/static-analysis/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="https://gograph.identuum.ai/tags/static-analysis/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Analyzing a Go Codebase with gograph — Starting with Itself</title>
-      <link>http://localhost:1313/posts/analyzing-go-codebase-with-gograph/</link>
+      <link>https://gograph.identuum.ai/posts/analyzing-go-codebase-with-gograph/</link>
       <pubDate>Sat, 23 May 2026 00:00:00 +0000</pubDate>
-      <guid>http://localhost:1313/posts/analyzing-go-codebase-with-gograph/</guid>
+      <guid>https://gograph.identuum.ai/posts/analyzing-go-codebase-with-gograph/</guid>
       <description>A deep-dive technical case study running gograph&amp;#39;s static analysis engine on its own codebase. Discover how structural call-graph intelligence eliminates LLM token waste, tracks precise blast radii, and out-performs standard grep.</description>
     </item>
   </channel>
