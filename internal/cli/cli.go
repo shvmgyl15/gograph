@@ -87,6 +87,15 @@ func Run(args []string) int {
 	}
 	args = filtered
 
+	// --json and --mermaid are mutually exclusive: --json emits a single
+	// {"ok":true,...} envelope, --mermaid emits a Mermaid diagram. Asking
+	// for both would silently produce whichever the consumer code reaches
+	// last, which is surprising and breaks piping.
+	if jsonMode && mermaidMode {
+		fmt.Fprintln(os.Stderr, "Error: --json and --mermaid cannot be combined")
+		return 1
+	}
+
 	// Bare `gograph --mermaid` (no subcommand) → architecture overview diagram.
 	if len(args) == 0 {
 		if mermaidMode {
