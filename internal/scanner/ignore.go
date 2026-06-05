@@ -78,9 +78,9 @@ func ShouldIgnoreFile(path string) (bool, error) {
 // and is no-op when git is unavailable or the directory is not inside a git
 // repository.
 type gitIgnoreChecker struct {
-	once    sync.Once
-	root    string   // absolute repository root (output of git rev-parse)
-	hasGit  bool     // false when git is unavailable or not a git repo
+	once   sync.Once
+	root   string // absolute repository root (output of git rev-parse)
+	hasGit bool   // false when git is unavailable or not a git repo
 }
 
 // newGitIgnoreChecker returns a checker rooted at the given directory.

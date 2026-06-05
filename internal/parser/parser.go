@@ -677,8 +677,9 @@ func extractFuncDecl(fset *token.FileSet, d *ast.FuncDecl, relPath, pkgName, pkg
 // a map from each direct CallExpr position to a usage label describing how the
 // caller consumes the call's return value.
 // Values: "discarded", "assigned", "partially_ignored", "returned",
-//         "goroutine", "deferred". Calls nested inside other expressions are
-//         not recorded (they are "passed" by convention at query time).
+//
+//	"goroutine", "deferred". Calls nested inside other expressions are
+//	not recorded (they are "passed" by convention at query time).
 func buildReturnUsageMap(body *ast.BlockStmt) map[token.Pos]string {
 	m := make(map[token.Pos]string)
 	if body == nil {
@@ -924,7 +925,7 @@ func extractHandlerRefs(call *ast.CallExpr) []string {
 // Recurses through:
 //   - *ast.CallExpr      — nested wrappers like wrap1(wrap2(h.method))
 //   - *ast.CompositeLit  — struct/map/slice literals carrying function fields,
-//                           e.g. opts{OnEvent: h.method}
+//     e.g. opts{OnEvent: h.method}
 //   - *ast.KeyValueExpr  — for each key-value pair, scan the value
 //   - *ast.UnaryExpr     — &Foo{...} pointer-to-literal
 //   - *ast.ParenExpr     — (h.method)

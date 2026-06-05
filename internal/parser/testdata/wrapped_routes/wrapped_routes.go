@@ -9,9 +9,9 @@ import "net/http"
 
 type AdminHandler struct{}
 
-func (h *AdminHandler) customers(w http.ResponseWriter, r *http.Request)    {}
-func (h *AdminHandler) licenses(w http.ResponseWriter, r *http.Request)     {}
-func (h *AdminHandler) downloadLic(w http.ResponseWriter, r *http.Request)  {}
+func (h *AdminHandler) customers(w http.ResponseWriter, r *http.Request)   {}
+func (h *AdminHandler) licenses(w http.ResponseWriter, r *http.Request)    {}
+func (h *AdminHandler) downloadLic(w http.ResponseWriter, r *http.Request) {}
 
 // guard is a generic middleware wrapper.
 func guard(next http.HandlerFunc) http.HandlerFunc {

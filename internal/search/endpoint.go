@@ -179,11 +179,11 @@ func Endpoint(g *graph.Graph, query string, depth int, includeTests bool) []Endp
 //
 // Precedence (return at the first tier that matches):
 //
-//	1. Exact handler match:                handler == query
-//	2. Exact method-suffix on handler:     handler ends with "." + query
-//	3. Exact route-path match:             method+path == query
-//	4. Route-path prefix/suffix match:     leaf path equality after splitting
-//	5. Substring match (legacy fallback):  prior behaviour
+//  1. Exact handler match:                handler == query
+//  2. Exact method-suffix on handler:     handler ends with "." + query
+//  3. Exact route-path match:             method+path == query
+//  4. Route-path prefix/suffix match:     leaf path equality after splitting
+//  5. Substring match (legacy fallback):  prior behaviour
 //
 // Only the substring tier can produce confusing matches; the earlier tiers
 // either return precise hits or skip cleanly. Multiple matches within the

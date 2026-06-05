@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	gographDir            = ".gograph"
-	relSessionsDir        = ".gograph/sessions"
-	relActivePointerPath  = ".gograph/active_session.json"
+	gographDir           = ".gograph"
+	relSessionsDir       = ".gograph/sessions"
+	relActivePointerPath = ".gograph/active_session.json"
 )
 
 // FindGographRoot walks up from the current working directory until it finds a
@@ -246,23 +246,23 @@ type GenericLogLine struct {
 
 // AuditReport holds the calculated compliance and success metrics of a session.
 type AuditReport struct {
-	SessionID       string    `json:"session_id"`
-	Status          string    `json:"status"`
-	CreatedAt       string    `json:"created_at"`
-	EndedAt         string    `json:"ended_at"`
-	DurationSeconds float64   `json:"duration_seconds"`
-	TotalCommands   int       `json:"total_commands"`
-	SuccessCount    int       `json:"success_count"`
-	FailureCount    int       `json:"failure_count"`
-	SuccessRate     float64   `json:"success_rate"`
-	PlanRun         bool      `json:"plan_run"`
-	ReviewRun       bool      `json:"review_run"`
-	ComposedCount   int       `json:"composed_count"`
-	RawQueryCount   int       `json:"raw_query_count"`
-	Composability   float64   `json:"composability"`
-	ComplianceScore float64   `json:"compliance_score"`
-	Grade           string    `json:"grade"`
-	Recommendations []string  `json:"recommendations"`
+	SessionID       string   `json:"session_id"`
+	Status          string   `json:"status"`
+	CreatedAt       string   `json:"created_at"`
+	EndedAt         string   `json:"ended_at"`
+	DurationSeconds float64  `json:"duration_seconds"`
+	TotalCommands   int      `json:"total_commands"`
+	SuccessCount    int      `json:"success_count"`
+	FailureCount    int      `json:"failure_count"`
+	SuccessRate     float64  `json:"success_rate"`
+	PlanRun         bool     `json:"plan_run"`
+	ReviewRun       bool     `json:"review_run"`
+	ComposedCount   int      `json:"composed_count"`
+	RawQueryCount   int      `json:"raw_query_count"`
+	Composability   float64  `json:"composability"`
+	ComplianceScore float64  `json:"compliance_score"`
+	Grade           string   `json:"grade"`
+	Recommendations []string `json:"recommendations"`
 }
 
 // FindMostRecentSessionID finds the session log file with the newest modification time.
@@ -530,4 +530,3 @@ func CleanupSessions() (int, error) {
 
 	return deletedCount, nil
 }
-

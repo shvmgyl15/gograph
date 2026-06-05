@@ -115,7 +115,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 	)
 	addTool(capabilitiesTool, func(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		resp := map[string]any{
-			"summary": "gograph MCP capabilities",
+			"summary":      "gograph MCP capabilities",
 			"prerequisite": "All tools except gograph_capabilities and gograph_stale require .gograph/graph.json. Run `gograph build .` first, or `gograph build . --precise` for full type inference. All tools are read-only with no side effects.",
 			"tools": []map[string]string{
 				{"name": "gograph_capabilities", "purpose": "List all available tools and recommended workflows. No prerequisites."},
@@ -1656,7 +1656,6 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGra
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	})
-
 
 	// Tool: gograph_trace
 	// Alias for gograph_errorflow -- kept for backward compatibility with agents

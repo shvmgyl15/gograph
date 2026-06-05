@@ -398,7 +398,6 @@ func TestGographSessionMCP(t *testing.T) {
 	}
 }
 
-
 // TestMCPSessionTelemetry_PlanAndReviewIncrementCounters is the regression test
 // for the bug where gograph_session_audit reported Total Commands: 0,
 // Plan Rule Run: false, and Review Rule Run: false even after the coding agent

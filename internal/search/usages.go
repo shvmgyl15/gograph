@@ -154,4 +154,3 @@ func classifySignatureUsage(sig, typeName string) string {
 		return "in signature: " + sig
 	}
 }
-

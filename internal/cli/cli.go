@@ -53,7 +53,7 @@ func Run(args []string) int {
 	filtered := args[:0]
 	for i := 0; i < len(args); i++ {
 		a := args[i]
-			switch a {
+		switch a {
 		case "--help", "-h":
 			if len(args) > 1 && args[0] != "--help" && args[0] != "-h" {
 				printCommandHelp(args[0])
@@ -659,7 +659,6 @@ func BuildGraph(absRoot string) (*graph.Graph, error) {
 	sortGraph(g)
 	return g, nil
 }
-
 
 // printResults prints []Result in text or JSON mode.
 // cmd is the command name; query is the search term (may be empty).

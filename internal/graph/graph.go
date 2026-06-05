@@ -5,8 +5,9 @@ import "time"
 
 // Version is the schema version written into graph.json.
 // v2: symbol IDs use module-rooted import paths (e.g. "github.com/org/repo/pkg::Symbol")
-//     instead of relative file paths ("internal/pkg/file.go::Symbol").
-//     This makes IDs stable across file renames within the same package.
+//
+//	instead of relative file paths ("internal/pkg/file.go::Symbol").
+//	This makes IDs stable across file renames within the same package.
 const Version = "2"
 
 // Graph is the top-level data structure written to .gograph/graph.json.

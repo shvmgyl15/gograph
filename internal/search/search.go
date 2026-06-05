@@ -983,8 +983,8 @@ func ImpactMultiple(g *graph.Graph, names []string, reason string, includeTests 
 		term string // lowercase substring for short-name items
 	}
 	var queue []frontierItem
-	visitedIDs := make(map[string]bool)    // FQ-ID terms we've already searched
-	visitedTerms := make(map[string]bool)  // short-name terms we've already searched
+	visitedIDs := make(map[string]bool)     // FQ-ID terms we've already searched
+	visitedTerms := make(map[string]bool)   // short-name terms we've already searched
 	visitedSymbols := make(map[string]bool) // caller symbols we've already requeued
 
 	for _, name := range names {
