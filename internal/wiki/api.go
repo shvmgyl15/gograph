@@ -62,7 +62,7 @@ func buildAPIPage(g *graph.Graph) WikiPage {
 			shortName = strings.TrimPrefix(pkgPath, modulePath+"/")
 		}
 
-		b.WriteString(fmt.Sprintf("## `%s`\n\n", shortName))
+		fmt.Fprintf(&b, "## `%s`\n\n", shortName)
 		b.WriteString("```go\n")
 
 		entries := byPkg[pkgPath]

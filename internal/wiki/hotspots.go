@@ -28,8 +28,8 @@ func buildHotspotsPage(g *graph.Graph) WikiPage {
 	} else {
 		b.WriteString("| Symbol | Callers | File |\n|--------|---------|------|\n")
 		for _, h := range hotspots {
-			b.WriteString(fmt.Sprintf("| `%s` | %d | %s:%d |\n",
-				h.Name, h.IncomingCalls, h.File, h.Line))
+			fmt.Fprintf(&b, "| `%s` | %d | %s:%d |\n",
+				h.Name, h.IncomingCalls, h.File, h.Line)
 		}
 		b.WriteString("\n")
 	}
@@ -49,8 +49,8 @@ func buildHotspotsPage(g *graph.Graph) WikiPage {
 			b.WriteString("| Symbol | Score | Severity | File |\n|--------|-------|----------|------|\n")
 			header = true
 		}
-		b.WriteString(fmt.Sprintf("| `%s` | %d | %s | %s:%d |\n",
-			c.Symbol, c.Score, c.Label, c.File, c.Line))
+		fmt.Fprintf(&b, "| `%s` | %d | %s | %s:%d |\n",
+			c.Symbol, c.Score, c.Label, c.File, c.Line)
 		written++
 	}
 	if !header {
@@ -66,8 +66,8 @@ func buildHotspotsPage(g *graph.Graph) WikiPage {
 		b.WriteString("| Struct | Methods | Fields | Outgoing calls | Severity |\n")
 		b.WriteString("|--------|---------|--------|----------------|----------|\n")
 		for _, g := range godObjs {
-			b.WriteString(fmt.Sprintf("| `%s` | %d | %d | %d | %s |\n",
-				g.Name, g.MethodCount, g.FieldCount, g.OutgoingCalls, g.Severity))
+			fmt.Fprintf(&b, "| `%s` | %d | %d | %d | %s |\n",
+				g.Name, g.MethodCount, g.FieldCount, g.OutgoingCalls, g.Severity)
 		}
 		b.WriteString("\n")
 	}

@@ -132,6 +132,7 @@ func TestAllCommandsRegistered(t *testing.T) {
 		"--mermaid",
 		"session",
 		"--session",
+		"wiki",
 		"-i",
 		"--intention",
 		// aliases

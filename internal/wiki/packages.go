@@ -68,8 +68,8 @@ func buildPackagePages(g *graph.Graph) []WikiPage {
 		filename := "packages/" + strings.ReplaceAll(shortName, "/", "-") + ".md"
 
 		var b strings.Builder
-		b.WriteString(fmt.Sprintf("# Package: `%s`\n\n", shortName))
-		b.WriteString(fmt.Sprintf("**Import path:** `%s`\n\n", pkgPath))
+		fmt.Fprintf(&b, "# Package: `%s`\n\n", shortName)
+		fmt.Fprintf(&b, "**Import path:** `%s`\n\n", pkgPath)
 
 		// Coupling row.
 		if c, ok := couplingByPkg[pkgPath]; ok {
@@ -77,12 +77,12 @@ func buildPackagePages(g *graph.Graph) []WikiPage {
 			if c.Instability < 0 {
 				instStr = "isolated"
 			}
-			b.WriteString(fmt.Sprintf(
+			fmt.Fprintf(&b,
 				"| Fan-in (Ca) | Fan-out (Ce) | Instability |\n"+
 					"|-------------|--------------|-------------|\n"+
 					"| %d | %d | %s |\n\n",
 				c.FanIn, c.FanOut, instStr,
-			))
+			)
 		}
 
 		// Exported symbols.
@@ -93,7 +93,7 @@ func buildPackagePages(g *graph.Graph) []WikiPage {
 				if exportedWritten == 0 {
 					b.WriteString("| Symbol | Kind |\n|--------|------|\n")
 				}
-				b.WriteString(fmt.Sprintf("| `%s` | %s |\n", s.name, s.kind))
+				fmt.Fprintf(&b, "| `%s` | %s |\n", s.name, s.kind)
 				exportedWritten++
 			}
 		}
@@ -105,8 +105,8 @@ func buildPackagePages(g *graph.Graph) []WikiPage {
 		// Internal symbol count (not listed to keep page short).
 		internalCount := len(syms) - exportedWritten
 		if internalCount > 0 {
-			b.WriteString(fmt.Sprintf("**Internal symbols:** %d (run `gograph focus %s` for details)\n\n",
-				internalCount, shortName))
+			fmt.Fprintf(&b, "**Internal symbols:** %d (run `gograph focus %s` for details)\n\n",
+				internalCount, shortName)
 		}
 
 		pages = append(pages, WikiPage{Filename: filename, Content: b.String()})

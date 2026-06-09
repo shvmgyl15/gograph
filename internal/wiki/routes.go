@@ -16,13 +16,13 @@ func buildRoutesPage(g *graph.Graph) WikiPage {
 
 	var b strings.Builder
 	b.WriteString("# HTTP Routes\n\n")
-	b.WriteString(fmt.Sprintf("Total: %d routes registered.\n\n", len(g.Routes)))
+	fmt.Fprintf(&b, "Total: %d routes registered.\n\n", len(g.Routes))
 	b.WriteString("| Method | Path | Handler | File |\n")
 	b.WriteString("|--------|------|---------|------|\n")
 
 	for _, r := range g.Routes {
-		b.WriteString(fmt.Sprintf("| `%s` | `%s` | `%s` | %s:%d |\n",
-			r.Method, r.Path, r.Handler, r.File, r.Line))
+		fmt.Fprintf(&b, "| `%s` | `%s` | `%s` | %s:%d |\n",
+			r.Method, r.Path, r.Handler, r.File, r.Line)
 	}
 	b.WriteString("\n")
 

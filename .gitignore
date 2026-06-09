@@ -1,6 +1,7 @@
 .gograph/
 .agents/
 bin/
+bin/gograph-test
 gograph
 docs/ARCHITECTURAL_GUIDELINES.mdcoverage.out
 docs/FUTURE_IDEAS.md

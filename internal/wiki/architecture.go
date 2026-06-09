@@ -43,8 +43,8 @@ func buildArchitecturePage(g *graph.Graph) WikiPage {
 			if c.Instability < 0 {
 				instability = "isolated"
 			}
-			b.WriteString(fmt.Sprintf("| `%s` | %d | %d | %s |\n",
-				name, c.FanIn, c.FanOut, instability))
+			fmt.Fprintf(&b, "| `%s` | %d | %d | %s |\n",
+				name, c.FanIn, c.FanOut, instability)
 		}
 		b.WriteString("\n")
 	}
@@ -55,10 +55,6 @@ func buildArchitecturePage(g *graph.Graph) WikiPage {
 	b.WriteString("## Topological Layers\n\n")
 	b.WriteString("Packages grouped by fan-out (0 = foundation/stable, higher = more dependent).\n\n")
 
-	type layerEntry struct {
-		name   string
-		fanOut int
-	}
 	layers := make(map[int][]string)
 	for _, c := range coupling {
 		name := c.Package
@@ -82,7 +78,7 @@ func buildArchitecturePage(g *graph.Graph) WikiPage {
 		if !ok {
 			continue
 		}
-		b.WriteString(fmt.Sprintf("| %d | %s |\n", l, strings.Join(pkgs, ", ")))
+		fmt.Fprintf(&b, "| %d | %s |\n", l, strings.Join(pkgs, ", "))
 	}
 	b.WriteString("\n")
 

@@ -21,14 +21,14 @@ func buildOverviewPage(g *graph.Graph) WikiPage {
 	b.WriteString("# Codebase Overview\n\n")
 
 	// Module header
-	b.WriteString(fmt.Sprintf("**Module:** `%s`\n\n", modulePath))
-	b.WriteString(fmt.Sprintf(
+	fmt.Fprintf(&b, "**Module:** `%s`\n\n", modulePath)
+	fmt.Fprintf(&b,
 		"| Packages | Files | Symbols | Import edges | Routes | SQL queries | Env reads |\n"+
 			"|----------|-------|---------|--------------|--------|-------------|----------|\n"+
 			"| %d | %d | %d | %d | %d | %d | %d |\n\n",
 		stats.Packages, stats.Files, stats.Symbols,
 		stats.Imports, stats.Routes, stats.SQLs, stats.EnvReads,
-	))
+	)
 
 	// Top hotspots
 	b.WriteString("## Top Hotspots (fan-in)\n\n")
@@ -37,7 +37,7 @@ func buildOverviewPage(g *graph.Graph) WikiPage {
 	} else {
 		b.WriteString("| Symbol | Callers | File |\n|--------|---------|------|\n")
 		for _, h := range hotspots {
-			b.WriteString(fmt.Sprintf("| `%s` | %d | %s |\n", h.Name, h.IncomingCalls, h.File))
+			fmt.Fprintf(&b, "| `%s` | %d | %s |\n", h.Name, h.IncomingCalls, h.File)
 		}
 		b.WriteString("\n")
 	}
@@ -53,8 +53,8 @@ func buildOverviewPage(g *graph.Graph) WikiPage {
 			if count >= 5 {
 				break
 			}
-			b.WriteString(fmt.Sprintf("| `%s` | %d | %d | %.2f |\n",
-				c.Package, c.FanIn, c.FanOut, c.Instability))
+			fmt.Fprintf(&b, "| `%s` | %d | %d | %.2f |\n",
+				c.Package, c.FanIn, c.FanOut, c.Instability)
 			count++
 		}
 		b.WriteString("\n")
@@ -67,13 +67,13 @@ func buildOverviewPage(g *graph.Graph) WikiPage {
 	b.WriteString("| Exported API surface | `api-surface.md` |\n")
 	b.WriteString("| High-risk symbols | `hotspots.md` |\n")
 	if stats.Routes > 0 {
-		b.WriteString(fmt.Sprintf("| HTTP routes (%d) | `routes.md` |\n", stats.Routes))
+		fmt.Fprintf(&b, "| HTTP routes (%d) | `routes.md` |\n", stats.Routes)
 	}
 	if stats.EnvReads > 0 {
-		b.WriteString(fmt.Sprintf("| Env vars (%d) | `env.md` |\n", stats.EnvReads))
+		fmt.Fprintf(&b, "| Env vars (%d) | `env.md` |\n", stats.EnvReads)
 	}
 	if stats.SQLs > 0 {
-		b.WriteString(fmt.Sprintf("| SQL queries (%d) | `errors.md` |\n", stats.SQLs))
+		fmt.Fprintf(&b, "| SQL queries (%d) | `errors.md` |\n", stats.SQLs)
 	}
 	b.WriteString("\n")
 
