@@ -93,8 +93,8 @@ func Explain(g *graph.Graph, term string) *ExplainResult {
 	}
 
 	// Callers: split into production vs test
-	allCallers := Callers(g, term, true)
-	prodOnly := Callers(g, term, false) // excludes test files
+	allCallers := Callers(g, term, true, false)
+	prodOnly := Callers(g, term, false, false) // excludes test files
 	prodSet := make(map[string]bool)
 	for _, c := range prodOnly {
 		prodSet[c.Name] = true
@@ -110,7 +110,7 @@ func Explain(g *graph.Graph, term string) *ExplainResult {
 
 	// Callees (func/method only)
 	if sym.Kind == graph.KindFunction || sym.Kind == graph.KindMethod {
-		callees := Callees(g, term, false)
+		callees := Callees(g, term, false, false)
 		res.CalleeCount = len(callees)
 
 		// Count cross-package callees: if the callee name contains a dot

@@ -254,7 +254,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		if !ok {
 			return mcp.NewToolResultError("function must be a string"), nil
 		}
-		results := search.Callers(g, fn, true)
+		results := search.Callers(g, fn, true, false)
 		return formatResults(results), nil
 	})
 
@@ -275,7 +275,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		if !ok {
 			return mcp.NewToolResultError("function must be a string"), nil
 		}
-		results := search.Callees(g, fn, true)
+		results := search.Callees(g, fn, true, false)
 		return formatResults(results), nil
 	})
 
@@ -646,7 +646,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 			}
 			var contexts []symbolContext
 			for _, sym := range syms {
-				r := search.Context(g, root, sym)
+				r := search.Context(g, root, sym, false)
 				if r == nil {
 					continue
 				}
@@ -680,7 +680,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		if !ok || symbol == "" {
 			return mcp.NewToolResultError("must provide either symbol or set uncommitted to true"), nil
 		}
-		result := search.Context(g, root, symbol)
+		result := search.Context(g, root, symbol, false)
 		if result == nil {
 			return mcp.NewToolResultText("{}"), nil
 		}
@@ -769,7 +769,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 			root, _ := filepath.Abs(".")
 			var contexts []inspectContext
 			for _, sym := range planRes.ReadFirst {
-				r := search.Context(g, root, sym.Name)
+				r := search.Context(g, root, sym.Name, false)
 				if r == nil {
 					continue
 				}

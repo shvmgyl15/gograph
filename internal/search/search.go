@@ -154,7 +154,7 @@ func Node(g *graph.Graph, name string) []Result {
 // from (*B).Validate when both exist. Short names (e.g. "Validate") fall back
 // to case-insensitive substring matching against CalleeRaw, preserving the
 // fuzzy UX users rely on for casual queries.
-func Callers(g *graph.Graph, name string, includeTests bool) []Result {
+func Callers(g *graph.Graph, name string, includeTests bool, exactMatch bool) []Result {
 	nl := strings.ToLower(name)
 	fqQuery := isFullyQualifiedID(name)
 	callerSymbols := make(map[string]graph.SymbolNode)
@@ -177,6 +177,9 @@ func Callers(g *graph.Graph, name string, includeTests bool) []Result {
 			if strings.Contains(strings.ToLower(c.CalleeRaw), replaced) {
 				return true
 			}
+		}
+		if exactMatch {
+			return strings.ToLower(c.CalleeRaw) == nl
 		}
 		return strings.Contains(strings.ToLower(c.CalleeRaw), nl)
 	}
@@ -239,7 +242,7 @@ func Callers(g *graph.Graph, name string, includeTests bool) []Result {
 // is matched exactly against SymbolNode.ID — disambiguates same-named
 // functions/methods across types or packages. Short names fall back to
 // fuzzy substring matching (preserves the casual-query UX).
-func Callees(g *graph.Graph, name string, includeTests bool) []Result {
+func Callees(g *graph.Graph, name string, includeTests bool, exactMatch bool) []Result {
 	nl := strings.ToLower(name)
 	fqQuery := isFullyQualifiedID(name)
 	matchedIDs := make(map[string]bool)
@@ -250,7 +253,12 @@ func Callees(g *graph.Graph, name string, includeTests bool) []Result {
 		}
 		sname := strings.ToLower(s.Name)
 		full := strings.ToLower(fmt.Sprintf("(%s).%s", s.Receiver, s.Name))
-		if MatchSymbol(s, name) || sname == nl || strings.Contains(full, nl) || strings.Contains(sname, nl) {
+		if exactMatch {
+			// Exact: only seed when the name matches precisely.
+			if sname == nl || strings.ToLower(s.ID) == nl {
+				matchedIDs[s.ID] = true
+			}
+		} else if MatchSymbol(s, name) || sname == nl || strings.Contains(full, nl) || strings.Contains(sname, nl) {
 			matchedIDs[s.ID] = true
 		}
 	}
@@ -300,9 +308,9 @@ func Callees(g *graph.Graph, name string, includeTests bool) []Result {
 // (*A).Validate without leaking into (*B).Validate's caller tree (Bug 6).
 // Name-keyed entries are kept in the frontier as a fallback for legacy
 // edges that lack CalleeSymbolID.
-func CallersDepth(g *graph.Graph, name string, maxDepth int, includeTests bool) []Result {
+func CallersDepth(g *graph.Graph, name string, maxDepth int, includeTests bool, exactMatch bool) []Result {
 	if maxDepth <= 1 {
-		return Callers(g, name, includeTests)
+		return Callers(g, name, includeTests, exactMatch)
 	}
 	if maxDepth > 10 {
 		maxDepth = 10
@@ -412,7 +420,7 @@ func CallersDepth(g *graph.Graph, name string, maxDepth int, includeTests bool) 
 // (false positives over false negatives) for unresolved dynamic dispatch.
 func CalleesDepth(g *graph.Graph, name string, maxDepth int, includeTests bool) []Result {
 	if maxDepth <= 1 {
-		return Callees(g, name, includeTests)
+		return Callees(g, name, includeTests, false)
 	}
 	if maxDepth > 10 {
 		maxDepth = 10

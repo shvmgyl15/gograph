@@ -33,15 +33,30 @@ type ContextResult struct {
 // bundling its node details, source code, callers, callees, test coverage, and
 // a lightweight architectural role. Returns nil if no symbol matches.
 // rootDir is the repository root for source extraction (pass "." for cwd).
-func Context(g *graph.Graph, rootDir, term string) *ContextResult {
+func Context(g *graph.Graph, rootDir, term string, exactMatch bool) *ContextResult {
 	node := Node(g, term)
+	if exactMatch {
+		nl := strings.ToLower(term)
+		var filtered []Result
+		for _, r := range node {
+			// Strip receiver prefix e.g. "(Foo).Bar" → "Bar"
+			namePart := r.Name
+			if idx := strings.LastIndex(namePart, "."); idx >= 0 {
+				namePart = namePart[idx+1:]
+			}
+			if strings.ToLower(namePart) == nl {
+				filtered = append(filtered, r)
+			}
+		}
+		node = filtered
+	}
 	if len(node) == 0 {
 		return nil
 	}
 
 	src, srcErr := Source(g, rootDir, term)
-	callers := Callers(g, term, true)
-	callees := Callees(g, term, true)
+	callers := Callers(g, term, true, exactMatch)
+	callees := Callees(g, term, true, exactMatch)
 
 	return &ContextResult{
 		Node:      node,

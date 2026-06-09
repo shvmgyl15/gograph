@@ -136,13 +136,13 @@ func TestQuery_MatchCall(t *testing.T) {
 func TestCallers(t *testing.T) {
 	g := makeGraph()
 	// includeTests = true -> should return 2 callers for jwt.Sign
-	results := search.Callers(g, "jwt.Sign", true)
+	results := search.Callers(g, "jwt.Sign", true, false)
 	if len(results) != 2 {
 		t.Fatalf("expected 2 callers of jwt.Sign, got %d", len(results))
 	}
 
 	// includeTests = false -> should return 1 caller (the production one)
-	resultsNoTests := search.Callers(g, "jwt.Sign", false)
+	resultsNoTests := search.Callers(g, "jwt.Sign", false, false)
 	if len(resultsNoTests) != 1 {
 		t.Fatalf("expected 1 production caller of jwt.Sign, got %d", len(resultsNoTests))
 	}
@@ -153,7 +153,7 @@ func TestCallers(t *testing.T) {
 
 func TestCallees(t *testing.T) {
 	g := makeGraph()
-	results := search.Callees(g, "IssueToken", true)
+	results := search.Callees(g, "IssueToken", true, false)
 	if len(results) == 0 {
 		t.Fatal("expected callees of IssueToken")
 	}

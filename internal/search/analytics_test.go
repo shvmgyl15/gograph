@@ -48,7 +48,7 @@ func buildContextGraph() *graph.Graph {
 
 func TestContext_Found(t *testing.T) {
 	g := buildContextGraph()
-	result := search.Context(g, ".", "Connect")
+	result := search.Context(g, ".", "Connect", false)
 	if result == nil {
 		t.Fatal("expected a ContextResult for 'Connect', got nil")
 	}
@@ -71,7 +71,7 @@ func TestContext_Found(t *testing.T) {
 
 func TestContext_NotFound(t *testing.T) {
 	g := buildContextGraph()
-	result := search.Context(g, ".", "NonExistentSymbol999")
+	result := search.Context(g, ".", "NonExistentSymbol999", false)
 	if result != nil {
 		t.Errorf("expected nil for unknown symbol, got %+v", result)
 	}
@@ -79,7 +79,7 @@ func TestContext_NotFound(t *testing.T) {
 
 func TestContext_CaseInsensitive(t *testing.T) {
 	g := buildContextGraph()
-	result := search.Context(g, ".", "connect") // lowercase
+	result := search.Context(g, ".", "connect", false) // lowercase
 	if result == nil {
 		t.Fatal("Context should match case-insensitively")
 	}
@@ -741,7 +741,7 @@ func TestChanges_ChangedFilesAreSorted(t *testing.T) {
 
 func TestContext_CallerAndCalleeContent(t *testing.T) {
 	g := buildContextGraph()
-	result := search.Context(g, ".", "Connect")
+	result := search.Context(g, ".", "Connect", false)
 	if result == nil {
 		t.Fatal("expected result")
 	}

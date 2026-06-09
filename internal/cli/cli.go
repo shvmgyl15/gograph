@@ -738,7 +738,7 @@ func runNode(args []string) int {
 
 func runCallers(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: gograph callers <function-or-method-name> [--no-tests] [--depth N]")
+		fmt.Fprintln(os.Stderr, "usage: gograph callers <function-or-method-name> [--no-tests] [--depth N] [--exact]")
 		return 1
 	}
 	g, err := loadGraph(".")
@@ -748,11 +748,14 @@ func runCallers(args []string) int {
 	}
 	includeTests := true
 	depth := 1
+	exactMatch := false
 	var termParts []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--no-tests":
 			includeTests = false
+		case "--exact":
+			exactMatch = true
 		case "--depth":
 			if i+1 < len(args) {
 				i++
@@ -774,9 +777,9 @@ func runCallers(args []string) int {
 	}
 	var results []search.Result
 	if depth > 1 {
-		results = search.CallersDepth(g, term, depth, includeTests)
+		results = search.CallersDepth(g, term, depth, includeTests, exactMatch)
 	} else {
-		results = search.Callers(g, term, includeTests)
+		results = search.Callers(g, term, includeTests, exactMatch)
 	}
 	return printResults("callers", term, results, "no callers found")
 }
@@ -821,7 +824,7 @@ func runCallees(args []string) int {
 	if depth > 1 {
 		results = search.CalleesDepth(g, term, depth, includeTests)
 	} else {
-		results = search.Callees(g, term, includeTests)
+		results = search.Callees(g, term, includeTests, false)
 	}
 	return printResults("callees", term, results, "no callees found")
 }
@@ -1681,6 +1684,7 @@ func runContext(args []string) int {
 
 	uncommitted := false
 	limit := 0
+	exactMatch := false
 	var termParts []string
 	i := 0
 	for i < len(args) {
@@ -1688,6 +1692,8 @@ func runContext(args []string) int {
 		switch {
 		case a == "--uncommitted":
 			uncommitted = true
+		case a == "--exact":
+			exactMatch = true
 		case (a == "--limit" || a == "-n") && i+1 < len(args):
 			if n, err := strconv.Atoi(args[i+1]); err == nil {
 				limit = n
@@ -1727,7 +1733,7 @@ func runContext(args []string) int {
 		}
 		var results []*search.ContextResult
 		for _, sym := range syms {
-			if r := search.Context(g, root, sym); r != nil {
+			if r := search.Context(g, root, sym, false); r != nil {
 				results = append(results, r)
 			}
 		}
@@ -1746,7 +1752,7 @@ func runContext(args []string) int {
 		return 1
 	}
 	term := strings.Join(termParts, " ")
-	result := search.Context(g, root, term)
+	result := search.Context(g, root, term, exactMatch)
 	if result == nil {
 		if jsonMode {
 			return PrintJSON(okEnvelope("context", term, nil, 0))
@@ -2754,7 +2760,7 @@ func runPlan(args []string) int {
 		root, _ := filepath.Abs(rootfind.FindRoot())
 		fmt.Println("\n=== INSPECT_FIRST CONTEXTS ===")
 		for _, sym := range plan.ReadFirst {
-			result := search.Context(g, root, sym.Name)
+			result := search.Context(g, root, sym.Name, false)
 			if result == nil {
 				continue
 			}

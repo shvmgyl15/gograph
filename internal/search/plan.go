@@ -104,7 +104,7 @@ func Plan(g *graph.Graph, symbolNames []string, title string) *PlanResult {
 		}
 		// Find immediate callers
 		for _, s := range matches {
-			callers := Callers(g, s.ID, true)
+			callers := Callers(g, s.ID, true, false)
 			for _, c := range callers {
 				line := fmt.Sprintf("%s:%d %s", c.File, c.Line, c.Name)
 				if !readSet[line] {
