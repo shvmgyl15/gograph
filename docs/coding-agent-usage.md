@@ -91,6 +91,10 @@ gograph mocks <interface>        # alias for implementers --test-only (kept for 
 gograph fixtures <pkg>           # find test helper structs and functions in test files
 gograph endpoint <route>         # full vertical slice for one HTTP endpoint: handler, call chain, SQL, env reads [--depth N] [--json]
 gograph capabilities             # print token-optimized AI agent cheat sheet
+gograph wiki [--output dir]      # generate llm-wiki/ — curated, machine-first markdown pages (overview, architecture,
+                                 # hotspots, routes, env, errors, concurrency, per-package docs, api-surface).
+                                 # Run once per session for zero-cost codebase orientation.
+                                 # Default output: ./llm-wiki/  (add llm-wiki/ to .gitignore)
 gograph mcp <path>               # runs an MCP server over stdio
 gograph add-claude-plugin        # install MCP server + CLAUDE.md rules + PreToolUse hook (Claude Desktop & Claude Code)
 gograph hook-guard               # PreToolUse hook binary — reads tool call JSON from stdin, blocks Go symbol greps (invoked automatically by Claude Code)
@@ -138,7 +142,9 @@ grep -rn "runCheck" .            # → gograph_callers "runCheck"
 ## Concrete agent workflows
 
 ### Recommended agent workflow:
-- Session start: `gograph stats` + `gograph stale` (index health)
+- Session start: read `llm-wiki/README.md` → `llm-wiki/project.md` → `llm-wiki/rules.md` → `llm-wiki/agent-contract.md` (if llm-wiki/ exists)
+- If generated pages are missing: `gograph build . --precise && gograph wiki`
+- Graph freshness: `gograph stats` + `gograph stale`
 - Understand a symbol: `gograph context <symbol>` (raw data) or `gograph explain <symbol>` (narrative — use when you need to understand purpose and architecture)
 - Before editing: `gograph plan <symbol>` (callers, tests, SQL/env/route risk)
 - Before a package refactor: `gograph dependents <pkg>` (every consumer)
@@ -699,6 +705,7 @@ The current tool suite includes:
 - **`gograph_trace`**: Alias for `gograph_errorflow`. Kept for backward compatibility — prefer `gograph_errorflow` directly.
 - **`gograph_diagram`**: Mermaid architecture diagram of the repository package dependency graph. Parameters: `group_by` (package/module/service/file), `max_depth` (0=unlimited), `include_stdlib` (bool). Use for onboarding or communicating package structure.
 - **`gograph_check`**: Run static policy checks (boundaries, api_drift, max_arity, max_complexity, test_coverage, no_orphans). Parameters: `since` (git ref for api_drift baseline), `uncommitted` (bool), `config` (path to checks.json). Returns structured JSON with status (pass/warn/fail), findings, and summary counts. Use during PR review or pre-commit analysis. For CI enforcement with non-zero exit code, use CLI `gograph gate` instead.
+- **`gograph_wiki`**: Generate the `llm-wiki/` directory of machine-first markdown pages from the static graph. Pages: overview, architecture, hotspots, routes, env, errors, concurrency, api-surface, and one file per internal package. Optional `output` parameter to override directory. Run once per session for zero-cost orientation. Returns a JSON manifest of written page filenames.
 
 ## Recommended project setup
 

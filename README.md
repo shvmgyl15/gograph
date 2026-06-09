@@ -75,6 +75,7 @@ All commands support `--json` for machine-readable output and `--files-only` for
 | **Diagnostics** | `hotspot`, `returnusage`, `skeleton`, `diagram`, `changes`, `public` | Hotspots, return usage, API signatures, Mermaid diagrams. |
 | **CI/CD** | `check [--since\|--uncommitted]`, `gate`, `snapshot save\|diff\|list\|drop` | Policy checks, threshold enforcement, metric snapshots. |
 | **Telemetry** | `session create\|end\|audit\|cleanup` | Agent compliance tracking and grading (A–F). |
+| **LLM-Wiki** | `wiki [--output dir]` | Generate `llm-wiki/` — machine-first markdown pages for zero-cost agent orientation (overview, architecture, hotspots, routes, env, errors, concurrency, per-package, API surface). |
 
 > Full command reference with examples: [gograph.identuum.ai/docs/command-reference](https://gograph.identuum.ai/docs/command-reference/)
 
@@ -115,6 +116,14 @@ gograph callers "ValidateToken" --json
 ```
 
 For full integration guides, see [docs/coding-agent-usage.md](docs/coding-agent-usage.md).
+
+**Zero-cost orientation with `llm-wiki/`:** Run `gograph wiki` once per session to generate a directory of machine-first markdown pages — overview, architecture diagram, hotspots, routes, env vars, error sites, concurrency, per-package docs, and the full API surface. Agents read these pages instead of issuing dozens of individual tool calls:
+```bash
+gograph build . --precise
+gograph wiki                 # writes to ./llm-wiki/
+# then read: llm-wiki/README.md → project.md → rules.md → agent-contract.md → overview.md
+```
+Add `llm-wiki/` to `.gitignore` — these files are regenerated each session.
 
 ## Example Output
 

@@ -19,6 +19,7 @@ import (
 	"github.com/ozgurcd/gograph/internal/graph"
 	"github.com/ozgurcd/gograph/internal/search"
 	"github.com/ozgurcd/gograph/internal/session"
+	"github.com/ozgurcd/gograph/internal/wiki"
 )
 
 // MCPResponse is the stable structured data payload returned by complex tools.
@@ -172,8 +173,10 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 				{"name": "gograph_mocks", "purpose": "Alias for gograph_implementers with test_only=true. Kept for compatibility."},
 				{"name": "gograph_explain", "purpose": "LLM-ready narrative for a symbol: role, callers, callees, complexity, SQL, env, routes, concurrency, tests, interfaces — all synthesized."},
 				{"name": "gograph_stats", "purpose": "Repository-level statistics: package, file, and symbol counts plus import edge count."},
+				{"name": "gograph_wiki", "purpose": "Generate the llm-wiki/ directory: machine-first markdown pages covering overview, architecture, hotspots, routes, env, errors, concurrency, per-package docs, and API surface."},
 			},
 			"recommended_workflows": map[string][]string{
+				"session_start":  {"READ llm-wiki/README.md", "READ llm-wiki/project.md", "READ llm-wiki/rules.md", "READ llm-wiki/agent-contract.md", "gograph_wiki", "gograph_stats", "gograph_stale"},
 				"before_edit":   {"gograph_context", "gograph_plan"},
 				"after_edit":    {"gograph_review", "gograph_api", "gograph_boundaries"},
 				"error_changes": {"gograph_errorflow", "gograph_review"},
@@ -1877,5 +1880,41 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGra
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		return mcp.NewToolResultText(fmt.Sprintf("Successfully deleted %d stale session log files.", count)), nil
+	})
+	// Tool: gograph_wiki
+	wikiTool := mcp.NewTool("gograph_wiki",
+		mcp.WithDescription("Generate the llm-wiki/ directory of machine-first markdown pages from the static graph. Pages produced: overview.md, architecture.md, hotspots.md, routes.md, env.md, errors.md, concurrency.md, api-surface.md, and one packages/<name>.md per internal package. Requires .gograph/graph.json — run `gograph build .` first. Writes files to disk; all other gograph tools are read-only. WHEN TO USE: At the start of an agent session on an unfamiliar codebase — run once to get a token-efficient orientation without issuing dozens of individual tool calls. NOT TO USE: For targeted symbol lookups (use gograph_context or gograph_source). RETURNS: JSON manifest of written page filenames and a count; error when the graph cannot be loaded or the output directory cannot be created."),
+		mcp.WithString("output", mcp.Description("Output directory for wiki pages (default: 'llm-wiki')")),
+	)
+	addTool(wikiTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		outputDir := "llm-wiki"
+		if args, ok := request.Params.Arguments.(map[string]any); ok {
+			if v, ok := args["output"].(string); ok && v != "" {
+				outputDir = v
+			}
+		}
+		gen := wiki.New(g)
+		pages, err := gen.Generate(outputDir)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("wiki generation failed: %v", err)), nil
+		}
+		var written []string
+		for _, p := range pages {
+			if p.Content != "" {
+				written = append(written, p.Filename)
+			}
+		}
+		data, err := json.MarshalIndent(map[string]any{
+			"output":  outputDir,
+			"count":   len(written),
+			"pages":   written,
+		}, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
 	})
 }

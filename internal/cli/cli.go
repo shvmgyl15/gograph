@@ -21,6 +21,7 @@ import (
 	"github.com/ozgurcd/gograph/internal/scanner"
 	"github.com/ozgurcd/gograph/internal/search"
 	"github.com/ozgurcd/gograph/internal/session"
+	"github.com/ozgurcd/gograph/internal/wiki"
 )
 
 const outputDir = ".gograph"
@@ -202,6 +203,8 @@ func dispatch(args []string) int {
 		return runStale()
 	case "stats":
 		return runStats()
+	case "wiki":
+		return runWiki(args[1:])
 	case "orphans":
 		return runOrphans()
 	case "godobj":
@@ -291,6 +294,17 @@ func dispatch(args []string) int {
 
 func runCapabilities() int {
 	fmt.Println(`gograph: AST-aware Repository Navigation Tool for AI Agents
+
+━━━ READ FIRST ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+This repository contains an llm-wiki/ directory with curated context pages.
+Read them BEFORE writing any code or running any analysis:
+
+  llm-wiki/README.md        → index of all wiki pages
+  llm-wiki/project.md       → project identity, non-goals, correctness model
+  llm-wiki/rules.md         → binding rules (git, build, testing, architecture)
+  llm-wiki/agent-contract.md → session lifecycle and tool selection contract
+
+If generated pages are missing: gograph build . --precise && gograph wiki
 
 ━━━ PREREQUISITE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ALL query commands read from .gograph/graph.json. If it does not exist, every
@@ -1287,6 +1301,12 @@ EXTRACTION
 AGENT INTEGRATION
   capabilities               Token-optimized cheat sheet for AI agents. Run this
                              first so the agent knows how to use gograph.
+  wiki [--output <dir>]      Generate llm-wiki/ — machine-first markdown pages
+                             from the static graph. Covers: overview, architecture,
+                             hotspots, routes, env, errors, concurrency, api-surface,
+                             and one file per internal package. Run once per session
+                             for zero-cost orientation. Default: ./llm-wiki/.
+                             Add llm-wiki/ to .gitignore.
   mcp [path]                 Start a Model Context Protocol server over stdio.
                              Exposes graph queries as native tools for AI clients.
   session <action> [word]    Manage telemetry & audit sessions. Actions:
@@ -2842,5 +2862,39 @@ func runExplain(args []string) int {
 		return PrintJSON(okEnvelope("explain", term, result, 1))
 	}
 	fmt.Printf("=== EXPLAIN: %s ===\n\n%s\n", result.Symbol, result.Narrative)
+	return 0
+}
+
+// runWiki generates the llm-wiki/ directory from the static graph.
+// Usage: gograph wiki [--output <dir>]
+func runWiki(args []string) int {
+	outputDir := "llm-wiki"
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == "--output" {
+			outputDir = args[i+1]
+		}
+	}
+
+	g, err := loadGraph(".")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+
+	gen := wiki.New(g)
+	pages, err := gen.Generate(outputDir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "wiki:", err)
+		return 1
+	}
+
+	written := 0
+	for _, p := range pages {
+		if p.Content != "" {
+			fmt.Printf("  wrote  %s/%s\n", outputDir, p.Filename)
+			written++
+		}
+	}
+	fmt.Printf("\nDone. %d page(s) written to %s/\n", written, outputDir)
 	return 0
 }

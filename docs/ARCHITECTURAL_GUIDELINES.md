@@ -35,3 +35,5 @@ The codebase is organized into strict domains:
   2. `docs/coding-agent-usage.md`
   3. `gograph capabilities` (`internal/cli/cli.go`)
   4. `gograph --help` (`internal/cli/cli.go`)
+  5. `llm-wiki/README.md` — update the generated pages table if a new page type is added
+  6. `llm-wiki/agent-contract.md` — update tool selection rules if a new command changes workflow
