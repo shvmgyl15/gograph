@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -173,10 +174,13 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 				{"name": "gograph_mocks", "purpose": "Alias for gograph_implementers with test_only=true. Kept for compatibility."},
 				{"name": "gograph_explain", "purpose": "LLM-ready narrative for a symbol: role, callers, callees, complexity, SQL, env, routes, concurrency, tests, interfaces — all synthesized."},
 				{"name": "gograph_stats", "purpose": "Repository-level statistics: package, file, and symbol counts plus import edge count."},
+				{"name": "gograph_summary", "purpose": "Single-call codebase briefing: top 3 hotspots, worst instability package, highest complexity function, orphan count, and god-object count. Replaces 5 separate tool calls."},
+				{"name": "gograph_untested", "purpose": "Sweep the full graph and return production functions that have callers but zero test edges — the coverage gap not visible from orphans or per-symbol tests lookups."},
+				{"name": "gograph_doc", "purpose": "Fetch Go doc (signature + doc comment) for any stdlib or third-party symbol via `go doc`. No graph required — use when a call chain leads outside the project."},
 				{"name": "gograph_wiki", "purpose": "Generate the llm-wiki/ directory: machine-first markdown pages covering overview, architecture, hotspots, routes, env, errors, concurrency, per-package docs, and API surface."},
 			},
 			"recommended_workflows": map[string][]string{
-				"session_start":  {"READ llm-wiki/README.md", "READ llm-wiki/project.md", "READ llm-wiki/rules.md", "READ llm-wiki/agent-contract.md", "gograph_wiki", "gograph_stats", "gograph_stale"},
+				"session_start":  {"READ llm-wiki/README.md", "READ llm-wiki/project.md", "READ llm-wiki/rules.md", "READ llm-wiki/agent-contract.md", "gograph_summary", "gograph_stale"},
 				"before_edit":   {"gograph_context", "gograph_plan"},
 				"after_edit":    {"gograph_review", "gograph_api", "gograph_boundaries"},
 				"error_changes": {"gograph_errorflow", "gograph_review"},
@@ -1912,6 +1916,127 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGra
 			"count":   len(written),
 			"pages":   written,
 		}, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_summary
+	summaryTool := mcp.NewTool("gograph_summary",
+		mcp.WithDescription("Single-call codebase briefing: top 3 hotspots (most-called symbols), worst instability package, highest cyclomatic complexity function, total orphan count, and god-object count. Requires .gograph/graph.json — run `gograph build .` first. Read-only; no side effects. WHEN TO USE: At the very start of any session — replaces running gograph_hotspot + gograph_coupling + gograph_orphans + gograph_complexity + gograph_godobj separately (5 calls → 1). NOT TO USE: For detailed drill-down into a specific metric (use the dedicated tool after reviewing summary). RETURNS: JSON with symbols, packages, hotspots[], worst_instability, top_complexity, orphan_count, and god_object_count."),
+	)
+	addTool(summaryTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		hotspots := search.Hotspot(g, 3, false)
+		coupling := search.Coupling(g, "", search.CouplingOptions{})
+		complexity := search.Complexity(g, "")
+		orphanList := search.Orphans(g)
+		godObjs := search.GodObjects(g, search.DefaultGodObjectParams())
+		stats := search.Stats(g)
+
+		type summaryResult struct {
+			Symbols    int                     `json:"symbols"`
+			Packages   int                     `json:"packages"`
+			Hotspots   []search.HotspotResult  `json:"hotspots"`
+			WorstPkg   *search.PackageCoupling `json:"worst_instability,omitempty"`
+			TopComplex *search.ComplexityResult `json:"top_complexity,omitempty"`
+			Orphans    int                     `json:"orphan_count"`
+			GodObjects int                     `json:"god_object_count"`
+		}
+		res := summaryResult{
+			Symbols:    stats.Symbols,
+			Packages:   stats.Packages,
+			Hotspots:   hotspots,
+			Orphans:    len(orphanList),
+			GodObjects: len(godObjs),
+		}
+		if len(coupling) > 0 {
+			res.WorstPkg = &coupling[0]
+		}
+		if len(complexity) > 0 {
+			res.TopComplex = &complexity[0]
+		}
+		data, err := json.MarshalIndent(res, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_untested
+	untestedTool := mcp.NewTool("gograph_untested",
+		mcp.WithDescription("Sweep the full graph in one pass and return all production functions and methods that have at least one non-test caller but zero attributed test edges. Requires .gograph/graph.json — run `gograph build .` first. Read-only; no side effects. WHEN TO USE: During test coverage audits or pre-release hardening — finds the functions most at risk of regressions (high callers, no tests). Distinct from gograph_orphans (zero callers) — untested symbols ARE used in production but lack test coverage. Replaces N sequential `gograph_tests <sym>` calls across the full codebase. NOT TO USE: For a single symbol's tests (use gograph_tests); for unreachable dead code (use gograph_orphans). RETURNS: JSON array sorted by caller_count descending, each entry with name, kind, file, line, caller_count, and package; empty array when all called symbols have test coverage."),
+		mcp.WithString("pkg", mcp.Description("Optional package name substring to filter results (e.g. 'cli', 'search')")),
+		mcp.WithNumber("top", mcp.Description("Limit results to top N by caller count (0 = all, default)")),
+	)
+	addTool(untestedTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		results := search.Untested(g)
+
+		// Parse optional filters from MCP arguments.
+		pkg := ""
+		top := 0
+		if args, ok := request.Params.Arguments.(map[string]any); ok {
+			if v, ok := args["pkg"].(string); ok {
+				pkg = v
+			}
+			if v, ok := args["top"].(float64); ok {
+				top = int(v)
+			}
+		}
+
+		if pkg != "" {
+			pkgLower := strings.ToLower(pkg)
+			var filtered []search.UntestedResult
+			for _, r := range results {
+				if strings.Contains(strings.ToLower(r.PackageName), pkgLower) ||
+					strings.Contains(strings.ToLower(r.File), pkgLower) {
+					filtered = append(filtered, r)
+				}
+			}
+			results = filtered
+		}
+		if top > 0 && len(results) > top {
+			results = results[:top]
+		}
+
+		data, err := json.MarshalIndent(results, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
+	// Tool: gograph_doc
+	docTool := mcp.NewTool("gograph_doc",
+		mcp.WithDescription("Fetch the Go documentation (signature + doc comment) for any package, stdlib symbol, or third-party symbol by running `go doc <query>`. No graph build required — works without .gograph/graph.json. WHEN TO USE: When following a call chain into stdlib (fmt, net/http, io) or a third-party dependency (pgx, gin, zap) and you need the signature or method listing without reading source files. NOT TO USE: For project-internal symbols (use gograph_source or gograph_context instead — they return callers/callees too). RETURNS: The raw `go doc` output text including package declaration, function/type/method signature, and full doc comment; error message when the symbol is not found or go is not on PATH."),
+		mcp.WithString("query", mcp.Required(), mcp.Description("The go doc query string. Examples: 'fmt.Errorf', 'net/http.HandleFunc', 'io.Reader', 'github.com/jackc/pgx/v5.Conn.QueryRow'")),
+	)
+	addTool(docTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		query, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		q, _ := query["query"].(string)
+		if q == "" {
+			return mcp.NewToolResultError("query is required"), nil
+		}
+
+		cmd := exec.Command("go", "doc", q)
+		out, err := cmd.Output()
+		if err != nil {
+			var exitErr *exec.ExitError
+			errMsg := err.Error()
+			if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
+				errMsg = strings.TrimSpace(string(exitErr.Stderr))
+			}
+			return mcp.NewToolResultError(errMsg), nil
+		}
+		text := strings.TrimSpace(string(out))
+		type docResult struct {
+			Query  string `json:"query"`
+			Output string `json:"output"`
+		}
+		data, err := json.MarshalIndent([]docResult{{Query: q, Output: text}}, "", "  ")
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}

@@ -1,0 +1,200 @@
+package search_test
+
+import (
+	"testing"
+
+	"github.com/ozgurcd/gograph/internal/graph"
+	"github.com/ozgurcd/gograph/internal/search"
+)
+
+// buildUntestedGraph builds a minimal, controlled graph for Untested tests.
+//
+// Symbols:
+//   - foo   (function, production) — called by bar (production), NO test edge  → UNTESTED
+//   - bar   (function, production) — called by main (production), HAS test edge → tested
+//   - baz   (function, production) — zero callers                              → orphan (not untested)
+//   - qux   (function, production) — called only from test file                → excluded (test-only caller)
+//   - main  (function, production) — always skipped by convention
+//   - init  (function, production) — always skipped by convention
+//   - setup (function, test file)  — skipped (test file symbol)
+func buildUntestedGraph() *graph.Graph {
+	return &graph.Graph{
+		Symbols: []graph.SymbolNode{
+			{ID: "pkg::foo", Name: "foo", Kind: graph.KindFunction, PackageName: "pkg", File: "pkg/a.go", Line: 10},
+			{ID: "pkg::bar", Name: "bar", Kind: graph.KindFunction, PackageName: "pkg", File: "pkg/a.go", Line: 20},
+			{ID: "pkg::baz", Name: "baz", Kind: graph.KindFunction, PackageName: "pkg", File: "pkg/a.go", Line: 30},
+			{ID: "pkg::qux", Name: "qux", Kind: graph.KindFunction, PackageName: "pkg", File: "pkg/a.go", Line: 40},
+			{ID: "pkg::main", Name: "main", Kind: graph.KindFunction, PackageName: "pkg", File: "pkg/main.go", Line: 1},
+			{ID: "pkg::init", Name: "init", Kind: graph.KindFunction, PackageName: "pkg", File: "pkg/a.go", Line: 5},
+			{ID: "pkg::setup", Name: "setup", Kind: graph.KindFunction, PackageName: "pkg", File: "pkg/a_test.go", Line: 5},
+		},
+		Calls: []graph.CallEdge{
+			// foo is called by bar (production file) — qualifies as "has caller"
+			{File: "pkg/a.go", CalleeSymbolID: "pkg::foo"},
+			// bar is called by main (production file)
+			{File: "pkg/main.go", CalleeSymbolID: "pkg::bar"},
+			// qux is called ONLY from a test file — should not count as a production caller
+			{File: "pkg/a_test.go", CalleeSymbolID: "pkg::qux"},
+			// baz has zero callers (orphan)
+		},
+		TestEdges: []graph.TestEdge{
+			// bar has a test edge → it is "tested"
+			{Target: "pkg::bar"},
+		},
+	}
+}
+
+// TestUntestedBasic verifies the core: foo is returned, bar is not.
+func TestUntestedBasic(t *testing.T) {
+	g := buildUntestedGraph()
+	results := search.Untested(g)
+
+	found := make(map[string]search.UntestedResult)
+	for _, r := range results {
+		found[r.Name] = r
+	}
+
+	// foo: production caller + no test edge → must appear
+	if _, ok := found["foo"]; !ok {
+		t.Error("expected 'foo' in Untested results (has production caller, no test edge)")
+	}
+
+	// bar: has a test edge → must NOT appear
+	if _, ok := found["bar"]; ok {
+		t.Error("'bar' should NOT be in Untested results (it has a test edge)")
+	}
+}
+
+// TestUntestedExcludesOrphans verifies symbols with zero callers are not reported.
+func TestUntestedExcludesOrphans(t *testing.T) {
+	g := buildUntestedGraph()
+	results := search.Untested(g)
+
+	for _, r := range results {
+		if r.Name == "baz" {
+			t.Error("'baz' is an orphan (zero callers) and should NOT appear in Untested results")
+		}
+	}
+}
+
+// TestUntestedExcludesTestOnlyCallers verifies that symbols called only from test
+// files are not counted as "having a production caller".
+func TestUntestedExcludesTestOnlyCallers(t *testing.T) {
+	g := buildUntestedGraph()
+	results := search.Untested(g)
+
+	for _, r := range results {
+		if r.Name == "qux" {
+			t.Errorf("'qux' has only test-file callers and should NOT appear in Untested results")
+		}
+	}
+}
+
+// TestUntestedExcludesConventionSymbols verifies main and init are never reported.
+func TestUntestedExcludesConventionSymbols(t *testing.T) {
+	g := buildUntestedGraph()
+	results := search.Untested(g)
+
+	for _, r := range results {
+		if r.Name == "main" || r.Name == "init" {
+			t.Errorf("'%s' is a convention entry point and should NOT appear in Untested results", r.Name)
+		}
+	}
+}
+
+// TestUntestedExcludesTestFileSymbols verifies symbols defined in *_test.go are excluded.
+func TestUntestedExcludesTestFileSymbols(t *testing.T) {
+	g := buildUntestedGraph()
+	results := search.Untested(g)
+
+	for _, r := range results {
+		if r.Name == "setup" {
+			t.Error("'setup' is in a test file and should NOT appear in Untested results")
+		}
+	}
+}
+
+// TestUntestedSortOrder verifies results are sorted by CallerCount descending.
+func TestUntestedSortOrder(t *testing.T) {
+	g := &graph.Graph{
+		Symbols: []graph.SymbolNode{
+			{ID: "pkg::alpha", Name: "alpha", Kind: graph.KindFunction, PackageName: "pkg", File: "pkg/a.go"},
+			{ID: "pkg::beta", Name: "beta", Kind: graph.KindFunction, PackageName: "pkg", File: "pkg/a.go"},
+			{ID: "pkg::gamma", Name: "gamma", Kind: graph.KindFunction, PackageName: "pkg", File: "pkg/a.go"},
+		},
+		Calls: []graph.CallEdge{
+			// beta has 3 callers
+			{File: "pkg/a.go", CalleeSymbolID: "pkg::beta"},
+			{File: "pkg/a.go", CalleeSymbolID: "pkg::beta"},
+			{File: "pkg/a.go", CalleeSymbolID: "pkg::beta"},
+			// gamma has 2 callers
+			{File: "pkg/a.go", CalleeSymbolID: "pkg::gamma"},
+			{File: "pkg/a.go", CalleeSymbolID: "pkg::gamma"},
+			// alpha has 1 caller
+			{File: "pkg/a.go", CalleeSymbolID: "pkg::alpha"},
+		},
+		TestEdges: nil, // none tested
+	}
+
+	results := search.Untested(g)
+
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(results))
+	}
+	if results[0].Name != "beta" {
+		t.Errorf("expected beta first (3 callers), got %s", results[0].Name)
+	}
+	if results[1].Name != "gamma" {
+		t.Errorf("expected gamma second (2 callers), got %s", results[1].Name)
+	}
+	if results[2].Name != "alpha" {
+		t.Errorf("expected alpha third (1 caller), got %s", results[2].Name)
+	}
+}
+
+// TestUntestedCallerCountAccurate verifies the CallerCount field is correct.
+func TestUntestedCallerCountAccurate(t *testing.T) {
+	g := buildUntestedGraph()
+	results := search.Untested(g)
+
+	for _, r := range results {
+		if r.Name == "foo" {
+			if r.CallerCount != 1 {
+				t.Errorf("expected foo.CallerCount=1, got %d", r.CallerCount)
+			}
+		}
+	}
+}
+
+// TestUntestedEmptyGraph returns empty slice — no panic on empty graph.
+func TestUntestedEmptyGraph(t *testing.T) {
+	g := &graph.Graph{}
+	results := search.Untested(g)
+	if results != nil && len(results) != 0 {
+		t.Errorf("expected empty result for empty graph, got %d items", len(results))
+	}
+}
+
+// TestUntestedShortNameFallback verifies the short-name test edge lookup works
+// when TestEdge.Target is a plain name (not a fully-qualified ID).
+func TestUntestedShortNameFallback(t *testing.T) {
+	g := &graph.Graph{
+		Symbols: []graph.SymbolNode{
+			{ID: "pkg::handler", Name: "handler", Kind: graph.KindFunction, PackageName: "pkg", File: "pkg/a.go"},
+		},
+		Calls: []graph.CallEdge{
+			{File: "pkg/a.go", CalleeSymbolID: "pkg::handler"},
+		},
+		TestEdges: []graph.TestEdge{
+			// Target is a short name, not a FQ ID — must still match.
+			{Target: "handler"},
+		},
+	}
+
+	results := search.Untested(g)
+	for _, r := range results {
+		if r.Name == "handler" {
+			t.Error("'handler' has a short-name test edge and should NOT appear in Untested results")
+		}
+	}
+}

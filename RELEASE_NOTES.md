@@ -1,5 +1,147 @@
 # Release Notes
 
+## v1.4.80 — 2026-06-09
+
+### New Commands
+
+#### `gograph doc <pkg[.Symbol]>` / MCP `gograph_doc`
+
+Thin wrapper around `go doc` that surfaces Go documentation (signature + doc comment) for **any stdlib or third-party symbol** — no graph build required.
+
+**Problem it solves:** When gograph traces a call chain into an external dependency (e.g. `pgx`, `net/http`, `encoding/json`), agents hit a dead wall — the graph only indexes project-internal symbols. Previously the only options were to shell out or hallucinate the signature. `gograph doc` closes this gap in one call.
+
+**Examples:**
+```bash
+gograph doc fmt.Errorf
+gograph doc net/http.HandleFunc
+gograph doc io.Reader
+gograph doc github.com/jackc/pgx/v5.Conn.QueryRow
+gograph doc encoding/json.Unmarshal
+gograph doc --json fmt.Errorf      # machine-readable envelope
+```
+
+**Key properties:**
+- **No graph required** — works even without `.gograph/graph.json`
+- **Delegates to `go doc`** — same output as running `go doc` in your shell; supports all go doc query formats
+- **Error passthrough** — surfaced directly from `go doc` stderr for clarity
+
+**NOT for project-internal symbols** — use `gograph source` or `gograph context` for those; they provide callers/callees too.
+
+---
+
+### Documentation
+
+| Target | Changes |
+|---|---|
+| `README.md` | Added Doc row to command table |
+| `docs/coding-agent-usage.md` | Added `gograph doc` to cheat sheet |
+| `gograph capabilities` | Added "External symbol signature" workflow entry |
+| `gograph --help` | Added `doc` command description |
+| `internal/mcp/server.go` | Registered `gograph_doc`; added to capabilities list |
+| `RELEASE_NOTES.md` | This file |
+
+---
+
+## v1.4.79 — 2026-06-09
+
+### New Commands
+
+#### `gograph untested [--pkg name] [--top N]` / MCP `gograph_untested`
+
+Sweeps the full graph in one pass and returns production functions and methods that have **at least one non-test caller but zero test edges** — the coverage gap invisible to both `orphans` (zero callers) and per-symbol `tests <sym>` queries.
+
+**Key properties:**
+- **Distinct from orphans:** Untested symbols *are* called in production code — they are actively exercised but unverified.
+- **Risk-sorted:** Results ordered by `caller_count` descending. A function called 60× with no test is higher risk than one called 1×.
+- **Test files excluded from both sides:** Only production callers count; only production symbols are checked.
+
+**Flags:**
+- `--pkg <name>` — filter by package name or path substring
+- `--top N` — limit output to top N results
+- `--json` — machine-readable envelope
+
+**Token-saving benefit:** Replaces N sequential `gograph tests <sym>` calls across all 600+ symbols. A single sweep surfaces the entire coverage gap ranked by blast radius risk.
+
+**Example output:**
+```
+Untested Functions (top 10, sorted by caller count):
+
+FUNCTION                                  PACKAGE       CALLERS  FILE
+------------------------------------------------------------------------------------------
+PrintJSON                                 cli               60  internal/cli/output.go:37
+loadGraph                                 cli               57  internal/cli/cli.go:970
+printResults                              cli               34  internal/cli/cli.go:683
+```
+
+---
+
+### Architecture
+
+- **`search.Untested(g *graph.Graph) []UntestedResult`** — single graph sweep:
+  1. Build `testedIDs` from `g.TestEdges` (both FQ-ID and short-name keys)
+  2. Build `callerCount` from `g.Calls` (skipping test files)
+  3. Emit any function/method symbol with `callerCount > 0` and not in `testedIDs`
+- **`search.UntestedResult`** — typed struct with `name`, `kind`, `file`, `line`, `caller_count`, `package` fields (JSON-tagged)
+
+---
+
+### Documentation
+
+| Target | Changes |
+|---|---|
+| `README.md` | Added Untested row to command table |
+| `docs/coding-agent-usage.md` | Added `gograph untested` to cheat sheet |
+| `gograph capabilities` | Added "Test coverage gaps" workflow entry |
+| `gograph --help` | Added `untested` command description |
+| `internal/mcp/server.go` | Registered `gograph_untested`; added to capabilities list |
+| `RELEASE_NOTES.md` | This file |
+
+---
+
+## v1.4.78 — 2026-06-09
+
+### New Commands
+
+#### `gograph summary` / MCP `gograph_summary`
+
+Single-call codebase briefing that replaces the five orientation queries agents run at the start of every session.
+
+**Aggregates in one call:**
+- Top 3 hotspots (most-called symbols with caller count)
+- Worst instability package (highest Ce/(Ca+Ce) ratio)
+- Highest cyclomatic complexity function (score + severity label)
+- Total orphan count (unreachable symbols)
+- God-object count (structs exceeding method/field/call thresholds)
+
+**Token-saving benefit:** Eliminates `hotspot` + `coupling` + `orphans` + `complexity` + `godobj` (5 tool calls → 1). The session-start workflow in `gograph capabilities` and the MCP `session_start` recommended workflow both now lead with `summary`.
+
+**Output formats:**
+```
+CODEBASE SUMMARY  (637 symbols, 13 packages)
+
+Hotspots:           PrintJSON (116x), loadGraph (112x), printResults (68x)
+Worst instability:  github.com/ozgurcd/gograph/scripts (1.00)
+Highest complexity: NewServer (score=138, VERY HIGH)
+Orphans:            187 unreachable symbols
+God objects:        10
+```
+
+Supports `--json` for the standard machine-readable envelope.
+
+---
+
+### Documentation
+
+| Target | Changes |
+|---|---|
+| `README.md` | Added `summary` row to command table |
+| `docs/coding-agent-usage.md` | Added `gograph summary` to cheat sheet |
+| `gograph capabilities` | Updated session-start workflow to lead with `summary` |
+| `internal/mcp/server.go` | Registered `gograph_summary`; updated `session_start` workflow; added to capabilities list |
+| `RELEASE_NOTES.md` | This file |
+
+---
+
 ## v1.4.72 — 2026-06-03
 
 ### Bug Fixes

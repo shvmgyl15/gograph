@@ -1597,3 +1597,107 @@ func Fixtures(g *graph.Graph, pkgName string) []Result {
 	sortResults(results)
 	return results
 }
+
+// UntestedResult describes a function that has callers but no test coverage.
+type UntestedResult struct {
+	Name        string `json:"name"`
+	Kind        string `json:"kind"`
+	File        string `json:"file"`
+	Line        int    `json:"line"`
+	CallerCount int    `json:"caller_count"`
+	PackageName string `json:"package"`
+}
+
+// Untested returns functions and methods that have at least one non-test caller
+// but zero attributed test edges. This is distinct from Orphans (zero callers):
+// untested symbols ARE used in production code but have no test coverage.
+//
+// One full graph sweep — replaces N sequential 'gograph tests <sym>' calls.
+func Untested(g *graph.Graph) []UntestedResult {
+	// Build set of symbol names/IDs that appear as test targets.
+	testedIDs := make(map[string]bool)
+	testedNames := make(map[string]bool)
+	for _, te := range g.TestEdges {
+		testedIDs[te.Target] = true
+		// Target may be a fully-qualified ID or a short name — track both.
+		if idx := strings.LastIndex(te.Target, "::"); idx >= 0 {
+			testedNames[te.Target[idx+2:]] = true
+		} else {
+			testedNames[te.Target] = true
+		}
+	}
+
+	// Build caller count per symbol ID (non-test call sites only).
+	callerCount := make(map[string]int)
+	for _, c := range g.Calls {
+		if isTestFile(c.File) {
+			continue
+		}
+		if c.CalleeSymbolID != "" {
+			callerCount[c.CalleeSymbolID]++
+		} else {
+			callerCount[c.CalleeRaw]++
+		}
+	}
+
+	// Build a name→packageName lookup for display.
+	pkgByID := make(map[string]string)
+	for _, s := range g.Symbols {
+		pkgByID[s.ID] = s.PackageName
+	}
+
+	var results []UntestedResult
+	for _, s := range g.Symbols {
+		if s.Kind != graph.KindFunction && s.Kind != graph.KindMethod {
+			continue
+		}
+		// Skip test files — we only care about production symbols.
+		if isTestFile(s.File) {
+			continue
+		}
+		// Skip init/main — convention; always entry points.
+		if s.Name == "main" || s.Name == "init" {
+			continue
+		}
+
+		// Must have at least one non-test caller.
+		count := callerCount[s.ID]
+		if count == 0 {
+			count = callerCount[s.Name]
+		}
+		if count == 0 {
+			continue
+		}
+
+		// Must NOT appear in test edges.
+		if testedIDs[s.ID] || testedNames[s.Name] {
+			continue
+		}
+
+		results = append(results, UntestedResult{
+			Name:        s.Name,
+			Kind:        string(s.Kind),
+			File:        s.File,
+			Line:        s.Line,
+			CallerCount: count,
+			PackageName: s.PackageName,
+		})
+	}
+
+	// Sort: highest caller count first (most-used untested functions are
+	// the highest risk), then alphabetically within the same count.
+	for i := 1; i < len(results); i++ {
+		for j := i; j > 0; j-- {
+			a, b := results[j-1], results[j]
+			if a.CallerCount < b.CallerCount || (a.CallerCount == b.CallerCount && a.Name > b.Name) {
+				results[j-1], results[j] = results[j], results[j-1]
+			} else {
+				break
+			}
+		}
+	}
+	if results == nil {
+		results = []UntestedResult{}
+	}
+	return results
+}

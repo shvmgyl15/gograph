@@ -133,6 +133,9 @@ func TestAllCommandsRegistered(t *testing.T) {
 		"session",
 		"--session",
 		"wiki",
+		"summary",
+		"untested",
+		"doc",
 		"-i",
 		"--intention",
 		// aliases

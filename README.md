@@ -76,6 +76,9 @@ All commands support `--json` for machine-readable output and `--files-only` for
 | **CI/CD** | `check [--since\|--uncommitted]`, `gate`, `snapshot save\|diff\|list\|drop` | Policy checks, threshold enforcement, metric snapshots. |
 | **Telemetry** | `session create\|end\|audit\|cleanup` | Agent compliance tracking and grading (A–F). |
 | **LLM-Wiki** | `wiki [--output dir]` | Generate `llm-wiki/` — machine-first markdown pages for zero-cost agent orientation (overview, architecture, hotspots, routes, env, errors, concurrency, per-package, API surface). |
+| **Summary** | `summary [--json]` | Single-call codebase briefing: top 3 hotspots, worst instability package, highest complexity function, orphan count, god-object count. Replaces 5 separate calls. |
+| **Untested** | `untested [--pkg name] [--top N] [--json]` | Functions with callers but zero test edges — coverage gaps invisible to orphans or per-symbol test queries. One sweep replaces N `tests <sym>` calls. |
+| **Doc** | `doc <pkg[.Symbol]> [--json]` | `go doc` wrapper — signature + doc comment for any stdlib or third-party symbol. No graph required. Closes the gap when call chains leave the project. |
 
 > Full command reference with examples: [gograph.identuum.ai/docs/command-reference](https://gograph.identuum.ai/docs/command-reference/)
 

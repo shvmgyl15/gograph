@@ -3,9 +3,11 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -203,6 +205,12 @@ func dispatch(args []string) int {
 		return runStale()
 	case "stats":
 		return runStats()
+	case "summary":
+		return runSummary()
+	case "untested":
+		return runUntested(args[1:])
+	case "doc":
+		return runDoc(args[1:])
 	case "wiki":
 		return runWiki(args[1:])
 	case "orphans":
@@ -320,7 +328,7 @@ After build: graph.json + GRAPH_REPORT.md are written to .gograph/.
 Rebuild whenever source files change. The graph does NOT auto-update.
 
 ━━━ COMMON WORKFLOWS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Start of any session         → stats, stale, read .gograph/GRAPH_REPORT.md
+  Start of any session         → summary  (top hotspots + worst instability + highest complexity + orphan/god-obj counts in ONE call)
   Onboard to unfamiliar repo   → hotspot, skeleton, focus <pkg>
   Find where X is defined      → query <term>  then  source <sym> to read body
   Understand a symbol (raw)    → context <sym>  (callers+callees+source+tests in one call)
@@ -334,6 +342,8 @@ Rebuild whenever source files change. The graph does NOT auto-update.
   HTTP endpoint deep-dive      → endpoint <handler>  (route + call chain + SQL + env)
   Error root-cause trace       → errorflow <err_str>
   Dead code sweep              → orphans
+  Test coverage gaps (codebase) → untested  (callers but zero test edges — one sweep, sorted by risk)
+  External symbol signature    → doc <pkg.Symbol>  (stdlib/third-party — no graph required)
   API breaking-change check    → api --since <ref>
   CI enforcement               → gate, check --since <ref>
 
@@ -487,6 +497,11 @@ review --uncommitted : post-edit review for all uncommitted changes
 schema <table>       : structs mapped to a DB table via struct tags
 skeleton             : full repository API signatures with bodies stripped — WARNING: large on big repos
 trace <err_str>      : alias for errorflow (kept for compatibility)
+doc <pkg[.Symbol]>  : "go doc <query>" — signature + doc comment for any stdlib or third-party symbol.
+                       No graph required. Examples: doc fmt.Errorf  doc net/http.HandleFunc  doc io.Reader
+                       doc github.com/jackc/pgx/v5.Conn.QueryRow
+untested [--pkg <n>] [--top N] : production functions with callers but zero test edges — coverage gaps
+                       sorted by caller count (highest risk first). Replaces N 'tests <sym>' calls.
 check [--since ref]  : static policy checks (boundaries, api_drift, test requirements)
 gate                 : CI/CD enforcement against .gograph.yml thresholds
 snapshot <subcmd>    : architectural metric snapshots (save, diff, list, drop)
@@ -2896,5 +2911,234 @@ func runWiki(args []string) int {
 		}
 	}
 	fmt.Printf("\nDone. %d page(s) written to %s/\n", written, outputDir)
+	return 0
+}
+
+// runSummary prints a dense, single-call codebase briefing combining the five
+// most useful orientation queries: top hotspots, worst instability package,
+// highest-complexity function, orphan count, and god-object count.
+// Replaces: hotspot + coupling + orphans + complexity + godobj (5 tool calls → 1).
+func runSummary() int {
+	g, err := loadGraph(".")
+	if err != nil {
+		if jsonMode {
+			return PrintJSON(errEnvelope("summary", err.Error()))
+		}
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+
+	hotspots := search.Hotspot(g, 3, false)
+	coupling := search.Coupling(g, "", search.CouplingOptions{})
+	complexity := search.Complexity(g, "")
+	orphanList := search.Orphans(g)
+	godObjs := search.GodObjects(g, search.DefaultGodObjectParams())
+	stats := search.Stats(g)
+
+	if jsonMode {
+		type summaryResult struct {
+			Symbols    int                      `json:"symbols"`
+			Packages   int                      `json:"packages"`
+			Hotspots   []search.HotspotResult   `json:"hotspots"`
+			WorstPkg   *search.PackageCoupling  `json:"worst_instability,omitempty"`
+			TopComplex *search.ComplexityResult `json:"top_complexity,omitempty"`
+			Orphans    int                      `json:"orphan_count"`
+			GodObjects int                      `json:"god_object_count"`
+		}
+		res := summaryResult{
+			Symbols:    stats.Symbols,
+			Packages:   stats.Packages,
+			Hotspots:   hotspots,
+			Orphans:    len(orphanList),
+			GodObjects: len(godObjs),
+		}
+		if len(coupling) > 0 {
+			res.WorstPkg = &coupling[0]
+		}
+		if len(complexity) > 0 {
+			res.TopComplex = &complexity[0]
+		}
+		return PrintJSON(okEnvelope("summary", "", res, 1))
+	}
+
+	fmt.Printf("CODEBASE SUMMARY  (%d symbols, %d packages)\n", stats.Symbols, stats.Packages)
+	fmt.Println()
+
+	// Hotspots
+	if len(hotspots) == 0 {
+		fmt.Println("Hotspots:           (no call edges)")
+	} else {
+		names := make([]string, len(hotspots))
+		for i, h := range hotspots {
+			names[i] = fmt.Sprintf("%s (%dx)", h.Name, h.IncomingCalls)
+		}
+		fmt.Printf("Hotspots:           %s\n", strings.Join(names, ", "))
+	}
+
+	// Worst instability
+	if len(coupling) == 0 {
+		fmt.Println("Worst instability:  (no coupling data)")
+	} else {
+		c := coupling[0]
+		fmt.Printf("Worst instability:  %s (%.2f)\n", c.Package, c.Instability)
+	}
+
+	// Highest complexity
+	if len(complexity) == 0 {
+		fmt.Println("Highest complexity: (no data)")
+	} else {
+		c := complexity[0]
+		fmt.Printf("Highest complexity: %s (score=%d, %s)\n", c.Symbol, c.Score, c.Label)
+	}
+
+	// Orphans and God Objects
+	fmt.Printf("Orphans:            %d unreachable symbols\n", len(orphanList))
+	fmt.Printf("God objects:        %d\n", len(godObjs))
+
+	return 0
+}
+
+// runUntested finds production functions and methods that have at least one
+// non-test caller but zero test edges — the coverage gap that neither
+// 'orphans' (zero callers) nor 'tests <sym>' (per-symbol lookup) surfaces
+// efficiently at codebase scale.
+//
+// Usage: gograph untested [--pkg <name>] [--top N]
+func runUntested(args []string) int {
+	pkg := ""
+	top := 0
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--pkg":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, "--pkg requires a value")
+				return 1
+			}
+			pkg = args[i+1]
+			i++
+		case "--top":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, "--top requires a value")
+				return 1
+			}
+			if _, err := fmt.Sscanf(args[i+1], "%d", &top); err != nil {
+				fmt.Fprintf(os.Stderr, "invalid --top value: %q\n", args[i+1])
+				return 1
+			}
+			i++
+		}
+	}
+
+	g, err := loadGraph(".")
+	if err != nil {
+		if jsonMode {
+			return PrintJSON(errEnvelope("untested", err.Error()))
+		}
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+
+	results := search.Untested(g)
+
+	// Filter by package if requested.
+	if pkg != "" {
+		pkgLower := strings.ToLower(pkg)
+		var filtered []search.UntestedResult
+		for _, r := range results {
+			if strings.Contains(strings.ToLower(r.PackageName), pkgLower) ||
+				strings.Contains(strings.ToLower(r.File), pkgLower) {
+				filtered = append(filtered, r)
+			}
+		}
+		results = filtered
+	}
+
+	// Apply --top limit.
+	if top > 0 && len(results) > top {
+		results = results[:top]
+	}
+
+	if jsonMode {
+		return PrintJSON(okEnvelope("untested", "", results, len(results)))
+	}
+
+	if len(results) == 0 {
+		fmt.Println("No untested functions found — all called symbols have test coverage.")
+		return 0
+	}
+
+	label := "all"
+	if top > 0 {
+		label = fmt.Sprintf("top %d", top)
+	}
+	fmt.Printf("Untested Functions (%s, sorted by caller count):\n\n", label)
+	fmt.Printf("%-40s  %-12s  %6s  %s\n", "FUNCTION", "PACKAGE", "CALLERS", "FILE")
+	fmt.Println(strings.Repeat("-", 90))
+	for _, r := range results {
+		name := r.Name
+		if len(name) > 38 {
+			name = name[:35] + "..."
+		}
+		pkg := r.PackageName
+		if len(pkg) > 10 {
+			// Show just the last segment for readability.
+			if i := strings.LastIndex(pkg, "/"); i >= 0 {
+				pkg = pkg[i+1:]
+			}
+		}
+		fmt.Printf("%-40s  %-12s  %6d  %s:%d\n", name, pkg, r.CallerCount, r.File, r.Line)
+	}
+	return 0
+}
+
+// runDoc runs `go doc <query>` and surfaces the output — provides signatures,
+// doc comments, and method listings for any stdlib or third-party symbol that
+// gograph's graph does not index (external packages).
+//
+// Usage: gograph doc <pkg.Symbol>
+// Examples:
+//   gograph doc fmt.Errorf
+//   gograph doc net/http.HandleFunc
+//   gograph doc github.com/jackc/pgx/v5.Conn.QueryRow
+//   gograph doc io.Reader
+func runDoc(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: gograph doc <pkg[.Symbol]>")
+		fmt.Fprintln(os.Stderr, "examples:")
+		fmt.Fprintln(os.Stderr, "  gograph doc fmt.Errorf")
+		fmt.Fprintln(os.Stderr, "  gograph doc net/http.HandleFunc")
+		fmt.Fprintln(os.Stderr, "  gograph doc github.com/jackc/pgx/v5.Conn.QueryRow")
+		return 1
+	}
+
+	query := args[0]
+
+	cmd := exec.Command("go", "doc", query)
+	out, err := cmd.Output()
+
+	type docResult struct {
+		Query  string `json:"query"`
+		Output string `json:"output"`
+	}
+
+	if err != nil {
+		// `go doc` writes helpful errors to stderr; surface them.
+		var exitErr *exec.ExitError
+		errMsg := err.Error()
+		if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
+			errMsg = strings.TrimSpace(string(exitErr.Stderr))
+		}
+		if jsonMode {
+			return PrintJSON(errEnvelope("doc", errMsg))
+		}
+		fmt.Fprintln(os.Stderr, errMsg)
+		return 1
+	}
+
+	text := strings.TrimSpace(string(out))
+	if jsonMode {
+		return PrintJSON(okEnvelope("doc", "", []docResult{{Query: query, Output: text}}, 1))
+	}
+	fmt.Println(text)
 	return 0
 }

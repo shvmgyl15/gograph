@@ -95,6 +95,14 @@ gograph wiki [--output dir]      # generate llm-wiki/ — curated, machine-first
                                  # hotspots, routes, env, errors, concurrency, per-package docs, api-surface).
                                  # Run once per session for zero-cost codebase orientation.
                                  # Default output: ./llm-wiki/  (add llm-wiki/ to .gitignore)
+gograph summary                  # single-call briefing: top 3 hotspots + worst instability + highest complexity +
+                                 # orphan count + god-object count. Replaces 5 separate tool calls. [--json]
+gograph untested                 # production functions with callers but zero test edges. One sweep replaces N
+                                 # 'gograph tests <sym>' calls. Flags: [--pkg <name>] [--top N] [--json]
+gograph doc <pkg[.Symbol]>       # go doc wrapper: signature + doc comment for any stdlib or third-party symbol.
+                                 # No graph required. Use when following call chains outside the project.
+                                 # Examples: gograph doc fmt.Errorf   gograph doc io.Reader
+                                 #           gograph doc net/http.HandleFunc  [--json]
 gograph mcp <path>               # runs an MCP server over stdio
 gograph add-claude-plugin        # install MCP server + CLAUDE.md rules + PreToolUse hook (Claude Desktop & Claude Code)
 gograph hook-guard               # PreToolUse hook binary — reads tool call JSON from stdin, blocks Go symbol greps (invoked automatically by Claude Code)
