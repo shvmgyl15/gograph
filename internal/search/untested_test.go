@@ -170,7 +170,7 @@ func TestUntestedCallerCountAccurate(t *testing.T) {
 func TestUntestedEmptyGraph(t *testing.T) {
 	g := &graph.Graph{}
 	results := search.Untested(g)
-	if results != nil && len(results) != 0 {
+	if len(results) != 0 {
 		t.Errorf("expected empty result for empty graph, got %d items", len(results))
 	}
 }
