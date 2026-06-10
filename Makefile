@@ -13,7 +13,7 @@ build:
 	go build -ldflags "-X main.version=$(VERSION)-$(GIT_COMMIT)$(DIRTY)" -o $(BUILD_DIR)/$(BINARY) $(CMD)
 	@echo "Built $(BUILD_DIR)/$(BINARY) v$(VERSION)-$(GIT_COMMIT)$(DIRTY)"
 
-release:
+release: test
 	@echo "Bumping patch version, committing, and tagging..."
 	bump2version patch --allow-dirty
 	git push origin main --tags
