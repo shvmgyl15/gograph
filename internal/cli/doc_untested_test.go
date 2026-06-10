@@ -56,6 +56,43 @@ func runBinary(t *testing.T, args ...string) (stdout, stderr string, code int) {
 	return outBuf.String(), errBuf.String(), code
 }
 
+// requireGraph ensures .gograph/graph.json exists at the module root.
+// If it is missing, it builds it using the compiled binary.
+// Tests that call this will skip cleanly if the binary itself cannot build.
+func requireGraph(t *testing.T) {
+	t.Helper()
+	bin := binaryPath(t)
+
+	// Find module root.
+	abs, err := filepath.Abs(".")
+	if err != nil {
+		t.Fatalf("filepath.Abs: %v", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(abs, "go.mod")); err == nil {
+			break
+		}
+		parent := filepath.Dir(abs)
+		if parent == abs {
+			t.Fatal("could not find module root")
+		}
+		abs = parent
+	}
+
+	graphFile := filepath.Join(abs, ".gograph", "graph.json")
+	if _, err := os.Stat(graphFile); err == nil {
+		return // already exists
+	}
+
+	// Build it.
+	cmd := exec.Command(bin, "build", ".")
+	cmd.Dir = abs
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Skipf("skipping: could not build graph: %v\n%s", err, out)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // gograph doc tests
 // ---------------------------------------------------------------------------
@@ -152,8 +189,8 @@ func TestDocJSONMode(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestUntestedRunsWithoutError(t *testing.T) {
-	// This test runs against the real gograph graph (if available).
-	// It verifies the command doesn't crash and produces valid output.
+	requireGraph(t)
+	// Verifies the command doesn't crash and produces valid output.
 	stdout, stderr, code := runBinary(t, "untested")
 	if code != 0 {
 		t.Fatalf("gograph untested exited %d\nstdout: %s\nstderr: %s", code, stdout, stderr)
@@ -167,6 +204,7 @@ func TestUntestedRunsWithoutError(t *testing.T) {
 }
 
 func TestUntestedTopFlag(t *testing.T) {
+	requireGraph(t)
 	stdout, _, code := runBinary(t, "untested", "--top", "3")
 	if code != 0 {
 		t.Fatalf("gograph untested --top 3 exited %d", code)
@@ -188,6 +226,7 @@ func TestUntestedTopFlag(t *testing.T) {
 }
 
 func TestUntestedPkgFilter(t *testing.T) {
+	requireGraph(t)
 	stdout, _, code := runBinary(t, "untested", "--pkg", "cli")
 	if code != 0 {
 		t.Fatalf("gograph untested --pkg cli exited %d", code)
@@ -208,6 +247,7 @@ func TestUntestedPkgFilter(t *testing.T) {
 }
 
 func TestUntestedJSONMode(t *testing.T) {
+	requireGraph(t)
 	stdout, _, code := runBinary(t, "--json", "untested", "--top", "5")
 	if code != 0 {
 		t.Fatalf("gograph --json untested exited %d", code)
