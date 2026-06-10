@@ -25,8 +25,11 @@ jobs:
     - name: Build
       run: go build -v ./...
 
+    - name: Build binary
+      run: mkdir -p bin && go build -o bin/gograph ./cmd/gograph
+
     - name: Run Tests
       run: go test -v ./...
-      
+
     - name: Vet
       run: go vet ./...
