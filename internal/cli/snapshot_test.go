@@ -129,3 +129,48 @@ func TestSnapshotDrop(t *testing.T) {
 		t.Fatalf("expected snapshot drop missing to fail, got %d", code)
 	}
 }
+
+func TestSnapshotValidation(t *testing.T) {
+	tmpDir := t.TempDir()
+	origWd, _ := os.Getwd()
+	chdir(t, tmpDir)
+	defer func() { chdir(t, origWd) }()
+
+	g := &graph.Graph{
+		Version:     graph.Version,
+		GeneratedAt: time.Now(),
+	}
+	setupGraphDir(t, g)
+
+	invalidNames := []string{
+		"../../traversal",
+		"v1.json",
+		"invalid/name",
+		"name\\with\\backslashes",
+		"invalid$",
+	}
+
+	for _, name := range invalidNames {
+		if code := runSnapshot([]string{"save", name}); code != 1 {
+			t.Errorf("expected save with invalid name %q to fail, got %d", name, code)
+		}
+		if code := runSnapshot([]string{"diff", name}); code != 1 {
+			t.Errorf("expected diff with invalid name %q to fail, got %d", name, code)
+		}
+		if code := runSnapshot([]string{"drop", name}); code != 1 {
+			t.Errorf("expected drop with invalid name %q to fail, got %d", name, code)
+		}
+	}
+
+	validNames := []string{
+		"v1",
+		"base",
+		"my-snapshot_123",
+	}
+
+	for _, name := range validNames {
+		if code := runSnapshot([]string{"save", name}); code != 0 {
+			t.Errorf("expected save with valid name %q to succeed, got %d", name, code)
+		}
+	}
+}

@@ -80,7 +80,13 @@ func ChangesByGitRef(g *graph.Graph, root, ref string) (*ChangesResult, error) {
 
 // UncommittedSymbols parses git diff to find modified symbols in the current working directory.
 func UncommittedSymbols(g *graph.Graph) ([]string, error) {
-	out, err := exec.Command("git", "diff", "HEAD", "-U0").Output()
+	var cmd *exec.Cmd
+	if g.Root != "" {
+		cmd = exec.Command("git", "-C", g.Root, "diff", "HEAD", "-U0")
+	} else {
+		cmd = exec.Command("git", "diff", "HEAD", "-U0")
+	}
+	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("error running git diff: %v", err)
 	}

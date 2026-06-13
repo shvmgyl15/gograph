@@ -220,3 +220,116 @@ func TestSessionAndGraphLoading_SubdirectoryE2E(t *testing.T) {
 		t.Errorf("grade = %q, want non-F", report.Grade)
 	}
 }
+
+func TestSessionExemptions(t *testing.T) {
+	root, bin := setupGraphFixture(t)
+
+	// 1. Create session.
+	cmd := exec.Command(bin, "session", "create", "exemptions")
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("session create: %v\n%s", err, out)
+	}
+
+	// Clean up session at the end.
+	defer func() {
+		cmdEnd := exec.Command(bin, "session", "end")
+		cmdEnd.Dir = root
+		_ = cmdEnd.Run()
+	}()
+
+	// 2. Run capabilities (which is non-analytical) without intention.
+	cmdCap := exec.Command(bin, "capabilities")
+	cmdCap.Dir = root
+	outCap, errCap := cmdCap.CombinedOutput()
+	if errCap != nil {
+		t.Fatalf("capabilities failed under active session: %v\nOutput: %s", errCap, outCap)
+	}
+	if !strings.Contains(string(outCap), "gograph: AST-aware Repository Navigation Tool") {
+		t.Errorf("unexpected capabilities output: %s", outCap)
+	}
+
+	// 3. Run wiki (non-analytical) without intention.
+	cmdWiki := exec.Command(bin, "wiki", "--output", filepath.Join(root, "my-llm-wiki"))
+	cmdWiki.Dir = root
+	outWiki, errWiki := cmdWiki.CombinedOutput()
+	if errWiki != nil {
+		t.Fatalf("wiki failed under active session: %v\nOutput: %s", errWiki, outWiki)
+	}
+	if !strings.Contains(string(outWiki), "wrote ") {
+		t.Errorf("unexpected wiki output: %s", outWiki)
+	}
+
+	// 4. Run doc (non-analytical) without intention.
+	cmdDoc := exec.Command(bin, "doc", "fmt")
+	cmdDoc.Dir = root
+	outDoc, errDoc := cmdDoc.CombinedOutput()
+	if errDoc != nil {
+		t.Fatalf("doc failed under active session: %v\nOutput: %s", errDoc, outDoc)
+	}
+	if !strings.Contains(string(outDoc), "package fmt") {
+		t.Errorf("unexpected doc output: %s", outDoc)
+	}
+}
+
+func TestRiskCommand(t *testing.T) {
+	root, bin := setupGraphFixture(t)
+
+	// Initialize git repo so git diff command doesn't fail
+	cmdGitInit := exec.Command("git", "init")
+	cmdGitInit.Dir = root
+	if out, err := cmdGitInit.CombinedOutput(); err != nil {
+		t.Fatalf("git init failed: %v\n%s", err, out)
+	}
+	if err := exec.Command("git", "-C", root, "config", "user.email", "test@example.com").Run(); err != nil {
+		t.Fatalf("git config email failed: %v", err)
+	}
+	if err := exec.Command("git", "-C", root, "config", "user.name", "Test User").Run(); err != nil {
+		t.Fatalf("git config name failed: %v", err)
+	}
+	if err := exec.Command("git", "-C", root, "add", ".").Run(); err != nil {
+		t.Fatalf("git add failed: %v", err)
+	}
+	if err := exec.Command("git", "-C", root, "commit", "-m", "initial commit").Run(); err != nil {
+		t.Fatalf("git commit failed: %v", err)
+	}
+
+	// 1. Run risk command for a specific symbol.
+	cmd := exec.Command(bin, "risk", "RunAudit")
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("gograph risk RunAudit failed: %v\nOutput: %s", err, out)
+	}
+
+	outStr := string(out)
+	if !strings.Contains(outStr, "Risk Report for RunAudit") {
+		t.Errorf("unexpected output structure: %s", outStr)
+	}
+	if !strings.Contains(outStr, "RunAudit") || !strings.Contains(outStr, "SAFE") {
+		t.Errorf("expected RunAudit in SAFE verdict, got: %s", outStr)
+	}
+
+	// 2. Run risk command with JSON mode.
+	cmdJSON := exec.Command(bin, "--json", "risk", "RunAudit")
+	cmdJSON.Dir = root
+	outJSON, errJSON := cmdJSON.CombinedOutput()
+	if errJSON != nil {
+		t.Fatalf("gograph risk RunAudit JSON failed: %v\nOutput: %s", errJSON, outJSON)
+	}
+	if !strings.Contains(string(outJSON), `"status": "ok"`) || !strings.Contains(string(outJSON), `"verdict": "SAFE"`) {
+		t.Errorf("unexpected JSON output: %s", outJSON)
+	}
+
+	// 3. Run risk command with --uncommitted.
+	cmdUncommitted := exec.Command(bin, "risk", "--uncommitted")
+	cmdUncommitted.Dir = root
+	outUnc, errUnc := cmdUncommitted.CombinedOutput()
+	if errUnc != nil {
+		t.Fatalf("gograph risk --uncommitted failed: %v\nOutput: %s", errUnc, outUnc)
+	}
+	if !strings.Contains(string(outUnc), "No uncommitted modified symbols") {
+		t.Errorf("expected no uncommitted changes message, got: %s", outUnc)
+	}
+}

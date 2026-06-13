@@ -1,5 +1,39 @@
 # Release Notes
 
+## v1.4.81 — 2026-06-12
+
+### New Commands
+
+#### `gograph risk` / MCP `gograph_risk`
+Added a new `gograph risk` command and corresponding `gograph_risk` MCP tool that calculates a normalized 0–100 change risk score and verdict (`SAFE`, `REVIEW`, or `DANGER`). The risk score is determined by Blast Radius, Cyclomatic Complexity, Test Coverage, Exported API, and Downstream SQL/Env dependencies. This command acts as a primary token-saver, consolidating data from multiple tools into a single action-oriented response.
+
+### Improvements
+
+#### Non-Analytical Command Exemptions from Session Intention
+Exempted `gograph capabilities`, `gograph wiki`, and `gograph doc` commands from session technical intention checks (`-i` / `--intention` flag). These commands are non-analytical and do not perform graph modifications or structural changes, so requiring a technical intention was a UX hindrance.
+
+#### String Builder Writes Optimization in `search.Skeleton`
+Avoided inefficient string builder concatenations within `sb.WriteString(...)` calls by using separate, simple writes, eliminating temporary allocations and satisfying compiler/IDE warnings.
+
+#### Git Path Resolution in `search.UncommittedSymbols`
+Updated the `git` invocation to use `-C g.Root` when `g.Root` is set, ensuring correct path resolution and preventing errors when executing the tool under the MCP server sandbox.
+
+### Fixes
+
+#### Snapshot Name Security Validation
+Added character validation checking (`^[a-zA-Z0-9_\-]+$`) to snapshot names for the `gograph snapshot save`, `diff`, and `drop` commands to prevent path traversal attempts.
+
+### Documentation
+
+| Target | Changes |
+|---|---|
++| `README.md` | Documented `risk` command in change analysis commands table. |
++| `docs/coding-agent-usage.md` | Documented `risk` command, `gograph_risk` MCP tool, and renumbered sections. |
+| `docs/coding-agent-usage.md` | Documented `capabilities`, `wiki`, and `doc` as exempt from intention checks. |
+| `RELEASE_NOTES.md` | This file |
+
+---
+
 ## v1.4.80 — 2026-06-09
 
 ### New Commands

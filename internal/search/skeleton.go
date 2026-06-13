@@ -59,7 +59,8 @@ func Skeleton(g *graph.Graph) string {
 				}
 				sort.Strings(methods)
 				for _, m := range methods {
-					sb.WriteString(m + "\n")
+					sb.WriteString(m)
+					sb.WriteString("\n")
 				}
 				sb.WriteString("}\n\n")
 			case graph.KindFunction:
@@ -68,7 +69,9 @@ func Skeleton(g *graph.Graph) string {
 				fmt.Fprintf(&sb, "%s\n", sym.Signature)
 			}
 		}
-		sb.WriteString("\n// " + strings.Repeat("-", 40) + "\n\n")
+		sb.WriteString("\n// ")
+		sb.WriteString(strings.Repeat("-", 40))
+		sb.WriteString("\n\n")
 	}
 
 	return sb.String()

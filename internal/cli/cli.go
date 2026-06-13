@@ -124,6 +124,9 @@ func Run(args []string) int {
 		"--version":         true,
 		"stale":             true,
 		"stats":             true,
+		"capabilities":      true,
+		"wiki":              true,
+		"doc":               true,
 	}
 
 	if !nonAnalytical[args[0]] {
@@ -271,6 +274,8 @@ func dispatch(args []string) int {
 		return runPlan(args[1:])
 	case "review":
 		return runReview(args[1:])
+	case "risk":
+		return runRisk(args[1:])
 	case "api", "contract":
 		return runAPI(args[1:])
 	case "check":
@@ -474,6 +479,8 @@ constructors <struct>: factory functions returning this struct
 literals <struct>    : composite literal sites Foo{...} — run before adding/removing a required field
 usages <type>        : where a type appears in signatures and fields (param/return/field/iface method)
 returnusage <fn>     : how each caller uses the return value of fn (discarded/assigned/returned/passed)
+risk <sym>           : risk evaluation — blast radius, complexity, tests, SQL/env (0-100 score + verdict)
+risk --uncommitted   : risk evaluation for all uncommitted changes
 context <sym> [--limit N]: node+source+callers+callees+tests — raw structured data
 context --uncommitted    : context for ALL uncommitted symbols in one call (replaces 5-8 sequential context calls)
                            NOTE: every context response now includes 'role' (architectural classification)
@@ -494,6 +501,8 @@ plan <sym> --with-context : plan + full context for every inspect_first symbol (
 plan --uncommitted   : change plan for all currently uncommitted modified symbols
 review <sym>         : post-edit review — test coverage, complexity, risk profile
 review --uncommitted : post-edit review for all uncommitted changes
+risk <sym>           : change risk profile — blast radius, complexity, test coverage, SQL/env dependencies
+risk --uncommitted   : change risk profile for all uncommitted changes
 schema <table>       : structs mapped to a DB table via struct tags
 skeleton             : full repository API signatures with bodies stripped — WARNING: large on big repos
 trace <err_str>      : alias for errorflow (kept for compatibility)
@@ -1298,6 +1307,8 @@ CODE QUALITY
   plan --uncommitted         Generate a change plan for all currently uncommitted modified symbols.
   review <symbol>            Generate a post-edit final review report for a modified symbol.
   review --uncommitted       Generate a post-edit final review report for all uncommitted changes.
+  risk <symbol>              Evaluate change risk profile (blast radius, complexity, test coverage, SQL/env).
+  risk --uncommitted         Evaluate risk profile for all uncommitted changes.
   api --since <ref>          Identify breaking API and contract changes since a git reference (e.g. main).
                              Run 'gograph build . --precise' before this for best results.
 
@@ -2842,6 +2853,62 @@ func runReview(args []string) int {
 
 	if jsonMode {
 		return PrintJSON(okEnvelope("review", title, report, 1))
+	}
+
+	fmt.Print(report.String())
+	return 0
+}
+
+func runRisk(args []string) int {
+	if len(args) == 0 {
+		if jsonMode {
+			return PrintJSON(errEnvelope("risk", "usage: gograph risk <symbol> OR gograph risk --uncommitted"))
+		}
+		fmt.Fprintln(os.Stderr, "usage: gograph risk <symbol> OR gograph risk --uncommitted")
+		return 1
+	}
+
+	g, err := loadGraph(".")
+	if err != nil {
+		if jsonMode {
+			return PrintJSON(errEnvelope("risk", err.Error()))
+		}
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+
+	var symbolNames []string
+	var title string
+
+	if args[0] == "--uncommitted" {
+		symbolNames, err = search.UncommittedSymbols(g)
+		if err != nil {
+			if jsonMode {
+				return PrintJSON(errEnvelope("risk", err.Error()))
+			}
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		if len(symbolNames) == 0 {
+			if jsonMode {
+				return PrintJSON(okEnvelope("risk", "Uncommitted Changes", &search.RiskReport{
+					Title:   "Uncommitted Changes",
+					Message: "No uncommitted modified symbols found in the graph.",
+				}, 0))
+			}
+			fmt.Println("No uncommitted modified symbols found in the graph.")
+			return 0
+		}
+		title = "Uncommitted Changes"
+	} else {
+		symbolNames = []string{strings.Join(args, " ")}
+		title = symbolNames[0]
+	}
+
+	report := search.Risk(g, symbolNames, title)
+
+	if jsonMode {
+		return PrintJSON(okEnvelope("risk", title, report, len(report.Results)))
 	}
 
 	fmt.Print(report.String())

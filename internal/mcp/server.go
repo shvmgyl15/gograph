@@ -131,6 +131,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 				{"name": "gograph_context", "purpose": "Pre-flight bundle for one symbol: node metadata, source, callers, callees, tests, and role in one call. Use uncommitted=true for all currently modified symbols. Replaces 4–5 separate calls."},
 				{"name": "gograph_plan", "purpose": "Pre-edit plan: which symbols to inspect first, tests, routes, env, risk flags. Set with_context=true to inline full context for each symbol."},
 				{"name": "gograph_review", "purpose": "Post-edit scope summary: changed symbols, tests, routes, env, SQL, and risk flags. Use uncommitted=true after editing."},
+				{"name": "gograph_risk", "purpose": "Evaluate the change risk profile of target symbol(s) or uncommitted changes. Returns 0-100 risk score and verdict (SAFE/REVIEW/DANGER)."},
 				{"name": "gograph_callers", "purpose": "Direct callers of a function (one-hop fan-in). Use before renaming or removing a function."},
 				{"name": "gograph_callees", "purpose": "Direct callees of a function (one-hop fan-out). Use to understand downstream dependencies."},
 				{"name": "gograph_impact", "purpose": "Full transitive upstream blast radius. Modes: symbol=, uncommitted=true, since=<ref>. Use before refactoring a core function."},
@@ -182,7 +183,7 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 			"recommended_workflows": map[string][]string{
 				"session_start":  {"READ llm-wiki/README.md", "READ llm-wiki/project.md", "READ llm-wiki/rules.md", "READ llm-wiki/agent-contract.md", "gograph_summary", "gograph_stale"},
 				"before_edit":   {"gograph_context", "gograph_plan"},
-				"after_edit":    {"gograph_review", "gograph_api", "gograph_boundaries"},
+				"after_edit":    {"gograph_review", "gograph_risk", "gograph_api", "gograph_boundaries"},
 				"error_changes": {"gograph_errorflow", "gograph_review"},
 				"api_changes":   {"gograph_api", "gograph_review"},
 			},
@@ -860,6 +861,51 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		return mcp.NewToolResultText(string(data)), nil
 	})
 
+	// Tool: gograph_risk
+	riskTool := mcp.NewTool("gograph_risk",
+		mcp.WithDescription("Evaluate the change risk profile of target symbol(s) or uncommitted changes. Combines blast radius, cyclomatic complexity, test coverage, and downstream environment/SQL dependencies into a normalized 0–100 risk score and verdict. Requires .gograph/graph.json — run `gograph build .` first. Read-only; no side effects. Requires either symbol or uncommitted=true. WHEN TO USE: Before committing edits or when planning changes to understand the technical risk. NOT TO USE: For post-edit review checklist generation (use gograph_review); for pre-edit plan generation (use gograph_plan). RETURNS: JSON with title, results[] containing risk scores, verdicts, and breakdown metrics, and optional message."),
+		mcp.WithString("symbol", mcp.Description("The name of the target symbol to run the risk evaluation for (e.g. 'AuthService')")),
+		mcp.WithBoolean("uncommitted", mcp.Description("Set to true to evaluate risk for all uncommitted/modified changes in the repository")),
+	)
+	addTool(riskTool, func(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if newG, err := rebuild(); err == nil {
+			g = newG
+		}
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("invalid arguments"), nil
+		}
+		var symbolNames []string
+		var title string
+		if u, ok := args["uncommitted"].(bool); ok && u {
+			syms, err := search.UncommittedSymbols(g)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			symbolNames = syms
+			title = "Uncommitted Changes"
+		} else if sym, ok := args["symbol"].(string); ok && sym != "" {
+			symbolNames = []string{sym}
+			title = sym
+		} else {
+			return mcp.NewToolResultError("must provide either symbol or set uncommitted to true"), nil
+		}
+
+		// Calculate risk report
+		report := search.Risk(g, symbolNames, title)
+
+		// Ensure arrays in JSON are initialized to empty slices rather than nil
+		if report.Results == nil {
+			report.Results = []search.RiskDetail{}
+		}
+
+		data, err := json.MarshalIndent(report, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	})
+
 	// Tool: gograph_errorflow
 	errorflowTool := mcp.NewTool("gograph_errorflow",
 		mcp.WithDescription("Trace how a named error sentinel or error message string is defined, returned, and propagates up the call graph toward HTTP handlers or CLI entry points. Requires .gograph/graph.json — run `gograph build .` first. Read-only; no side effects. Accepts either `query` (preferred) or `term` as the error name or message substring. WHEN TO USE: When auditing how a specific error is produced and handled end-to-end — find definition sites, all return sites, and upstream propagation paths (e.g., ErrNotFound). NOT TO USE: For general upstream traversal of any function (use gograph_callers or gograph_impact); for listing all error definitions (use gograph_errors). RETURNS: Definition sites, return sites, propagation path chains, and related test names; paths is empty when no propagation chain is found. Note: heuristic analysis — does not perform SSA or full data-flow tracking."),
@@ -1052,7 +1098,8 @@ func formatResults(results []search.Result) *mcp.CallToolResult {
 
 	var sb strings.Builder
 	for _, r := range results {
-		sb.WriteString(r.String() + "\n")
+		sb.WriteString(r.String())
+		sb.WriteString("\n")
 	}
 
 	return mcp.NewToolResultText(sb.String())

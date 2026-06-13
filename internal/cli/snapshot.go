@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -35,26 +36,27 @@ func runSnapshot(args []string) int {
 	}
 
 	cmd := args[0]
+	if cmd == "save" || cmd == "diff" || cmd == "drop" {
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "usage: gograph snapshot %s <name>\n", cmd)
+			return 1
+		}
+		name := args[1]
+		validName := regexp.MustCompile(`^[a-zA-Z0-9_\-]+$`)
+		if !validName.MatchString(name) {
+			fmt.Fprintf(os.Stderr, "error: invalid snapshot name %q (must be alphanumeric, dash, or underscore)\n", name)
+			return 1
+		}
+	}
+
 	switch cmd {
 	case "save":
-		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage: gograph snapshot save <name>")
-			return 1
-		}
 		return runSnapshotSave(args[1])
 	case "diff":
-		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage: gograph snapshot diff <name>")
-			return 1
-		}
 		return runSnapshotDiff(args[1])
 	case "list":
 		return runSnapshotList()
 	case "drop":
-		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage: gograph snapshot drop <name>")
-			return 1
-		}
 		return runSnapshotDrop(args[1])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown snapshot command: %s\n", cmd)

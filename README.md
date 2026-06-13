@@ -66,7 +66,7 @@ All commands support `--json` for machine-readable output and `--files-only` for
 | **Indexing** | `build . [--precise]`, `stale`, `stats` | Parse AST, write graph. Check freshness. Index health. |
 | **Navigation** | `query`, `callers [--depth N]`, `callees [--depth N]`, `path`, `source`, `node` | Find symbols, trace call chains, extract source. |
 | **Context** | `context`, `explain`, `focus`, `endpoint` | Bundled structural data in one call. Token savers. |
-| **Change Analysis** | `plan`, `review`, `impact [--uncommitted\|--since]`, `changes [--git]`, `api --since` | Pre-edit planning, post-edit review, blast radius, drift. |
+| **Change Analysis** | `plan`, `review`, `risk`, `impact [--uncommitted\|--since]`, `changes [--git]`, `api --since` | Pre-edit planning, post-edit review, risk analysis, blast radius, drift. |
 | **Architecture** | `boundaries`, `coupling`, `complexity`, `godobj`, `orphans`, `arity` | Quality gates, dead code, coupling, god objects. |
 | **Types & Structs** | `fields`, `implementers [--test-only]`, `interfaces`, `embeds`, `constructors`, `literals`, `usages`, `mutate`, `schema` | Struct fields, interface satisfaction, type usage. |
 | **Infrastructure** | `routes`, `sql`, `envs`, `errors`, `concurrency`, `globals`, `deps [--transitive]`, `dependents` | HTTP routes, SQL, env vars, concurrency, imports. |

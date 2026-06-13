@@ -119,6 +119,7 @@ func TestAllCommandsRegistered(t *testing.T) {
 		"fixtures",
 		"plan",
 		"review",
+		"risk",
 		"boundaries",
 		"endpoint",
 		"explain",

@@ -46,7 +46,9 @@ func (mg *mermaidGraph) StringWithRenderer(direction, renderer string) string {
 	if renderer != "" {
 		fmt.Fprintf(&sb, "%%%%{init: {'flowchart': {'defaultRenderer': '%s'}}}%%%%\n", renderer)
 	}
-	sb.WriteString("flowchart " + direction + "\n")
+	sb.WriteString("flowchart ")
+	sb.WriteString(direction)
+	sb.WriteString("\n")
 
 	type nodeItem struct {
 		id    string
@@ -69,7 +71,8 @@ func (mg *mermaidGraph) StringWithRenderer(direction, renderer string) string {
 	}
 	sort.Strings(sortedEdges)
 	for _, edge := range sortedEdges {
-		sb.WriteString(edge + "\n")
+		sb.WriteString(edge)
+		sb.WriteString("\n")
 	}
 	sb.WriteString("```")
 	return sb.String()
@@ -78,7 +81,9 @@ func (mg *mermaidGraph) StringWithRenderer(direction, renderer string) string {
 func (mg *mermaidGraph) String(direction string) string {
 	var sb strings.Builder
 	sb.WriteString("```mermaid\n")
-	sb.WriteString("flowchart " + direction + "\n")
+	sb.WriteString("flowchart ")
+	sb.WriteString(direction)
+	sb.WriteString("\n")
 
 	// Print node definitions with labels
 	type nodeItem struct {
@@ -106,7 +111,8 @@ func (mg *mermaidGraph) String(direction string) string {
 	sort.Strings(sortedEdges)
 
 	for _, edge := range sortedEdges {
-		sb.WriteString(edge + "\n")
+		sb.WriteString(edge)
+		sb.WriteString("\n")
 	}
 
 	sb.WriteString("```")

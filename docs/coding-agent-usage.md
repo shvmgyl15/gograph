@@ -69,6 +69,8 @@ gograph dependents "internal/auth"  # all packages that import this package (inv
 gograph plan <symbol>            # generate an operational change plan for a symbol
 gograph plan <symbol> --with-context  # plan + full context for every inspect_first symbol in ONE call
 gograph plan --uncommitted       # generate a change plan for all uncommitted changes
+gograph risk <symbol>            # evaluate change risk profile (blast radius, complexity, tests, SQL/env)
+gograph risk --uncommitted       # evaluate risk profile for all uncommitted changes
 gograph changes                  # new/modified/deleted symbols since last build
 gograph changes --git <ref>      # symbols in files changed since a git ref (MODIFIED only; e.g. --git main, --git HEAD~5, --git v1.4.50)
 gograph errorflow "parse failed" --no-tests  # trace error path to entry points, excluding test references
@@ -395,7 +397,35 @@ Analyzed 2 modified symbols.
 ```
 If you are an agent making autonomous edits, you must always run `gograph build . --precise` followed by `gograph review --uncommitted` as your final step to verify no regressions were introduced.
 
-### 18. Error Flow Tracing
+### 18. Change Risk Evaluation (gograph risk)
+`gograph risk <symbol>` (or `gograph risk --uncommitted`) evaluates the risk profile of a set of changes or a target symbol. It calculates a normalized 0–100 risk score and provides a verdict: `SAFE` (0–30), `REVIEW` (31–70), or `DANGER` (>70).
+
+It combines multiple structural metrics into a single weighted score:
+- **Blast Radius** (Max 30 points): $3 \times \text{transitive callers}$ (BFS).
+- **Cyclomatic Complexity** (Max 25 points): $2 \times (\text{complexity} - 1)$ of the function.
+- **Test Coverage** (Max 20 points): 0 if $\ge 2$ tests, 10 if $1$ test, 20 if $0$ tests.
+- **Public API** (Max 10 points): 10 if exported, 0 if private.
+- **SQL downstream** (Max 10 points): 10 if SQL is used downstream.
+- **Environment variables downstream** (Max 5 points): 5 if env vars are read downstream.
+
+Example:
+```bash
+gograph risk RunAudit
+```
+```
+Risk Report for RunAudit
+Verdict: SAFE (Score: 23/100)
+
+Metrics:
+  - Blast Radius: 2 callers (6/30)
+  - Complexity: 6 (10/25)
+  - Tests: 2 (0/20)
+  - Exported API: Yes (10/10)
+  - Touches SQL: No (0/10)
+  - Touches Env: No (0/5)
+```
+
+### 19. Error Flow Tracing
 `gograph errorflow <error-string|ErrSymbol>` is a powerful backend diagnostic command that maps the lifecycle of an error up to the HTTP layer.
 
 `gograph trace` is an alias for `errorflow` kept for compatibility — always prefer `errorflow` directly. `errorflow` searches for:
@@ -410,7 +440,7 @@ Example:
 gograph errorflow ErrInvalidToken
 ```
 
-### 19. Hotspot ranking
+### 20. Hotspot ranking
 `gograph hotspot [--top N]` ranks all functions by how many call sites depend on them (fan-in). The top hotspots are the most load-bearing code in the codebase — the functions an agent must understand before making any structural change.
 
 ```
@@ -425,7 +455,7 @@ Hotspot Functions (top 5, sorted by incoming calls):
 ```
 An agent onboarding to a new repo should always run `hotspot` before reading any files, to know where to focus.
 
-### 20. HTTP Endpoint Vertical Slice
+### 21. HTTP Endpoint Vertical Slice
 `gograph endpoint <route>` answers the question every developer asks when entering a new codebase or reviewing a PR: **"what actually happens when this endpoint is called?"**
 
 It composes in one command:
@@ -690,6 +720,7 @@ The current tool suite includes:
 - **`gograph_context`**: Bundles node details, callers, callees, tests, and source code into one compact structured response.
 - **`gograph_plan`**: Pre-edit planning. Highlights likely affected tests, routes, env reads, SQL touches, and public API impact. Set `with_context=true` to bundle full context for every `inspect_first` symbol — eliminates follow-up `context` calls.
 - **`gograph_review`**: Post-edit review. Summarizes what changed and its risk profile in a structured JSON payload.
+- **`gograph_risk`**: Risk evaluation. Combines blast radius, complexity, test coverage, and SQL/env dependencies into a 0–100 risk score and verdict (SAFE/REVIEW/DANGER). Supports `symbol` or `uncommitted=true`.
 - **`gograph_errorflow`**: Traces likely error paths up to entry points (HTTP routes or CLI commands). (*Limitation: Uses heuristic static call-graph and AST reference analysis, not SSA data-flow tracking.*)
 - **`gograph_imports`**
 - **`gograph_sql`**
@@ -763,7 +794,7 @@ If the agent fails to supply `-i` when a session is active, `gograph` blocks exe
 ```
 Error: Active session "implement_refactor_20260530_200840" requires an intention. Please supply the --intention (-i) flag stating your technical rationale.
 ```
-*Note: Session commands (`session create`, `session end`, `session audit`), MCP routing servers (`mcp`), and help commands are exempt from intention enforcement.*
+*Note: Session commands (`session create`, `session end`, `session audit`), MCP routing servers (`mcp`), help commands, `capabilities`, `wiki`, and `doc` are exempt from intention enforcement.*
 
 ### 3. Ending a Session
 Once the agent finishes its work, the session is cleanly ended:
@@ -857,3 +888,6 @@ Numbers vary by repo, but the order-of-magnitude win is consistent: structural q
 ## TL;DR
 
 `gograph` turns "agent re-reads the repo every conversation" into "agent reads one map file, then issues targeted queries." For Go projects worked on by coding agents, it materially reduces context cost and improves structural accuracy, without adding any network, execution, or data-leak risk.
+
+
+
