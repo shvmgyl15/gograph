@@ -53,14 +53,24 @@ func isStdLib(importPath string) bool {
 
 // Boundaries checks the package import graph against constraints defined in a JSON file.
 func Boundaries(g *graph.Graph, configPath string) ([]Result, error) {
+	if configPath == "" {
+		return nil, fmt.Errorf("invalid config path: empty")
+	}
+	if strings.Contains(configPath, "\\") {
+		return nil, fmt.Errorf("invalid config path: backslash not allowed")
+	}
+	if strings.Contains(configPath, "..") {
+		return nil, fmt.Errorf("invalid config path: path traversal detected")
+	}
+
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("could not read boundaries config at %s: %w", configPath, err)
+		return nil, fmt.Errorf("could not read boundaries config file: %w", err)
 	}
 
 	var config BoundariesConfig
 	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("invalid json in boundaries config %s: %w", configPath, err)
+		return nil, fmt.Errorf("invalid JSON in boundaries config: %w", err)
 	}
 
 	// 1. Build a map of ImportPath -> local directory
@@ -140,8 +150,8 @@ func Boundaries(g *graph.Graph, configPath string) ([]Result, error) {
 				Kind:   "boundary_violation",
 				Name:   sourceLayer.Name,
 				File:   imp.FromFile,
-				Line:   0, // We don't have line numbers for imports in this graph schema version easily, so 0 is fine
-				Detail: fmt.Sprintf("layer '%s' illegally imports '%s'", sourceLayer.Name, imp.ImportPath),
+				Line:   0,
+				Detail: fmt.Sprintf("layer '%s' illegally imports '%s' (restricted by architecture)", sourceLayer.Name, imp.ImportPath),
 				Score:  100,
 			})
 		}
@@ -152,8 +162,17 @@ func Boundaries(g *graph.Graph, configPath string) ([]Result, error) {
 
 // CreateBoundaries scans the graph and generates a baseline boundaries.json file based on current imports.
 func CreateBoundaries(g *graph.Graph, configPath string) error {
+	if configPath == "" {
+		return fmt.Errorf("invalid config path: empty")
+	}
+	if strings.Contains(configPath, "\\") {
+		return fmt.Errorf("invalid config path: backslash not allowed")
+	}
+	if strings.Contains(configPath, "..") {
+		return fmt.Errorf("invalid config path: path traversal detected")
+	}
 	if _, err := os.Stat(configPath); err == nil {
-		return fmt.Errorf("file %s already exists, refusing to overwrite. Delete it first if you want to regenerate", configPath)
+		return fmt.Errorf("file already exists, refusing to overwrite. Delete it first if you want to regenerate")
 	}
 
 	importPathToDir := make(map[string]string)

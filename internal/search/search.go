@@ -11,6 +11,16 @@ import (
 	"github.com/ozgurcd/gograph/internal/graph"
 )
 
+func isSafePathSegment(seg string) bool {
+	if seg == "" {
+		return false
+	}
+	if strings.Contains(seg, "..") {
+		return false
+	}
+	return true
+}
+
 // Result is a single match returned by any search function.
 type Result struct {
 	Kind   string `json:"kind"`
@@ -201,6 +211,9 @@ func Callers(g *graph.Graph, name string, includeTests bool, exactMatch bool) []
 				continue
 			}
 			seen[k] = true
+			if !isSafePathSegment(c.File) || strings.Contains(c.File, "..") || strings.Contains(c.File, "\\") {
+				continue
+			}
 			sym, ok := callerSymbols[c.CallerSymbolID]
 			file, line := c.File, 0
 			if ok {
@@ -269,6 +282,9 @@ func Callees(g *graph.Graph, name string, includeTests bool, exactMatch bool) []
 			continue
 		}
 		if matchedIDs[c.CallerSymbolID] {
+			if !isSafePathSegment(c.File) || strings.Contains(c.File, "..") || strings.Contains(c.File, "\\") {
+				continue
+			}
 			snippet := ""
 			absPath := filepath.Join(g.Root, c.File)
 			if data, err := os.ReadFile(absPath); err == nil {
@@ -868,6 +884,11 @@ func Source(g *graph.Graph, rootDir, symbolName string) (string, error) {
 		if i >= limit {
 			results = append(results, fmt.Sprintf("// WARNING: %d other implementations of '%s' were found but omitted to save tokens. Please be more specific (e.g., Receiver.Method).", len(targets)-limit, symbolName))
 			break
+		}
+
+		if !isSafePathSegment(target.File) || strings.Contains(target.File, "..") || strings.Contains(target.File, "\\") {
+			results = append(results, fmt.Sprintf("// WARNING: skipping unsafe path in file %s", target.File))
+			continue
 		}
 
 		absPath := filepath.Join(rootDir, target.File)

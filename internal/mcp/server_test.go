@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -146,7 +147,7 @@ func TestGographAPI_Validation(t *testing.T) {
 			t.Errorf("expected error for unsafe input %q, got success", input)
 		} else {
 			text := res.Content[0].(mcp.TextContent).Text
-			if !strings.Contains(text, "invalid since value") {
+			if !strings.Contains(text, "invalid git reference") {
 				t.Errorf("expected unsafe input error message, got %s", text)
 			}
 		}
@@ -225,18 +226,16 @@ func TestGographBoundaries_Structured(t *testing.T) {
 	handlers := setupHandlers(t, &graph.Graph{})
 	handler := handlers["gograph_boundaries"]
 
-	// Create empty boundaries config
-	tmpFile, _ := os.CreateTemp("", "boundaries.json")
-	t.Cleanup(func() { _ = os.Remove(tmpFile.Name()) })
-	if _, err := tmpFile.Write([]byte(`{"layers":[]}`)); err != nil {
+	// Create empty boundaries config in a relative path
+	tmpDir, _ := os.MkdirTemp("", "gograph-test-*")
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+	tmpFile := filepath.Join(tmpDir, "boundaries.json")
+	if err := os.WriteFile(tmpFile, []byte(`{"layers":[]}`), 0644); err != nil {
 		t.Fatalf("write tmp file: %v", err)
-	}
-	if err := tmpFile.Close(); err != nil {
-		t.Fatalf("close tmp file: %v", err)
 	}
 
 	req := mcp.CallToolRequest{}
-	req.Params.Arguments = map[string]any{"config": tmpFile.Name()}
+	req.Params.Arguments = map[string]any{"config": tmpFile}
 
 	res, _ := handler(context.Background(), req)
 	if res.IsError {

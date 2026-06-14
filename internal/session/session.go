@@ -212,11 +212,13 @@ func LogCommand(command string, args []string, intention string, elapsed time.Du
 	}
 	defer func() { _ = logFile.Close() }()
 
+	safeArgs := redactArgs(args)
+
 	entry := CommandLogEntry{
 		Type:        "command",
 		Timestamp:   time.Now().Format(time.RFC3339),
 		Command:     command,
-		Args:        args,
+		Args:        safeArgs,
 		Intention:   intention,
 		ExecutionMs: elapsed.Milliseconds(),
 		Status:      status,
@@ -228,6 +230,22 @@ func LogCommand(command string, args []string, intention string, elapsed time.Du
 	}
 
 	return nil
+}
+
+func redactArgs(args []string) []string {
+	sensitivePatterns := []string{"--config=", "--session=", "session_", "session/", ".gograph/"}
+	redacted := make([]string, len(args))
+	for i, arg := range args {
+		for _, pattern := range sensitivePatterns {
+			if strings.Contains(arg, pattern) {
+				redacted[i] = "***REDACTED***"
+				goto nextArg
+			}
+		}
+		redacted[i] = arg
+	nextArg:
+	}
+	return redacted
 }
 
 // GenericLogLine represents any log line parsed from a JSONL session file.

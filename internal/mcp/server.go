@@ -23,6 +23,8 @@ import (
 	"github.com/ozgurcd/gograph/internal/wiki"
 )
 
+var safeGitRef = regexp.MustCompile(`^[A-Za-z0-9._/\-~^]+$`)
+
 // MCPResponse is the stable structured data payload returned by complex tools.
 type MCPResponse struct {
 	Query          string               `json:"query,omitempty"`
@@ -442,13 +444,16 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 		configPath := ".gograph/boundaries.json"
 		if args, ok := request.Params.Arguments.(map[string]any); ok {
 			if cp, ok := args["config"].(string); ok && cp != "" {
+				if cp == "" || strings.Contains(cp, "..") {
+					return mcp.NewToolResultError("invalid config path: path traversal detected"), nil
+				}
 				configPath = cp
 			}
 		}
 
 		results, err := search.Boundaries(g, configPath)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return mcp.NewToolResultError(fmt.Sprintf("could not read boundaries config at %s: %v", configPath, err)), nil
 		}
 
 		summary := "Boundary violations found."
@@ -527,10 +532,8 @@ func NewServer(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGraph 
 			return mcp.NewToolResultError("since must be a string"), nil
 		}
 
-		// Validate sinceRef with a positive allowlist
-		safeGitRef := regexp.MustCompile(`^[A-Za-z0-9._/\-~^]+$`)
-		if sinceRef == "" || strings.HasPrefix(sinceRef, "-") || !safeGitRef.MatchString(sinceRef) {
-			return mcp.NewToolResultError("invalid since value: contains unsafe characters or is empty"), nil
+		if err := sanitizeGitRef(sinceRef); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
 		}
 
 		// Run a temporary git archive extraction for the baseline
@@ -2089,4 +2092,11 @@ func initNewTools(g *graph.Graph, rebuild func() (*graph.Graph, error), buildGra
 		}
 		return mcp.NewToolResultText(string(data)), nil
 	})
+}
+
+func sanitizeGitRef(ref string) error {
+	if ref == "" || strings.HasPrefix(ref, "-") || !safeGitRef.MatchString(ref) {
+		return fmt.Errorf("invalid git reference: contains unsafe characters or is empty")
+	}
+	return nil
 }
