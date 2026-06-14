@@ -26,6 +26,9 @@ func (w *Worker) Run(ch chan<- string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	go func() {
+		defer func() {
+			_ = recover()
+		}()
 		ch <- w.Name
 	}()
 }
@@ -36,6 +39,9 @@ func Start(workers []*Worker, ch chan<- string) {
 	for _, w := range workers {
 		wg.Add(1)
 		go func(worker *Worker) {
+			defer func() {
+				_ = recover()
+			}()
 			defer wg.Done()
 			worker.Run(ch)
 		}(w)

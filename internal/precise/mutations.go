@@ -261,6 +261,9 @@ func fieldNameOf(fa *ssa.FieldAddr) string {
 func ssaAllFunctions(prog *ssa.Program) <-chan *ssa.Function {
 	ch := make(chan *ssa.Function)
 	go func() {
+		defer func() {
+			_ = recover()
+		}()
 		defer close(ch)
 		for _, pkg := range prog.AllPackages() {
 			for _, m := range pkg.Members {

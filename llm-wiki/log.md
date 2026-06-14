@@ -81,3 +81,21 @@ Event types include `session`, `ingest`, `query`, `lint`, `decision`, and `maint
 - Ingested raw source `api-surface.md` from `raw/inbox/legacy-llm-wiki/` under ID `SRC-20260614-gograph-legacy-api-surface`.
 - Created source summary page at `sources/SRC-20260614-gograph-legacy-api-surface.md`.
 - Updated `index.md` and `source-registry.md` with the new source references.
+## 2026-06-14 — Security Disclosure AT-002 Analysis
+
+Received a responsible-disclosure notice (scan date 2026-06-10) identifying three goroutines launched without `recover()` (rule AT-002):
+
+- `internal/parser/testdata/concurrent/concurrent.go:28` — goroutine in `Worker.Run`
+- `internal/parser/testdata/concurrent/concurrent.go:38` — goroutine in `Start`
+- `internal/precise/mutations.go:263` — goroutine in `ssaAllFunctions`
+
+**Finding status:** VALID. The committed code on GitHub HEAD lacked `defer recover()` wrappers in all three goroutines. Working-tree already contained the fixes (uncommitted changes). Verified via `git diff HEAD`.
+
+**Fixes present in working tree (not yet committed):**
+- `internal/parser/testdata/concurrent/concurrent.go` — added `defer func() { _ = recover() }()` to both goroutines
+- `internal/precise/mutations.go` — added `defer func() { _ = recover() }()` to the `ssaAllFunctions` generator goroutine
+
+**Verified:** `go build ./...` passes, `go test ./internal/precise/... ./internal/parser/...` passes.
+
+**Action required:** Commit and push the working-tree fixes to remediate the public GitHub exposure.
+
