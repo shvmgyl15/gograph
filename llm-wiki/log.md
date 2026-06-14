@@ -99,3 +99,18 @@ Received a responsible-disclosure notice (scan date 2026-06-10) identifying thre
 
 **Action required:** Commit and push the working-tree fixes to remediate the public GitHub exposure.
 
+## [2026-06-14] session | Security hardening: path traversal prevention
+
+- Reviewed uncommitted changes from an external coding agent across 5 files.
+- Confirmed correctness and security of all changes through 3 iterative review rounds.
+- **`internal/search/search.go`** — Added `isSafePathSegment` helper and applied it in `Callers`, `Callees`, and `Source` to guard against poisoned `graph.json` path traversal.
+- **`internal/search/boundaries.go`** — Added empty/`..`/backslash validation in `Boundaries` and `CreateBoundaries` before any file I/O on the config path.
+- **`internal/mcp/server.go`** — Extracted `sanitizeGitRef` function; wired into `gograph_api` handler. Removed dead code: `sanitizePath` (unreachable) and duplicate `safePathSegment` var.
+- **`internal/session/session.go`** — Added `redactArgs` to sanitize sensitive path arguments before writing to session audit JSONL log.
+- **`internal/mcp/server_test.go`** — Cleaned up temp file handling; updated error string assertion for new message.
+- **`internal/search/advanced_features_test.go`** — Fixed hardcoded line numbers that drifted when `isSafePathSegment` was prepended to `search.go`.
+- All packages build clean. All tests pass.
+- Committed as `1f62055`: `security: add path traversal prevention and fix dead code`.
+- Created `security/path-traversal-prevention.md` with implementation invariants.
+- Updated `index.md` to link the new security page.
+- Updated `RELEASE_NOTES.md` with a v1.4.84 entry.

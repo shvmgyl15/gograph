@@ -1,5 +1,37 @@
 # Release Notes
 
+## v1.4.84 — 2026-06-14
+
+### Security
+
+#### Path Traversal Prevention in `gograph_boundaries` / `Boundaries` / `CreateBoundaries`
+Added explicit input validation to `Boundaries` and `CreateBoundaries` in `internal/search/boundaries.go` to reject config paths that are empty, contain `..` (path traversal), or contain backslashes. The same guard is applied at the MCP layer in `gograph_boundaries` before the path reaches the search layer, providing defence-in-depth.
+
+#### Poisoned Graph File Guard in `Callers`, `Callees`, and `Source`
+Added `isSafePathSegment` checks in `internal/search/search.go` before resolving any `File` field from the graph into an absolute path via `filepath.Join`. This prevents a crafted `graph.json` with malicious file paths (e.g. `../../etc/passwd`) from causing arbitrary file reads.
+
+#### Git Reference Validation Refactored in `gograph_api`
+Extracted the inline git-ref allowlist check into a dedicated `sanitizeGitRef` function in `internal/mcp/server.go`. The function now uses the pre-compiled package-level `safeGitRef` regex instead of recompiling it on every tool invocation. The validation logic is unchanged.
+
+#### Session Log Argument Redaction
+Added `redactArgs` in `internal/session/session.go` to sanitize CLI arguments before writing them to the session audit log. Arguments containing `--config=`, `--session=`, `session_`, `session/`, or `.gograph/` are replaced with `***REDACTED***` to prevent sensitive paths from persisting in telemetry.
+
+### Fixes
+
+#### Dead Code Removal
+Removed `sanitizePath` (was defined but never called) and the duplicate `safePathSegment` package variable that had been added alongside the pre-existing one in `internal/mcp/server.go`.
+
+#### Test Line Number Drift
+Updated hardcoded line number references in `internal/search/advanced_features_test.go` (`TestComplexity_RealFile`, `TestComplexity_SortedDescending`) to reflect the new position of `func Query` in `search.go` after the `isSafePathSegment` helper was prepended to that file.
+
+### Documentation
+
+| Target | Changes |
+|---|---|
+| `RELEASE_NOTES.md` | This entry |
+
+---
+
 ## v1.4.81 — 2026-06-12
 
 ### New Commands
