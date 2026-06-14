@@ -1,0 +1,83 @@
+# LLM Wiki Log
+
+This is the canonical chronological log for the project LLM Wiki. Keep entries append-only and parseable.
+
+## Format
+
+Use this heading pattern for every event:
+
+```markdown
+## [YYYY-MM-DD] <event-type> | <short title>
+```
+
+Event types include `session`, `ingest`, `query`, `lint`, `decision`, and `maintenance`.
+
+## Entries
+
+## [2026-06-13] ingest | Ingest legacy rules.md
+
+- Ingested raw source `raw/inbox/legacy-llm-wiki/rules.md` under ID `SRC-20260614-gograph-legacy-rules`.
+- Created source summary page `sources/SRC-20260614-gograph-legacy-rules.md`.
+- Created draft `drafts/rules.md` to propose updating active project rules.
+- Updated `index.md` and `source-registry.md` with the new source info.
+
+## [2026-06-13] ingest | Ingest legacy project.md
+
+- Ingested raw source `raw/inbox/legacy-llm-wiki/project.md` under ID `SRC-20260614-gograph-legacy-project`.
+- Created source summary page `sources/SRC-20260614-gograph-legacy-project.md`.
+- Created active project documentation at `project.md`.
+- Updated `index.md` and `source-registry.md` with the new source details.
+
+## [2026-06-13] ingest | Ingest legacy agent-contract.md
+
+- Ingested raw source `raw/inbox/legacy-llm-wiki/agent-contract.md` under ID `SRC-20260614-gograph-legacy-agent-contract`.
+- Created source summary page `sources/SRC-20260614-gograph-legacy-agent-contract.md`.
+- Created active workflow document at `agent-contract.md`.
+- Updated `index.md` and `source-registry.md` with the new source details.
+
+## [2026-06-13] ingest | Ingest legacy overview, architecture, and contributing
+
+- Ingested raw sources `overview.md`, `architecture.md`, and `contributing.md` under `raw/inbox/legacy-llm-wiki/`.
+- Assigned IDs: `SRC-20260614-gograph-legacy-overview`, `SRC-20260614-gograph-legacy-architecture`, and `SRC-20260614-gograph-legacy-contributing`.
+- Created source summaries under `sources/`.
+- Created active workflow document at `contributing.md`.
+- Regenerated active dynamic pages (`overview.md`, `architecture.md`, etc.) by building the precision graph index and calling `gograph wiki`.
+- Updated `index.md` and `source-registry.md` with all details.
+
+## [2026-06-13] maintenance | LLM Wiki lint corrections
+
+- Added a Drafts section to `index.md` linking to `drafts/rules.md`.
+- Created `packages/README.md` to serve as a consolidated index for auto-generated package-level reports.
+- Linked `packages/README.md` under a new Package Notes section in `index.md`.
+- Added guide type frontmatter to `sources/README.md` to resolve linter metadata flags.
+- Verified and touched `source-registry.md` to ensure Scrinium session registry consistency.
+
+## [2026-06-13] ingest | Ingest legacy errors.md
+
+- Ingested raw source `errors.md` from `raw/inbox/legacy-llm-wiki/` under ID `SRC-20260614-gograph-legacy-errors`.
+- Created source summary page at `sources/SRC-20260614-gograph-legacy-errors.md`.
+- Updated `index.md` and `source-registry.md` with the new source references.
+
+## [2026-06-13] ingest | Ingest legacy env.md
+
+- Ingested raw source `env.md` from `raw/inbox/legacy-llm-wiki/` under ID `SRC-20260614-gograph-legacy-env`.
+- Created source summary page at `sources/SRC-20260614-gograph-legacy-env.md`.
+- Updated `index.md` and `source-registry.md` with the new source references.
+
+## [2026-06-13] ingest | Ingest legacy concurrency.md
+
+- Ingested raw source `concurrency.md` from `raw/inbox/legacy-llm-wiki/` under ID `SRC-20260614-gograph-legacy-concurrency`.
+- Created source summary page at `sources/SRC-20260614-gograph-legacy-concurrency.md`.
+- Updated `index.md` and `source-registry.md` with the new source references.
+
+## [2026-06-13] ingest | Ingest legacy hotspots.md
+
+- Ingested raw source `hotspots.md` from `raw/inbox/legacy-llm-wiki/` under ID `SRC-20260614-gograph-legacy-hotspots`.
+- Created source summary page at `sources/SRC-20260614-gograph-legacy-hotspots.md`.
+- Updated `index.md` and `source-registry.md` with the new source references.
+
+## [2026-06-13] ingest | Ingest legacy api-surface.md
+
+- Ingested raw source `api-surface.md` from `raw/inbox/legacy-llm-wiki/` under ID `SRC-20260614-gograph-legacy-api-surface`.
+- Created source summary page at `sources/SRC-20260614-gograph-legacy-api-surface.md`.
+- Updated `index.md` and `source-registry.md` with the new source references.
