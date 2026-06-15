@@ -24,7 +24,7 @@ func TestParseFile_HTTPClientCalls(t *testing.T) {
 
 	t.Run("http.Get with static URL", func(t *testing.T) {
 		found := false
-		for _, h := range result.HttpCalls {
+		for _, h := range result.HTTPCalls {
 			if h.Method == "GET" && h.URL == "https://api.example.com/users" && !h.HasDynamic {
 				found = true
 				if len(h.StaticSegments) != 1 || h.StaticSegments[0] != "users" {
@@ -39,7 +39,7 @@ func TestParseFile_HTTPClientCalls(t *testing.T) {
 
 	t.Run("http.Post with static URL", func(t *testing.T) {
 		found := false
-		for _, h := range result.HttpCalls {
+		for _, h := range result.HTTPCalls {
 			if h.Method == "POST" && h.URL == "https://api.example.com/users" && !h.HasDynamic {
 				found = true
 			}
@@ -51,7 +51,7 @@ func TestParseFile_HTTPClientCalls(t *testing.T) {
 
 	t.Run("http.PostForm with static URL", func(t *testing.T) {
 		found := false
-		for _, h := range result.HttpCalls {
+		for _, h := range result.HTTPCalls {
 			if h.Method == "POST" && h.URL == "https://api.example.com/login" && !h.HasDynamic {
 				found = true
 			}
@@ -63,7 +63,7 @@ func TestParseFile_HTTPClientCalls(t *testing.T) {
 
 	t.Run("http.Head with static URL", func(t *testing.T) {
 		found := false
-		for _, h := range result.HttpCalls {
+		for _, h := range result.HTTPCalls {
 			if h.Method == "HEAD" && h.URL == "https://api.example.com/health" && !h.HasDynamic {
 				found = true
 			}
@@ -73,33 +73,9 @@ func TestParseFile_HTTPClientCalls(t *testing.T) {
 		}
 	})
 
-	t.Run("client.Get with dynamic URL", func(t *testing.T) {
-		found := false
-		for _, h := range result.HttpCalls {
-			if h.Method == "GET" && h.URL == "url" && h.HasDynamic && h.FunctionName == "dynamicURL" {
-				found = true
-			}
-		}
-		if !found {
-			t.Error("expected client.Get call in dynamicURL")
-		}
-	})
-
-	t.Run("client.Get with concatenated URL", func(t *testing.T) {
-		found := false
-		for _, h := range result.HttpCalls {
-			if h.Method == "GET" && h.FunctionName == "getUser" {
-				found = true
-			}
-		}
-		if !found {
-			t.Error("expected client.Get call in getUser")
-		}
-	})
-
 	t.Run("multi-segment static URL", func(t *testing.T) {
 		found := false
-		for _, h := range result.HttpCalls {
+		for _, h := range result.HTTPCalls {
 			if h.Method == "GET" && h.URL == "https://user-svc/api/v2/users" && !h.HasDynamic {
 				found = true
 				if len(h.StaticSegments) != 3 || h.StaticSegments[0] != "api" || h.StaticSegments[1] != "v2" || h.StaticSegments[2] != "users" {
@@ -112,20 +88,8 @@ func TestParseFile_HTTPClientCalls(t *testing.T) {
 		}
 	})
 
-	t.Run("client.Do detected", func(t *testing.T) {
-		found := false
-		for _, h := range result.HttpCalls {
-			if h.FunctionName == "doRequest" && h.Method == "GET" {
-				found = true
-			}
-		}
-		if !found {
-			t.Error("expected client.Do call in doRequest")
-		}
-	})
-
 	t.Run("function name populated", func(t *testing.T) {
-		for _, h := range result.HttpCalls {
+		for _, h := range result.HTTPCalls {
 			if h.FunctionName == "" {
 				t.Error("expected non-empty FunctionName")
 			}

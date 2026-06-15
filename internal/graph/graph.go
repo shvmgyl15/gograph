@@ -30,7 +30,7 @@ type Graph struct {
 	Implements   []ImplementsEdge  `json:"implements,omitempty"`
 	Mutations    []MutationEdge    `json:"mutations,omitempty"`
 	Literals     []LiteralEdge     `json:"literals,omitempty"`
-	HttpCalls    []HttpCallEdge    `json:"http_calls,omitempty"`
+	HTTPCalls    []HTTPCallEdge    `json:"http_calls,omitempty"`
 	Baseline     *GraphBaseline    `json:"baseline,omitempty"`
 }
 
@@ -77,8 +77,8 @@ type LiteralEdge struct {
 	Line     int    `json:"line"`
 }
 
-// HttpCallEdge represents a detected HTTP client call (net/http).
-type HttpCallEdge struct {
+// HTTPCallEdge represents a detected HTTP client call (net/http).
+type HTTPCallEdge struct {
 	SourceFile     string   `json:"sourceFile"`
 	SourceLine     int      `json:"sourceLine"`
 	FunctionName   string   `json:"functionName"`

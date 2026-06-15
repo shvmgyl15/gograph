@@ -30,7 +30,7 @@ type FileResult struct {
 	TestEdges   []graph.TestEdge
 	Mutations   []graph.MutationEdge
 	Literals    []graph.LiteralEdge
-	HttpCalls   []graph.HttpCallEdge
+	HTTPCalls   []graph.HTTPCallEdge
 }
 
 // ParseFile parses a single .go file and extracts its nodes.
@@ -554,16 +554,16 @@ func extractFuncDecl(fset *token.FileSet, d *ast.FuncDecl, relPath, pkgName, pkg
 			if method, ok := extractHTTPMethod(callee, call); ok && len(call.Args) >= 1 {
 				urlExpr := call.Args[0]
 				var urlStr string
-				hasDynamic := true
+				hasDynamic := false
 
 				if lit, ok2 := urlExpr.(*ast.BasicLit); ok2 && lit.Kind == token.STRING {
 					urlStr = strings.Trim(lit.Value, "\"")
-					hasDynamic = false
 				} else {
 					urlStr = exprName(urlExpr)
 					if urlStr == "" {
 						urlStr = "<dynamic>"
 					}
+					hasDynamic = true
 				}
 
 				var staticSegments []string
@@ -571,7 +571,7 @@ func extractFuncDecl(fset *token.FileSet, d *ast.FuncDecl, relPath, pkgName, pkg
 					staticSegments = extractStaticSegments(urlStr)
 				}
 
-				result.HttpCalls = append(result.HttpCalls, graph.HttpCallEdge{
+				result.HTTPCalls = append(result.HTTPCalls, graph.HTTPCallEdge{
 					SourceFile:     relPath,
 					SourceLine:     callPos.Line,
 					FunctionName:   callerName,
@@ -1148,8 +1148,14 @@ func envRead(call *ast.CallExpr, callee string, line int, file, fn string) (grap
 	}, true
 }
 
-// extractHTTPMethod checks whether a call expression is an HTTP client call
-// and returns the HTTP method (GET, POST, etc.) if so.
+// extractHTTPMethod checks whether a call expression is a package-level
+// net/http client call and returns the HTTP method (GET, POST, etc.) if so.
+//
+// Only unambiguous package-level calls are detected (http.Get, http.Post, etc.).
+// *http.Client method calls (client.Get, client.Do) are not detected here
+// because they cannot be reliably distinguished from other types' methods
+// without go/types type information. Support for those may be added in a
+// future --precise mode enhancement.
 func extractHTTPMethod(callee string, call *ast.CallExpr) (string, bool) {
 	switch callee {
 	case "http.Get":
@@ -1160,23 +1166,6 @@ func extractHTTPMethod(callee string, call *ast.CallExpr) (string, bool) {
 		return "POST", true
 	case "http.Head":
 		return "HEAD", true
-	}
-	// Check for *http.Client method calls by method name suffix.
-	sel, ok := call.Fun.(*ast.SelectorExpr)
-	if !ok {
-		return "", false
-	}
-	switch sel.Sel.Name {
-	case "Get":
-		return "GET", true
-	case "Post":
-		return "POST", true
-	case "PostForm":
-		return "POST", true
-	case "Head":
-		return "HEAD", true
-	case "Do":
-		return "GET", true
 	}
 	return "", false
 }
