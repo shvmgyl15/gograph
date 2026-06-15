@@ -673,7 +673,7 @@ func BuildGraph(absRoot string) (*graph.Graph, error) {
 		g.TestEdges = append(g.TestEdges, result.TestEdges...)
 		g.Mutations = append(g.Mutations, result.Mutations...)
 		g.Literals = append(g.Literals, result.Literals...)
-		g.HttpCalls = append(g.HttpCalls, result.HttpCalls...)
+		g.HTTPCalls = append(g.HTTPCalls, result.HTTPCalls...)
 
 		if _, ok := pkgMap[dir]; !ok {
 			pkgMap[dir] = &graph.PackageNode{
